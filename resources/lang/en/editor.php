@@ -58,9 +58,35 @@ return [
         'occluded'          => '":field" is covered by an opaque element placed on top of it.',
     ],
 
-    // Activation (Versions\VersionActivator).
+    // Routes (Http\Controllers\*), success messages.
+    'messages' => [
+        'created'       => 'Template created.',
+        'saved'         => 'Layout saved.',
+        'draft_created' => 'Draft version created.',
+        'activated'     => 'Version activated. The previous one was archived.',
+        'duplicated'    => 'Template duplicated.',
+        'copy_name'          => ':name (copy)',
+        'copy_name_numbered' => ':name (copy :number)',
+    ],
+
+    // Routes (Http\Controllers\*) and activation (Versions\VersionActivator).
     'errors' => [
-        'version_immutable' => 'This version is immutable. Create a new version from it to make changes.',
+        'version_immutable'  => 'This version is immutable. Create a new version from it to make changes.',
+        'validation_failed'  => 'The layout has problems that prevent it from being saved. Fix them and save again.',
+        'activation_failed'  => 'The render validation failed. The version was not activated.',
+        'nothing_to_preview' => 'This version has no saved layout to preview yet.',
+        'unsafe_template'    => 'The layout received carries content a template must not carry. It was neither saved nor rendered.',
+        'render_failed'      => 'The PDF could not be generated. The rendering engine did not respond as expected.',
+        'type_not_creatable' => 'This document type cannot be created from scratch: it is obtained by duplicating an existing template.',
+    ],
+
+    // Http\Requests\StoreTemplateRequest, Http\Requests\UpdateVersionRequest.
+    'attributes' => [
+        'name'         => 'name',
+        'type_code'    => 'document type',
+        'project_data' => 'layout',
+        'html'         => 'layout HTML',
+        'css'          => 'layout CSS',
     ],
 
     // Layer 2 of the validation: over the rendered PDF (Output\Pdf\RenderValidator).

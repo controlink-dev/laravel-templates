@@ -58,9 +58,35 @@ return [
         'occluded'          => '«:field» está coberto por um elemento opaco colocado por cima.',
     ],
 
-    // Ativação (Versions\VersionActivator).
+    // Rotas (Http\Controllers\*), mensagens de sucesso.
+    'messages' => [
+        'created'       => 'Modelo criado.',
+        'saved'         => 'Layout gravado.',
+        'draft_created' => 'Versão de rascunho criada.',
+        'activated'     => 'Versão ativada. A anterior foi arquivada.',
+        'duplicated'    => 'Modelo duplicado.',
+        'copy_name'          => ':name (cópia)',
+        'copy_name_numbered' => ':name (cópia :number)',
+    ],
+
+    // Rotas (Http\Controllers\*) e ativação (Versions\VersionActivator).
     'errors' => [
-        'version_immutable' => 'Esta versão é imutável. Crie uma versão nova a partir dela para a alterar.',
+        'version_immutable'  => 'Esta versão é imutável. Crie uma versão nova a partir dela para a alterar.',
+        'validation_failed'  => 'O layout tem problemas que impedem a gravação. Corrija-os e grave outra vez.',
+        'activation_failed'  => 'A validação por renderização falhou. A versão não foi ativada.',
+        'nothing_to_preview' => 'Esta versão ainda não tem layout gravado para pré-visualizar.',
+        'unsafe_template'    => 'O layout recebido contém conteúdo que um modelo não pode conter. Não foi gravado nem renderizado.',
+        'render_failed'      => 'Não foi possível gerar o PDF. O motor de renderização não respondeu como esperado.',
+        'type_not_creatable' => 'Este tipo de documento não pode ser criado de zero: obtém-se duplicando um modelo existente.',
+    ],
+
+    // Http\Requests\StoreTemplateRequest, Http\Requests\UpdateVersionRequest.
+    'attributes' => [
+        'name'         => 'nome',
+        'type_code'    => 'tipo de documento',
+        'project_data' => 'layout',
+        'html'         => 'HTML do layout',
+        'css'          => 'CSS do layout',
     ],
 
     // Camada 2 da validação: sobre o PDF renderizado (Output\Pdf\RenderValidator).
