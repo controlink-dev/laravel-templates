@@ -7,6 +7,7 @@ use Controlink\Templates\Contracts\EncryptedFieldMap;
 use Controlink\Templates\Contracts\MoneyFormatter;
 use Controlink\Templates\Contracts\PdfEngine;
 use Controlink\Templates\Contracts\TenantResolver;
+use Controlink\Templates\Rendering\FilterRegistry;
 use Controlink\Templates\Support\EmptyEncryptedFieldMap;
 use Controlink\Templates\Support\IntlMoneyFormatter;
 use Controlink\Templates\Support\NullAuditor;
@@ -32,6 +33,10 @@ class TemplatesServiceProvider extends ServiceProvider
 
         $this->app->singleton(TypeCatalogue::class, fn () => new TypeCatalogue((array) config('templates.types')));
         $this->app->singleton(TemplatesManager::class);
+
+        // Shared so a host's `FilterRegistry::register()` call, wherever it runs, is
+        // visible to every `TemplateRenderer` the container later builds.
+        $this->app->singleton(FilterRegistry::class);
     }
 
     public function boot(): void

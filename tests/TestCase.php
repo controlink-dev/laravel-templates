@@ -22,5 +22,6 @@ abstract class TestCase extends Orchestra
             'foreign_key_constraints' => true,
         ]);
         $app['config']->set('app.locale', 'pt_PT');
+        $app['config']->set('templates.types', require __DIR__.'/Fixtures/types/invoice.php');
     }
 }

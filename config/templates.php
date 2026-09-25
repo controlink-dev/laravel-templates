@@ -94,4 +94,14 @@ return [
      * tests/Fixtures/types/invoice.php for a complete example.
      */
     'types' => [],
+
+    /*
+     * `Data\DocumentGraph`'s introspection of a node's model. `excluded_columns` is an
+     * extra host-declared rule, on top of the package's own plumbing/blind-index/hidden
+     * exclusions — a column a host never wants offered as a document field without
+     * hiding it from the model everywhere else.
+     */
+    'graph' => [
+        'excluded_columns' => [],
+    ],
 ];
