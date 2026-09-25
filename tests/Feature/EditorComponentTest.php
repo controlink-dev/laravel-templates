@@ -58,6 +58,7 @@ class EditorComponentTest extends TestCase
             'data-catalogue-url', 'data-print-stylesheet', 'data-font-family', 'data-font-faces',
             'data-paper-format', 'data-margins', 'data-editable', 'data-initial-html',
             'data-initial-css', 'data-strings', 'data-tenant-header', 'data-tenant',
+            'data-csrf-token',
         ] as $attribute) {
             $this->assertStringContainsString($attribute, $html, "Missing {$attribute}.");
         }
@@ -169,6 +170,26 @@ class EditorComponentTest extends TestCase
 
         $this->assertStringContainsString('vendor/templates/editor.css', $html);
         $this->assertStringContainsString('vendor/templates/editor.js', $html);
+    }
+
+    /**
+     * The font URL is cache-busted by the file's own content hash — the same
+     * convention `assetUrl()` uses — so a host that swaps a font's file gets a new
+     * URL rather than a browser serving the stale one from cache under an unchanged
+     * name.
+     */
+    public function test_the_font_url_is_cache_busted_by_its_own_content_hash(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $faces = (new Editor($template, $version))->font()['faces'];
+        $path  = config('templates.fonts.LiberationSans.weights.400.path');
+
+        $this->assertSame(400, $faces[0]['weight']);
+        $this->assertStringEndsWith(
+            '?v='.substr(hash_file('sha256', $path), 0, 12),
+            $faces[0]['url'],
+        );
     }
 
     /** Phase 1 supports only a print (PDF) layout. */

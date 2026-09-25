@@ -28,6 +28,10 @@ return new class extends Migration
             $table->unsignedSmallInteger('number');
             $table->string('state', 12)->default('draft');
 
+            if (config('templates.tenancy.mode') === 'column') {
+                $table->string('tenant_id', 64)->nullable()->index();
+            }
+
             $table->json('project_data');
             $table->longText('html')->nullable();
             $table->longText('css')->nullable();

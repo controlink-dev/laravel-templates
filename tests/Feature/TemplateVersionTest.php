@@ -35,7 +35,7 @@ class TemplateVersionTest extends TestCase
         $version->forceFill(['html' => 'changed'])->save();
     }
 
-    public function test_version_numbers_never_repeat(): void
+    public function test_version_numbers_are_unique_among_existing_versions(): void
     {
         $template = Template::create(['type_code' => 'invoice', 'name' => 'Fatura']);
         $template->versions()->create(['number' => 1, 'state' => VersionState::Draft, 'project_data' => []]);

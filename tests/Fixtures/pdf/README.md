@@ -24,6 +24,6 @@ mal prova que a **regra** funciona, e continua a provar isso depois de o composi
 A R-01 (a renderização conclui) e a R-07 (tempo) não têm fixture: uma é uma exceção durante a
 composição e a outra é um número medido, nenhuma delas é uma propriedade de um PDF.
 
-Regenerar com `php tests/Fixtures/print_forms/GENERATOR.php` — precisa do Gotenberg acessível
+Regenerar com `php tests/Fixtures/pdf/GENERATOR.php` — precisa do Gotenberg acessível
 em `GOTENBERG_URL`. Os caminhos no gerador são absolutos e apontam para o scratchpad onde foi
 escrito; ajustar antes de correr.

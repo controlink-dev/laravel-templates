@@ -191,6 +191,14 @@
         data-strings="{{ json_encode($strings()) }}"
         data-tenant-header="{{ $tenantHeader() }}"
         data-tenant="{{ $tenantId() }}"
+
+        {{-- Read straight off the container rather than a document-wide
+             `meta[name="csrf-token"]` lookup: the bundle loads none of the host's
+             JavaScript or layout, so it cannot depend on the host's own page
+             emitting that meta tag — every setting it needs, this one included,
+             has to travel as data on the container. The lookup stays as a
+             fallback for a host that already has one. --}}
+        data-csrf-token="{{ csrf_token() }}"
                     ></div>
                 </div>
             </div>

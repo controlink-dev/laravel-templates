@@ -9,10 +9,12 @@ use Illuminate\Support\Facades\File;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
 /**
- * The print stylesheet and the fonts every layout may use, served raw and
- * unauthenticated: the canvas and the compositor have to read exactly the same bytes
- * (spec, "the canvas/PDF fidelity guarantee"), and gating that behind a policy would
- * only be one more way for the two to drift apart.
+ * The print stylesheet and the fonts every layout may use, served raw: the canvas and
+ * the compositor have to read exactly the same bytes (spec, "the canvas/PDF fidelity
+ * guarantee"), and gating that behind a policy would only be one more way for the two
+ * to drift apart. There is no policy check here, unlike the template and version
+ * endpoints; the routes still sit behind `templates.http.middleware` (`web, auth` by
+ * default), the same as every other route the package registers.
  */
 class StylesheetController extends Controller
 {

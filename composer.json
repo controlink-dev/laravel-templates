@@ -6,15 +6,22 @@
     "require": {
         "php": "^8.1",
         "ext-json": "*",
+        "ext-intl": "*",
+        "ext-dom": "*",
         "laravel/framework": "^10.48 || ^11.0 || ^12.0 || ^13.0",
         "twig/twig": "^3.28",
         "bacon/bacon-qr-code": "^3.0",
+        "guzzlehttp/guzzle": "^7.0",
         "khanamiryan/qrcode-detector-decoder": "^2.0"
     },
     "require-dev": {
-        "guzzlehttp/guzzle": "^7.15",
         "orchestra/testbench": "^8.0",
         "phpunit/phpunit": "^10.0"
+    },
+    "suggest": {
+        "ext-gd": "Needed by the visual regression comparison and the render validator raster checks",
+        "poppler-utils": "pdftotext/pdftoppm/pdfinfo on PATH for output=pdf activation",
+        "gotenberg": "Gotenberg 8 reachable over HTTP for output=pdf"
     },
     "autoload": {
         "psr-4": { "Controlink\\Templates\\": "src/" }

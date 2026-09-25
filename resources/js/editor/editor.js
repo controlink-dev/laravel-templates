@@ -1277,7 +1277,7 @@ function readConfig(el) {
         initialHtml: el.dataset.initialHtml || '<div class="page"></div>',
         initialCss: el.dataset.initialCss || '',
         strings: JSON.parse(el.dataset.strings || '{}'),
-        csrfToken: document.querySelector('meta[name="csrf-token"]')?.content || '',
+        csrfToken: el.dataset.csrfToken || document.querySelector('meta[name="csrf-token"]')?.content || '',
         tenantHeader: el.dataset.tenantHeader || '',
         tenantId: el.dataset.tenant || '',
     };

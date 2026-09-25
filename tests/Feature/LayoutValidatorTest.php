@@ -24,11 +24,8 @@ use Illuminate\Support\Facades\Schema;
  * `templates.tenancy.mode` at its default of `none`, the graph's schema introspection
  * runs against the host's own default connection.
  *
- * Deliberately absent, and each absence mirrors the host's own decision: V-03 (exactly
- * one line table) and V-17 (QR slot size) belong to blocks the certification catalogue
- * had not yet needed when those decisions were made there, and truncation has no static
- * rule at all — it depends on font metrics and resolved widths, and R-04 measures it
- * exactly on the rendered PDF.
+ * Deliberately absent: truncation has no static rule at all — it depends on font
+ * metrics and resolved widths, and R-04 measures it exactly on the rendered PDF.
  */
 class LayoutValidatorTest extends TestCase
 {

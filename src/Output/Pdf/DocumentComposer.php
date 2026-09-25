@@ -213,10 +213,26 @@ class DocumentComposer
      * make the rendered document depend on the network the engine does not have, and
      * would leak a request out of it.
      *
+     * Two more things are refused before that check ever runs, because both let a
+     * "CSS" payload reach past the `<style>` tag it is injected into (`compose()`
+     * wraps `$css` in `<style>…</style>` with nothing escaping it): a literal
+     * `</style>` closes the element early and hands the rest of the payload to the
+     * HTML parser as ordinary markup — `<script>`, in the payload this guards
+     * against — and `@import` reaches outside the document exactly like an external
+     * `url()` would, only unconditionally and before any `url()` pattern is matched.
+     *
      * @throws UnsafeTemplateException
      */
     private function guardCss(string $css): void
     {
+        if (preg_match('/<\s*\/\s*style/i', $css) === 1) {
+            throw new UnsafeTemplateException('Template CSS closes its enclosing <style> tag.');
+        }
+
+        if (preg_match('/@import\b/i', $css) === 1) {
+            throw new UnsafeTemplateException('Template CSS uses @import.');
+        }
+
         preg_match_all('/url\(\s*([\'"]?)([^\'")]+)\1\s*\)/i', $css, $matches);
 
         foreach ($matches[2] as $reference) {

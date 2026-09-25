@@ -44,6 +44,7 @@ class TemplateVersion extends Model
         'activated_by',
         'activated_by_name',
         'activated_at',
+        'tenant_id',
     ];
 
     protected $casts = [

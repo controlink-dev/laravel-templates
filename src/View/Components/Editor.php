@@ -91,9 +91,15 @@ class Editor extends Component
         foreach ((array) ($fonts[$family]['weights'] ?? []) as $weight => $face) {
             $faces[] = [
                 'weight' => (int) $weight,
-                'url'    => self::isAbsolutePath((string) $face['path'])
-                    ? route('templates.font', ['family' => $family, 'weight' => $weight])
-                    : asset($face['path']),
+                // Cache-busted the same way `assetUrl()` busts the bundle's own
+                // files: by the font file's own content hash, so a face the host
+                // swapped is a new URL rather than a stale one served under the same
+                // name — the canvas has to measure text against the exact bytes
+                // `DocumentComposer::fontFaces()` embeds, or the width it shows is a
+                // promise the PDF does not keep.
+                'url' => self::isAbsolutePath((string) $face['path'])
+                    ? route('templates.font', ['family' => $family, 'weight' => $weight]).'?v='.self::fontVersion((string) $face['path'])
+                    : asset($face['path']).'?v='.self::fontVersion((string) $face['path']),
                 'format' => (string) $face['format'],
             ];
         }
@@ -109,6 +115,17 @@ class Editor extends Component
     private static function isAbsolutePath(string $path): bool
     {
         return str_starts_with($path, '/') || preg_match('/^[a-zA-Z]:/', $path) === 1;
+    }
+
+    /**
+     * The font file's own content hash, 12 hex characters — the same convention
+     * `assetUrl()` uses — or `missing` when the file cannot be read.
+     */
+    private static function fontVersion(string $path): string
+    {
+        $resolved = self::isAbsolutePath($path) ? $path : public_path($path);
+
+        return is_file($resolved) ? substr(hash_file('sha256', $resolved), 0, 12) : 'missing';
     }
 
     /**

@@ -8,6 +8,7 @@ use Controlink\Templates\Data\DocumentDataset;
 use Controlink\Templates\Data\DocumentGraph;
 use Controlink\Templates\Data\FixtureDataset;
 use Controlink\Templates\Data\FixtureValue;
+use Controlink\Templates\Exceptions\UnsafeTemplateException;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Output\Pdf\PageStructure;
 use Controlink\Templates\Rendering\TemplateRenderer;
@@ -267,6 +268,45 @@ class PdfRenderTest extends TestCase
         $document = app(DocumentComposer::class)->compose($layout['html'], $layout['css'], $type, $dataset);
 
         $this->assertStringContainsString('font-family:"Other"', $document);
+    }
+
+    /* -----------------------------------------------------------------------
+     * The CSS safety guard
+     * -------------------------------------------------------------------- */
+
+    /**
+     * `compose()` wraps `$css` in `<style>…</style>` with nothing escaping it. A
+     * literal `</style>` in the payload closes that element early and hands
+     * everything after it to the HTML parser as ordinary markup — the very
+     * `<script>` the HTML guard exists to refuse, smuggled in through the CSS side
+     * instead.
+     */
+    public function test_css_that_closes_its_enclosing_style_tag_is_refused(): void
+    {
+        $this->expectException(UnsafeTemplateException::class);
+
+        $this->assertSafe('<div class="page"></div>', '</style><script>alert(1)</script><style>');
+    }
+
+    /** `@import` reaches outside the document exactly like an external `url()` would. */
+    public function test_css_import_is_refused(): void
+    {
+        $this->expectException(UnsafeTemplateException::class);
+
+        $this->assertSafe('<div class="page"></div>', '@import "http://evil.example/x.css";');
+    }
+
+    /** An ordinary embedded asset still passes both new checks. */
+    public function test_a_normal_data_uri_url_still_passes_the_guard(): void
+    {
+        $this->assertSafe('<div class="page"></div>', '.page{background:url(data:image/png;base64,AAAA)}');
+
+        $this->addToAssertionCount(1);
+    }
+
+    private function assertSafe(string $html, string $css): void
+    {
+        app(DocumentComposer::class)->assertSafe($html, $css);
     }
 
     /* -----------------------------------------------------------------------

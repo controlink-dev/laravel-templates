@@ -3,6 +3,7 @@
 namespace Controlink\Templates\Http\Requests;
 
 use Closure;
+use Controlink\Templates\Contracts\TenantResolver;
 use Controlink\Templates\Types\TypeCatalogue;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -26,8 +27,18 @@ class StoreTemplateRequest extends FormRequest
         $model = config('templates.models.template');
         $table = (new $model)->getConnectionName().'.'.(new $model)->getTable();
 
+        $uniqueName = Rule::unique($table, 'name');
+
+        // The table itself carries every tenant's rows in `column` mode, and this is
+        // a raw query against it — Eloquent's global scope on the model never runs
+        // here — so without this, tenant A creating "Fatura" would make the name
+        // unavailable to every other tenant sharing the database.
+        if (config('templates.tenancy.mode') === 'column') {
+            $uniqueName = $uniqueName->where('tenant_id', app(TenantResolver::class)->currentId());
+        }
+
         return [
-            'name' => ['required', 'string', 'max:150', Rule::unique($table, 'name')],
+            'name' => ['required', 'string', 'max:150', $uniqueName],
 
             // The catalogue is configuration, not a table, so the code is validated
             // against the whole catalogue first — an unknown code gets the ordinary
