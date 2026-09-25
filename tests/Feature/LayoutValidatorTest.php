@@ -1,0 +1,678 @@
+<?php
+
+namespace Controlink\Templates\Tests\Feature;
+
+use Controlink\Templates\Data\DocumentGraph;
+use Controlink\Templates\Output\Pdf\Colour;
+use Controlink\Templates\Output\Pdf\LayoutDocument;
+use Controlink\Templates\Output\Pdf\LayoutValidator;
+use Controlink\Templates\Templates;
+use Controlink\Templates\Tests\Concerns\BuildsLayouts;
+use Controlink\Templates\Tests\Fixtures\Models\Party;
+use Controlink\Templates\Tests\TestCase;
+use Controlink\Templates\Types\TemplateType;
+use Illuminate\Support\Facades\Schema;
+
+/**
+ * The static validation, layer 1 (spec 8.1).
+ *
+ * One case per rule. Most of these never touch the database: the validator is a pure
+ * traversal of the document. The two exceptions (`test_a_dynamic_binding_…` and
+ * `test_a_binding_that_exists_in_neither_source_…`) exercise `DocumentGraph::resolve()`
+ * against a real, migrated model — `Tests\Fixtures\Models\Party` — the same fixture
+ * `DocumentGraphTest` uses, and need no tenant context at all: with
+ * `templates.tenancy.mode` at its default of `none`, the graph's schema introspection
+ * runs against the host's own default connection.
+ *
+ * Deliberately absent, and each absence mirrors the host's own decision: V-03 (exactly
+ * one line table) and V-17 (QR slot size) belong to blocks the certification catalogue
+ * had not yet needed when those decisions were made there, and truncation has no static
+ * rule at all — it depends on font metrics and resolved widths, and R-04 measures it
+ * exactly on the rendered PDF.
+ */
+class LayoutValidatorTest extends TestCase
+{
+    use BuildsLayouts;
+
+    private const TYPE_CODE = 'invoice';
+
+    protected function tearDown(): void
+    {
+        Schema::dropIfExists('parties');
+        DocumentGraph::flush();
+
+        parent::tearDown();
+    }
+
+    /* -----------------------------------------------------------------------
+     * The baseline
+     * -------------------------------------------------------------------- */
+
+    /**
+     * Without this one, every rule below could be passing because the validator finds
+     * nothing at all.
+     */
+    public function test_a_correct_layout_produces_no_problems(): void
+    {
+        $this->assertSame([], $this->problems($this->validLayout()));
+    }
+
+    /* -----------------------------------------------------------------------
+     * Structure
+     * -------------------------------------------------------------------- */
+
+    public function test_v01_rejects_a_binding_outside_the_catalogue(): void
+    {
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'binding' => 'emitente.invented'],
+        );
+
+        $this->assertHasProblem('V-01', $layout);
+    }
+
+    public function test_v01_rejects_a_format_outside_the_closed_list(): void
+    {
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'format' => 'roman'],
+        );
+
+        $this->assertHasProblem('V-01', $layout);
+    }
+
+    public function test_v02_requires_a_mandatory_field_that_is_not_legal(): void
+    {
+        $layout = $this->layoutWithout('totais.total_iliquido');
+
+        $this->assertHasProblem('V-02', $layout);
+    }
+
+    /**
+     * A legal field that is absent is one defect, so it produces one message — V-10,
+     * the one that says it is a legal requirement. V-10 is a reinforcement of V-02;
+     * reporting both would put two lines in the panel for the same missing field.
+     */
+    public function test_a_missing_legal_field_is_reported_once(): void
+    {
+        $codes = array_column($this->problems($this->layoutWithout('documento.atcud')), 'code');
+
+        $this->assertSame(['V-10'], array_values(array_unique($codes)));
+    }
+
+    public function test_v04_rejects_a_block_that_runs_outside_its_zone(): void
+    {
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'style' => [...$block['style'], 'left' => '-40mm']],
+        );
+
+        $this->assertHasProblem('V-04', $layout);
+    }
+
+    public function test_v05_rejects_an_image_with_no_file(): void
+    {
+        $layout = $this->layoutPlus([
+            'type'       => 'image',
+            'zone'       => 'header',
+            'id'         => 'tpl-logo',
+            'attributes' => ['src' => ''],
+            'style'      => ['position' => 'absolute', 'left' => '150mm', 'top' => '0mm', 'width' => '20mm', 'height' => '20mm'],
+        ]);
+
+        $this->assertHasProblem('V-05', $layout);
+    }
+
+    public function test_v05_rejects_an_image_over_the_size_limit(): void
+    {
+        $payload = base64_encode(str_repeat('a', (int) config('templates.image_max_bytes') + 1024));
+
+        $layout = $this->layoutPlus([
+            'type'       => 'image',
+            'zone'       => 'header',
+            'id'         => 'tpl-logo',
+            'attributes' => ['src' => 'data:image/png;base64,'.$payload],
+            'style'      => ['position' => 'absolute', 'left' => '150mm', 'top' => '0mm', 'width' => '20mm', 'height' => '20mm'],
+        ]);
+
+        $this->assertHasProblem('V-05', $layout);
+    }
+
+    /**
+     * The editor offers no way to write script, so its presence means the payload was
+     * tampered with on the way in — the guards refuse rather than strip, and V-07 is
+     * that refusal surfaced as a validation problem.
+     */
+    public function test_v07_rejects_markup_the_editor_could_not_have_produced(): void
+    {
+        $layout         = $this->validLayout();
+        $layout['html'] = '<body><div class="page"><script>fetch("/")</script></div></body>';
+
+        $this->assertHasProblem('V-07', $layout);
+    }
+
+    /* -----------------------------------------------------------------------
+     * Legal field visibility
+     * -------------------------------------------------------------------- */
+
+    public function test_v10_requires_every_legal_field(): void
+    {
+        $this->assertHasProblem('V-10', $this->layoutWithout('documento.atcud'));
+    }
+
+    public function test_v11_rejects_a_font_below_the_minimum(): void
+    {
+        $minimum = (float) (Templates::type(self::TYPE_CODE)->pdf['visibility_limits']['font_size_min_pt'] ?? 7);
+
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'style' => [...$block['style'], 'font-size' => ($minimum - 1).'pt']],
+        );
+
+        $this->assertHasProblem('V-11', $layout);
+    }
+
+    /** A size at the minimum passes: the rule is "at least", not "more than". */
+    public function test_v11_accepts_a_font_exactly_at_the_minimum(): void
+    {
+        $minimum = (float) (Templates::type(self::TYPE_CODE)->pdf['visibility_limits']['font_size_min_pt'] ?? 7);
+
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'style' => [...$block['style'], 'font-size' => $minimum.'pt']],
+        );
+
+        $this->assertSame([], $this->problems($layout));
+    }
+
+    public function test_v12_rejects_white_on_white(): void
+    {
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'style' => [...$block['style'], 'color' => '#ffffff']],
+        );
+
+        $this->assertHasProblem('V-12', $layout);
+    }
+
+    /**
+     * The background is resolved up the ancestor chain, so a coloured header band is
+     * what the text is measured against — not the white of the page underneath it.
+     */
+    public function test_v12_measures_against_the_zone_background(): void
+    {
+        $layout = $this->validLayout();
+
+        // A dark header with dark text: legible against paper, not against the band.
+        $layout['project_data']['styles'][] = [
+            'selectors' => ['zone--header'],
+            'style'     => ['background-color' => '#1f2937'],
+        ];
+
+        $this->assertHasProblem('V-12', $layout);
+    }
+
+    public function test_v13_rejects_a_transparent_field(): void
+    {
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'style' => [...$block['style'], 'opacity' => '0.4']],
+        );
+
+        $this->assertHasProblem('V-13', $layout);
+    }
+
+    public function test_v13_rejects_a_hidden_field(): void
+    {
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'style' => [...$block['style'], 'display' => 'none']],
+        );
+
+        $this->assertHasProblem('V-13', $layout);
+    }
+
+    /** An ancestor hiding the field hides the field, which is the sneakier version. */
+    public function test_v13_rejects_a_field_inside_a_hidden_zone(): void
+    {
+        $layout = $this->validLayout();
+
+        $layout['project_data']['styles'][] = [
+            'selectors' => ['zone--header'],
+            'style'     => ['visibility' => 'hidden'],
+        ];
+
+        $this->assertHasProblem('V-13', $layout);
+    }
+
+    public function test_v14_rejects_a_field_outside_the_printable_area(): void
+    {
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'style' => [...$block['style'], 'left' => '-40mm']],
+        );
+
+        $this->assertHasProblem('V-14', $layout);
+    }
+
+    /**
+     * The tolerance exists because the engine snaps fills to the CSS pixel grid.
+     * Without it a block deliberately flush with the margin would be refused for
+     * rounding rather than for placement.
+     */
+    public function test_v14_tolerates_the_engine_rounding(): void
+    {
+        $tolerance = (float) config('templates.geometry_tolerance_mm');
+
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'style' => [...$block['style'], 'left' => (-$tolerance / 2).'mm']],
+        );
+
+        $this->assertSame([], $this->problems($layout));
+    }
+
+    public function test_v15_rejects_a_field_covered_by_an_opaque_block(): void
+    {
+        $this->assertHasProblem('V-15', $this->layoutWithRectangleOverTheIssuerVatNumber('#000000'));
+    }
+
+    /** A translucent rectangle does not hide what is under it. */
+    public function test_v15_ignores_a_translucent_block(): void
+    {
+        $this->assertSame([], $this->problems(
+            $this->layoutWithRectangleOverTheIssuerVatNumber('rgba(0, 0, 0, 0.5)'),
+        ));
+    }
+
+    /** A rectangle beside the field is not covering it. */
+    public function test_v15_ignores_a_block_that_does_not_overlap(): void
+    {
+        $this->assertSame([], $this->problems(
+            $this->layoutWithRectangleOverTheIssuerVatNumber('#000000', '0mm'),
+        ));
+    }
+
+    /**
+     * Two tables over the same collection would print the lines twice, and the
+     * compositor paginates against one table.
+     */
+    public function test_v03_rejects_a_second_table_over_the_same_collection(): void
+    {
+        $layout = $this->layoutPlus([
+            'type'       => 'line-table',
+            'zone'       => 'body',
+            'id'         => 'tpl-lines-again',
+            'attributes' => ['data-tpl-collection' => 'linhas', 'data-tpl-columns' => '[]'],
+            'style'      => ['position' => 'absolute', 'left' => '0mm', 'top' => '80mm', 'width' => '180mm'],
+        ]);
+
+        $this->assertHasProblem('V-03', $layout);
+    }
+
+    /** The table paginates, and only the body paginates. */
+    public function test_v06_rejects_the_line_table_outside_the_body(): void
+    {
+        $layout = $this->layoutPlus([
+            'type'       => 'line-table',
+            'zone'       => 'header',
+            'id'         => 'tpl-lines-header',
+            'attributes' => ['data-tpl-collection' => 'linhas', 'data-tpl-columns' => '[]'],
+            'style'      => ['position' => 'absolute', 'left' => '0mm', 'top' => '0mm', 'width' => '100mm'],
+        ]);
+
+        $this->assertHasProblem('V-06', $layout);
+    }
+
+    /** A page number in the body would appear once, in the middle of the lines. */
+    public function test_v06_rejects_a_page_number_in_the_body(): void
+    {
+        $layout = $this->layoutPlus([
+            'type'       => 'page-number',
+            'zone'       => 'body',
+            'id'         => 'tpl-pageno',
+            'attributes' => ['data-tpl-format' => 'x'],
+            'style'      => ['position' => 'absolute', 'left' => '0mm', 'top' => '150mm', 'font-size' => '8pt'],
+        ]);
+
+        $this->assertHasProblem('V-06', $layout);
+    }
+
+    /**
+     * The minimum is about the slot, which is the only size the layout states — and a
+     * QR spends four modules of quiet zone on each side, so a 30mm slot prints about
+     * 24mm of actual code.
+     */
+    public function test_v17_rejects_a_code_slot_below_the_minimum_side(): void
+    {
+        $minimum = (float) (Templates::type(self::TYPE_CODE)->pdf['visibility_limits']['qr_size_min_mm'] ?? 30);
+
+        $layout = $this->layoutWith(
+            'documento.qr',
+            fn (array $block): array => [...$block, 'style' => [
+                ...$block['style'],
+                'width'  => ($minimum - 10).'mm',
+                'height' => ($minimum - 10).'mm',
+            ]],
+        );
+
+        $this->assertHasProblem('V-17', $layout);
+    }
+
+    /** A slot with no stated size has not stated the thing the rule is about. */
+    public function test_v17_rejects_a_code_slot_with_no_size(): void
+    {
+        $layout = $this->layoutWith(
+            'documento.qr',
+            function (array $block): array {
+                unset($block['style']['width'], $block['style']['height']);
+
+                return $block;
+            },
+        );
+
+        $this->assertHasProblem('V-17', $layout);
+    }
+
+    /** The legal code has to be there at all, and it is a slot rather than a field. */
+    public function test_v10_requires_the_legal_code_slot(): void
+    {
+        $this->assertHasProblem('V-10', $this->layoutWithout('documento.qr'));
+    }
+
+    /** A mandatory collection has to be bound by a table, not by a data field. */
+    public function test_v02_requires_the_line_table(): void
+    {
+        $this->assertHasProblem('V-02', $this->layoutWithout('linhas'));
+    }
+
+    public function test_v16_rejects_an_every_page_field_in_the_body(): void
+    {
+        $layout = $this->layoutWith(
+            'documento.atcud',
+            fn (array $block): array => [...$block, 'zone' => 'body'],
+        );
+
+        $this->assertHasProblem('V-16', $layout);
+    }
+
+    /* -----------------------------------------------------------------------
+     * The shape the caller depends on
+     *
+     * The host has no HTTP save endpoint or persistence layer in this package; what
+     * survives here is the part of the acceptance criterion the validator itself owns.
+     * -------------------------------------------------------------------- */
+
+    /** Every problem carries the three keys a caller renders a panel from. */
+    public function test_a_failing_layout_reports_every_problem_with_a_code_component_and_message(): void
+    {
+        $problems = $this->problems($this->layoutWithout('documento.atcud'));
+
+        $this->assertContains('V-10', array_column($problems, 'code'));
+
+        foreach ($problems as $problem) {
+            $this->assertArrayHasKey('code', $problem);
+            $this->assertArrayHasKey('component_id', $problem);
+            $this->assertArrayHasKey('message', $problem);
+        }
+    }
+
+    /** Fix the layout and the same validation goes through clean. */
+    public function test_correcting_the_layout_produces_no_problems(): void
+    {
+        $broken = $this->layoutWith(
+            'emitente.nif',
+            fn (array $block): array => [...$block, 'style' => [...$block['style'], 'font-size' => '4pt']],
+        );
+
+        $this->assertNotSame([], $this->problems($broken));
+        $this->assertSame([], $this->problems($this->validLayout()));
+    }
+
+    /* -----------------------------------------------------------------------
+     * The pieces the rules are built on
+     * -------------------------------------------------------------------- */
+
+    public function test_contrast_follows_wcag(): void
+    {
+        $white = Colour::parse('#ffffff');
+
+        $this->assertSame(21.0, round(Colour::parse('rgb(0, 0, 0)')->contrastWith($white), 2));
+        $this->assertSame(1.0, round($white->contrastWith($white), 2));
+
+        // The canonical AA boundary for normal text.
+        $this->assertSame(4.54, round(Colour::parse('#767676')->contrastWith($white), 2));
+
+        // A colour notation the editor cannot produce stays unknown rather than being
+        // guessed, so the rule can choose to say nothing.
+        $this->assertNull(Colour::parse('chartreuse'));
+    }
+
+    /** A semi-transparent colour is measured as it will appear, not as declared. */
+    public function test_contrast_composites_transparency(): void
+    {
+        $white = Colour::parse('#ffffff');
+        $faded = Colour::parse('rgba(0, 0, 0, 0.3)')->over($white);
+
+        $this->assertLessThan(3.0, $faded->contrastWith($white));
+    }
+
+    /**
+     * GrapesJS rewrites a plain `0` to `0px`, so a millimetre layout still contains
+     * pixels and a rule that only understood millimetres would read half a document.
+     */
+    public function test_lengths_convert_from_every_unit_the_editor_emits(): void
+    {
+        $this->assertSame(0.0, LayoutDocument::millimetres('0px'));
+        $this->assertSame(13.0, LayoutDocument::millimetres('13mm'));
+        $this->assertSame(10.0, LayoutDocument::millimetres('1cm'));
+        $this->assertSame(25.4, LayoutDocument::millimetres('1in'));
+        $this->assertSame(9.0, round((float) LayoutDocument::points('9pt'), 6));
+
+        // A unit that says nothing on its own must not be turned into a number.
+        $this->assertNull(LayoutDocument::millimetres('50%'));
+        $this->assertNull(LayoutDocument::millimetres('auto'));
+        $this->assertNull(LayoutDocument::millimetres(null));
+    }
+
+    /** The id rule wins over the class rule, as it does in the browser. */
+    public function test_an_id_rule_overrides_a_class_rule(): void
+    {
+        $document = LayoutDocument::fromProjectData([
+            'styles' => [
+                ['selectors' => ['block'], 'style' => ['font-size' => '6pt', 'color' => '#111111']],
+                ['selectors' => ['#tpl-one'], 'style' => ['font-size' => '12pt']],
+            ],
+            'pages' => [['frames' => [['component' => [
+                'type'       => 'wrapper',
+                'components' => [[
+                    'classes'    => ['block'],
+                    'attributes' => ['id' => 'tpl-one'],
+                ]],
+            ]]]]],
+        ]);
+
+        $style = $document->styleOf($document->blocks()[0]);
+
+        $this->assertSame('12pt', $style['font-size']);
+        $this->assertSame('#111111', $style['color']);
+    }
+
+    /**
+     * A layout bound to a field that exists only in the schema validates, and the key
+     * comes back neither legal nor mandatory. That second half is the load-bearing
+     * one: who decides what is required is whoever declared the type, through the
+     * declared list — never whoever draws the layout.
+     */
+    public function test_a_dynamic_binding_validates_and_is_never_legal_nor_mandatory(): void
+    {
+        // The graph reads real table columns, so this needs an actual migrated model —
+        // the same fixture `DocumentGraphTest` uses to exercise `DocumentGraph`.
+        $this->createPartiesTable();
+
+        $type = $this->partyType();
+
+        $resolved = DocumentGraph::resolve('adquirente.vat', $type);
+
+        $this->assertNotNull($resolved, 'A column that exists in the schema did not resolve.');
+        $this->assertFalse($resolved['mandatory']);
+        $this->assertFalse($resolved['legal']);
+        $this->assertNull($resolved['scope']);
+
+        $layout = $this->layoutPlus([
+            'binding' => 'adquirente.vat',
+            'format'  => '',
+        ]);
+
+        $problems = app(LayoutValidator::class)->validate($layout['project_data'], $type, $layout['html'], $layout['css']);
+
+        $this->assertSame(
+            [],
+            array_values(array_filter(array_map(
+                fn (array $problem): string => $problem['code'],
+                $problems,
+            ), fn (string $code): bool => $code === 'V-01')),
+            'A field bound to a real column was reported as an unknown binding.',
+        );
+    }
+
+    /**
+     * A key that exists in neither source stays a configuration error, exactly as it is
+     * today when a slot points at a field that does not exist.
+     */
+    public function test_a_binding_that_exists_in_neither_source_is_still_refused(): void
+    {
+        $this->createPartiesTable();
+
+        $type = $this->partyType();
+
+        $this->assertNull(DocumentGraph::resolve('adquirente.inexistente', $type));
+
+        $layout = $this->layoutPlus([
+            'binding' => 'adquirente.inexistente',
+            'format'  => '',
+        ]);
+
+        $problems = app(LayoutValidator::class)->validate($layout['project_data'], $type, $layout['html'], $layout['css']);
+
+        $this->assertContains('V-01', array_column($problems, 'code'));
+    }
+
+    /**
+     * A declared key keeps its declared rules even though the graph could also resolve it.
+     * The declared list is consulted FIRST, and this is what stops a legal field from
+     * quietly becoming an ordinary one — the failure mode that would erase a requirement
+     * without a single test going red.
+     */
+    public function test_a_declared_key_keeps_its_declared_rules(): void
+    {
+        $type = Templates::type(self::TYPE_CODE);
+
+        $declared = collect($type->bindings)->firstWhere('legal', true);
+
+        $this->assertNotNull($declared, 'The invoice type declares no legal field; the premise of this test is gone.');
+
+        $resolved = DocumentGraph::resolve($declared['key'], $type);
+
+        $this->assertTrue($resolved['legal'], 'A declared legal key lost its rules to the graph.');
+        $this->assertTrue($resolved['mandatory']);
+    }
+
+    /* -----------------------------------------------------------------------
+     * Helpers
+     * -------------------------------------------------------------------- */
+
+    /**
+     * @param  array{project_data: array<string, mixed>, html: string, css: string}  $layout
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    private function problems(array $layout): array
+    {
+        return app(LayoutValidator::class)->validate(
+            $layout['project_data'],
+            Templates::type(self::TYPE_CODE),
+            $layout['html'],
+            $layout['css'],
+        );
+    }
+
+    /**
+     * @param  array{project_data: array<string, mixed>, html: string, css: string}  $layout
+     */
+    private function assertHasProblem(string $code, array $layout): void
+    {
+        $problems = $this->problems($layout);
+        $codes    = array_column($problems, 'code');
+
+        $this->assertContains(
+            $code,
+            $codes,
+            "Expected {$code}. Got: ".($codes === [] ? 'nothing' : implode(', ', $codes)),
+        );
+
+        foreach ($problems as $problem) {
+            $this->assertNotSame('', $problem['message'], "{$problem['code']} has no message.");
+            $this->assertStringNotContainsString('templates::', $problem['message'], 'Untranslated message.');
+        }
+    }
+
+    /**
+     * A sized legal field with a rectangle over it, later in the document.
+     *
+     * Both boxes have to be fully stated for occlusion to be decidable without
+     * rendering — which is exactly the limit of the static rule.
+     *
+     * @return array{project_data: array<string, mixed>, html: string, css: string}
+     */
+    private function layoutWithRectangleOverTheIssuerVatNumber(string $background, string $left = '90mm'): array
+    {
+        $blocks = array_map(
+            function (array $block): array {
+                if (($block['binding'] ?? null) === 'emitente.nif') {
+                    $block['style']['width']  = '40mm';
+                    $block['style']['height'] = '4mm';
+                }
+
+                return $block;
+            },
+            $this->defaultBlocks(self::TYPE_CODE),
+        );
+
+        return $this->layout(array_merge($blocks, [[
+            'type'  => 'rule',
+            'zone'  => 'header',
+            'id'    => 'tpl-cover',
+            'style' => [
+                'position'         => 'absolute',
+                'left'             => $left,
+                'top'              => '0mm',
+                'width'            => '60mm',
+                'height'           => '6mm',
+                'background-color' => $background,
+            ],
+        ]]));
+    }
+
+    /** The `invoice` fixture type with its `adquirente` node pointed at the test model. */
+    private function partyType(): TemplateType
+    {
+        $config = Templates::type(self::TYPE_CODE)->toArray();
+
+        $config['nodes']['adquirente'] = array_merge($config['nodes']['adquirente'], [
+            'model' => Party::class,
+            'lang'  => 'parties',
+        ]);
+
+        return TemplateType::fromConfig(self::TYPE_CODE, $config);
+    }
+
+    /** A minimal migrated table for the fields `DocumentGraph` resolves dynamically. */
+    private function createPartiesTable(): void
+    {
+        Schema::create('parties', function ($table): void {
+            $table->id();
+            $table->string('name', 150);
+            $table->string('vat', 9)->nullable();
+        });
+    }
+}

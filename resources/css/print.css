@@ -1,0 +1,98 @@
+/*
+ * Candidate shared print stylesheet (spec RF-C02 / architecture rule in section 5):
+ * this exact file must be injected into the GrapesJS canvas AND sent to the PDF engine.
+ * Page geometry lives here, never in engine flags — Gotenberg is called with
+ * preferCssPageSize=true and zero margins so that @page below is the single source.
+ */
+
+@page {
+    size: A4;
+    margin: 0;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: #fff;
+}
+
+/* One .page per sheet. Absolute zones position against it. */
+.page {
+    position: relative;
+    width: 210mm;
+    height: 297mm;
+    overflow: hidden;
+    box-sizing: border-box;
+    font-family: "CGestSans", sans-serif;
+    color: #000;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+}
+
+/* Printable area = page minus the document type's margins (15mm here). */
+.printable {
+    position: absolute;
+    left: var(--margin-left);
+    top: var(--margin-top);
+    right: var(--margin-right);
+    bottom: var(--margin-bottom);
+}
+
+.block {
+    position: absolute;
+    box-sizing: border-box;
+    white-space: nowrap;
+}
+
+.mark {
+    position: absolute;
+    background: #000;
+}
+
+/* ---------------------------------------------------------------------------
+ * Zones (spec 6.3)
+ *
+ * Header and footer are absolutely positioned bands inside the printable area and
+ * the user places blocks within them; the body is the band between the two, and its
+ * children flow, which is what will let the engine break pages by itself.
+ *
+ * IN THIS PHASE THE ZONES DO NOT REPEAT ACROSS PAGES. Repetition is phase F4, and it
+ * is not a stylesheet detail: Chromium repeats `position: fixed` elements on every
+ * printed page, but `position: fixed` in the editor canvas pins to the viewport
+ * rather than to the sheet — so the same rule would mean two different things on the
+ * two sides, which is exactly the divergence this stylesheet exists to prevent. That
+ * has to be measured before it is adopted, the way the geometry was in F1.
+ * ------------------------------------------------------------------------ */
+
+.zone {
+    position: absolute;
+    left: var(--margin-left);
+    right: var(--margin-right);
+    box-sizing: border-box;
+}
+
+.zone--header {
+    top: var(--margin-top);
+    height: var(--header-height, 35mm);
+}
+
+.zone--footer {
+    bottom: var(--margin-bottom);
+    height: var(--footer-height, 20mm);
+}
+
+/* The body's children are in normal flow: only this zone paginates. */
+.zone--body {
+    top: calc(var(--margin-top) + var(--header-height, 35mm));
+    bottom: calc(var(--margin-bottom) + var(--footer-height, 20mm));
+}
+
+/* A rule is a filled box; its thickness is its height. */
+.block--rule {
+    background: #000;
+}
+
+.block--image {
+    display: block;
+    object-fit: contain;
+}

@@ -16,6 +16,7 @@
         "khanamiryan/qrcode-detector-decoder": "^2.0"
     },
     "require-dev": {
+        "guzzlehttp/guzzle": "^7.15",
         "orchestra/testbench": "^8.0",
         "phpunit/phpunit": "^10.0"
     },

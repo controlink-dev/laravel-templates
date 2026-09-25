@@ -1,0 +1,249 @@
+<?php
+
+namespace Controlink\Templates\Output\Pdf;
+
+use Controlink\Templates\Codes\CodeImageGenerator;
+use Controlink\Templates\Exceptions\UnsafeTemplateException;
+use Controlink\Templates\Rendering\TemplateRenderer;
+use Controlink\Templates\Types\TemplateType;
+use Illuminate\Support\Facades\File;
+use RuntimeException;
+
+/**
+ * Turns what the editor exported into the single HTML document handed to the PDF
+ * engine (spec 7.1, steps 1 to 3).
+ *
+ * Two rules shape everything here:
+ *
+ * - The canvas and the engine are handed the same print stylesheet, so any visual
+ *   divergence between what the user drew and what is printed is a defect rather than
+ *   a configuration difference (spec section 5).
+ * - The engine has no network access, so every asset is embedded. Fonts arrive as
+ *   data URIs built from the very file the browser canvas loaded (spec 3.2).
+ */
+class DocumentComposer
+{
+    private const PRINT_STYLESHEET = __DIR__.'/../../../resources/css/print.css';
+
+    /** Anything that could execute, or reach outside the document. */
+    private const FORBIDDEN_HTML = [
+        '/<\s*script/i',
+        '/<\s*iframe/i',
+        '/\son[a-z]+\s*=/i',
+        '/javascript\s*:/i',
+    ];
+
+    /**
+     * @param  array<string, mixed>  $dataset  the values to render, real or fixture
+     *
+     * @throws UnsafeTemplateException when the payload carries script or external URLs
+     * @throws RuntimeException when the template or the code slots cannot be rendered
+     */
+    public function compose(string $html, string $css, TemplateType $type, array $dataset = []): string
+    {
+        $this->guardHtml($html);
+        $this->guardCss($css);
+
+        /*
+         * Step 3: the compositor decides the sheets.
+         *
+         * Not the engine: its pagination drops the repeated header when the last page
+         * is short, and padding the body to fix that pushes out blank pages. Both were
+         * measured; see PageStructure and NOTAS-FIDELIDADE.
+         */
+        $structure = app(PageStructure::class)->build($this->bodyOf($html), $type, $dataset);
+
+        $renderer = app(TemplateRenderer::class);
+        $codes    = app(CodeImageGenerator::class);
+        $bindings = $type->bindingsByKey();
+
+        $body = '';
+
+        foreach ($structure['pages'] as $page) {
+            /*
+             * Step 4: Twig, over one sheet at a time.
+             *
+             * Per sheet because each one carries its own slice of the line collection
+             * and its own page numbers — which is what lets `{% for %}` stay the only
+             * tag the sandbox allows and the page number be an ordinary binding.
+             *
+             * Deliberately not over the whole document: the stylesheets carry braces of
+             * their own and one of them is a base64 font, and a template engine let
+             * loose on all of that is one stray `{{` away from a render failure with no
+             * explanation.
+             */
+            $sheet = $renderer->render($page['template'], $page['dataset']);
+
+            // Step 5: the code slots, generated on the server and embedded.
+            $body .= $codes->inject($sheet, $page['dataset'], $bindings);
+        }
+
+        $lang = e(str_replace('_', '-', app()->getLocale()));
+
+        return '<!doctype html><html lang="'.$lang.'"><head><meta charset="utf-8">'
+            .'<style>'.$this->fontFaces().'</style>'
+            .'<style>'.$this->printStylesheet().'</style>'
+            .'<style>'.$this->pageVariables($type).'</style>'
+            .'<style>'.$css.'</style>'
+            .'<style>'.$structure['css'].'</style>'
+            .'</head><body>'.$body.'</body></html>';
+    }
+
+    /**
+     * One `@font-face` per family and weight, with each font file inlined.
+     *
+     * A face listed in the catalogue whose file is missing is fatal, not something to
+     * skip: the engine would silently substitute or synthesise it, and every truncation
+     * and legibility measurement would then be made against metrics nobody chose.
+     */
+    public function fontFaces(): string
+    {
+        $rules = '';
+
+        foreach ((array) config('templates.fonts') as $family => $font) {
+            foreach ((array) ($font['weights'] ?? []) as $weight => $face) {
+                $path = self::fontPath($face['path']);
+
+                if (! File::exists($path)) {
+                    throw new RuntimeException("Template font file is missing: {$face['path']}");
+                }
+
+                $uri = 'data:'.$face['mime'].';base64,'.base64_encode(File::get($path));
+
+                $rules .= '@font-face{font-family:"'.$family.'";font-style:normal;'
+                    .'font-weight:'.(int) $weight.';'
+                    .'src:url('.$uri.') format("'.$face['format'].'")}';
+            }
+        }
+
+        return $rules;
+    }
+
+    /** The print stylesheet, read from the same file the editor canvas is given. */
+    public function printStylesheet(): string
+    {
+        if (! File::exists(self::PRINT_STYLESHEET)) {
+            throw new RuntimeException('Print stylesheet is missing: '.self::PRINT_STYLESHEET);
+        }
+
+        return File::get(self::PRINT_STYLESHEET);
+    }
+
+    /**
+     * A short fingerprint of the print stylesheet, so a caller (the editor's canvas
+     * bootstrap) can tell whether the copy it cached is still the one the compositor
+     * would embed.
+     */
+    public function printStylesheetVersion(): string
+    {
+        return substr(hash('sha256', $this->printStylesheet()), 0, 16);
+    }
+
+    /**
+     * The template's page geometry, as the custom properties `print.css` reads: the
+     * four margins and the height of the two zone bands.
+     *
+     * The editor canvas is given the same values from the same config, so the header
+     * band the user sees is the header band that prints.
+     *
+     * Also carries the page's font family. `print.css` is a fixed, host-agnostic
+     * asset — it cannot know which family a given host configured — so it ships with a
+     * placeholder (`CGestSans`, the original host's own family). Emitting the real,
+     * configured family here overrides that placeholder: this block is written after
+     * `print.css` in `<head>`, so the later declaration wins. Without it, a host that
+     * never overrides `templates.fonts` gets a document whose `@font-face` embeds
+     * `LiberationSans` while `.page` still asks for a family nothing declares, and
+     * Chromium silently substitutes whatever sans-serif the Gotenberg container
+     * happens to carry — the canvas/PDF fidelity guarantee this module exists for,
+     * broken out of the box.
+     *
+     * @throws RuntimeException when no font family is configured at all
+     */
+    public function pageVariables(TemplateType $type): string
+    {
+        $margins = $type->pdf['margins'] ?? [];
+        $zones   = $type->initialLayout['zones'] ?? [];
+
+        $declarations = '';
+
+        foreach (['top', 'right', 'bottom', 'left'] as $side) {
+            $declarations .= '--margin-'.$side.':'.(float) ($margins[$side] ?? 0).'mm;';
+        }
+
+        $declarations .= '--header-height:'.(float) ($zones['header_height'] ?? 35).'mm;';
+        $declarations .= '--footer-height:'.(float) ($zones['footer_height'] ?? 20).'mm;';
+
+        $family = array_key_first((array) config('templates.fonts'));
+
+        if ($family === null) {
+            throw new RuntimeException('No template font is configured.');
+        }
+
+        $declarations .= 'font-family:"'.addcslashes((string) $family, '"\\').'",sans-serif;';
+
+        return '.page{'.$declarations.'}';
+    }
+
+    /**
+     * Run the safety guards without composing anything.
+     *
+     * The static validation needs the same verdict the compositor reaches, as a
+     * validation error rather than as an exception at render time (V-07).
+     *
+     * @throws UnsafeTemplateException
+     */
+    public function assertSafe(string $html, string $css): void
+    {
+        $this->guardHtml($html);
+        $this->guardCss($css);
+    }
+
+    /** @throws UnsafeTemplateException */
+    private function guardHtml(string $html): void
+    {
+        foreach (self::FORBIDDEN_HTML as $pattern) {
+            if (preg_match($pattern, $html) === 1) {
+                throw new UnsafeTemplateException('Template HTML carries executable content.');
+            }
+        }
+    }
+
+    /**
+     * Every `url()` in the stylesheet has to be a data URI. An external one would
+     * make the rendered document depend on the network the engine does not have, and
+     * would leak a request out of it.
+     *
+     * @throws UnsafeTemplateException
+     */
+    private function guardCss(string $css): void
+    {
+        preg_match_all('/url\(\s*([\'"]?)([^\'")]+)\1\s*\)/i', $css, $matches);
+
+        foreach ($matches[2] as $reference) {
+            if (! str_starts_with(mb_strtolower(trim($reference)), 'data:')) {
+                throw new UnsafeTemplateException('Template CSS references an external URL: '.$reference);
+            }
+        }
+    }
+
+    /** The editor exports its document wrapped in `<body>`; the compositor supplies its own. */
+    private function bodyOf(string $html): string
+    {
+        $trimmed = trim($html);
+
+        if (preg_match('/^<body[^>]*>(.*)<\/body>$/is', $trimmed, $matches) === 1) {
+            return $matches[1];
+        }
+
+        return $trimmed;
+    }
+
+    /**
+     * Absolute paths (the package's own default font) are used as they are; relative
+     * ones are relative to the host's public directory, where the canvas loads them.
+     */
+    private static function fontPath(string $path): string
+    {
+        return preg_match('/^([a-zA-Z]:[\\\\\/]|\/)/', $path) === 1 ? $path : public_path($path);
+    }
+}

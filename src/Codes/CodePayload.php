@@ -84,7 +84,7 @@ class CodePayload
      */
     public static function fromAttributes(array $attributes): ?string
     {
-        if (($attributes['data-tpl-code-source'] ?? 'dinamica') !== 'fixa') {
+        if (($attributes['data-tpl-code-source'] ?? 'dynamic') !== 'fixed') {
             return null;
         }
 

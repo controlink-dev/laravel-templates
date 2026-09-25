@@ -81,7 +81,7 @@ class CodePayloadTest extends TestCase
         $this->expectException(\RuntimeException::class);
 
         CodePayload::fromAttributes([
-            'data-tpl-code-source' => 'fixa',
+            'data-tpl-code-source' => 'fixed',
             'data-tpl-code-type'   => 'vcard',
             'data-tpl-code-name'   => 'X',
         ]);
@@ -97,14 +97,14 @@ class CodePayloadTest extends TestCase
         $this->assertSame(
             'tel:+351210000000',
             CodePayload::fromAttributes([
-                'data-tpl-code-source' => 'fixa',
+                'data-tpl-code-source' => 'fixed',
                 'data-tpl-code-type'   => 'phone',
                 'data-tpl-code-number' => '+351210000000',
             ]),
         );
 
         $this->assertNull(CodePayload::fromAttributes([
-            'data-tpl-code-source' => 'dinamica',
+            'data-tpl-code-source' => 'dynamic',
             'data-tpl-binding'     => 'documento.qr',
         ]));
 
