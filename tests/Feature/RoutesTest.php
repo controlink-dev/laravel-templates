@@ -82,6 +82,18 @@ class RoutesTest extends TestCase
             ->get('/'.config('templates.http.prefix').'/fonts/../../composer.json/400')
             ->assertNotFound();
     }
+
+    /**
+     * `..` as the `{family}` segment itself still matches the route (it is a single
+     * path segment, not a traversal here), but the config lookup finds no such family
+     * and 404s before any filesystem read ever happens.
+     */
+    public function test_a_traversal_shaped_font_family_is_a_404(): void
+    {
+        $this->actingAs(new User)
+            ->get('/'.config('templates.http.prefix').'/fonts/%2E%2E/400')
+            ->assertNotFound();
+    }
 }
 
 class AllowEverythingPolicy

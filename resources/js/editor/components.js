@@ -1,0 +1,794 @@
+/* ============================================================================
+ * Component types for the template editor (spec 6.4).
+ *
+ * The user never writes template syntax. A data field carries its binding and its
+ * format as traits, and only `toHTML()` turns them into `{{ binding|format }}` on
+ * export — so `project_data` holds the choices, never the expression, and there is no
+ * path from the interface to a template.
+ *
+ * Table and QR slot are phase F4 and are not here.
+ * ========================================================================= */
+
+import { icons } from './icons.js';
+
+/** Only these families exist; the catalogue is closed on the server. */
+/*
+ * One category, and it stays unlabelled: GrapesJS prints the id as a heading when
+ * there is no label, and "templates" is a slug. The rail is already headed
+ * with its own label, so the chrome hides the category bar altogether.
+ */
+const BLOCK_CATEGORY = { id: 'templates', label: '' };
+
+/**
+ * Register every component type and its palette block.
+ *
+ * @param {object} editor  GrapesJS instance
+ * @param {object} config  bindings, nodes, formats, fixture, ruleWidths and strings
+ */
+export function registerComponents(editor, config) {
+    registerZones(editor, config);
+    registerStaticText(editor, config);
+    registerDataField(editor, config);
+    registerImage(editor, config);
+    registerRule(editor, config);
+    registerPageNumber(editor, config);
+}
+
+/* ---------------------------------------------------------------------------
+ * Page number (spec 6.4)
+ *
+ * It exists as a block at all only because the compositor paginates on the server: the
+ * CSS page counter does not work in this engine — measured, it prints zero on every
+ * page — and the engine's own footer would put the number where the engine chooses
+ * rather than where the user does.
+ *
+ * Because the server decides the sheets, the page numbers arrive as ordinary bindings
+ * (`pagina.numero`, `pagina.total`), so this block needs no special handling anywhere
+ * downstream. It renders like any other field.
+ * ------------------------------------------------------------------------ */
+function registerPageNumber(editor, config) {
+    editor.DomComponents.addType('page-number', {
+        isComponent: (el) => el?.dataset?.tplType === 'page-number',
+        model: {
+            defaults: {
+                name: config.strings['block.page_number'],
+                tagName: 'div',
+                attributes: {
+                    class: 'block block--page-number',
+                    'data-tpl-type': 'page-number',
+                    'data-tpl-format': 'x',
+                },
+                editable: false,
+                traits: [
+                    {
+                        type: 'select',
+                        name: 'data-tpl-format',
+                        label: config.strings['trait.page_format'],
+                        options: [
+                            { id: 'x', name: config.strings['page_format.x'] },
+                            { id: 'x-of-y', name: config.strings['page_format.x_of_y'] },
+                        ],
+                    },
+                ],
+                stylable: TEXT_STYLES,
+            },
+
+            init() {
+                this.on('change:attributes:data-tpl-format', this.renderPreviewText);
+                this.renderPreviewText();
+            },
+
+            /** The canvas shows a plausible number, not the expression. */
+            renderPreviewText() {
+                const text = this.getAttributes()['data-tpl-format'] === 'x-of-y'
+                    ? `1 ${config.strings['page_format.of']} 3`
+                    : '1';
+
+                if (this.components().length) {
+                    this.components().reset();
+                }
+
+                if (this.get('content') !== text) {
+                    this.set('content', text);
+                }
+            },
+
+            toHTML() {
+                const expression = this.getAttributes()['data-tpl-format'] === 'x-of-y'
+                    ? `{{ pagina.numero }} ${escapeText(config.strings['page_format.of'])} {{ pagina.total }}`
+                    : '{{ pagina.numero }}';
+
+                return `<div${attributesToHTML(this)}>${expression}</div>`;
+            },
+
+            /** GrapesJS gives no helper for this, and hand-built strings must be escaped. */
+            attributesToHTML() {
+                return attributesToHTML(this);
+            },
+        },
+    });
+
+    addBlock(editor, 'page-number', config.strings['block.page_number'], icons.hashtag);
+}
+
+/** Shared by the types that build their own markup on export. */
+function attributesToHTML(component) {
+    return Object.entries(component.getAttrToHTML())
+        .filter(([, value]) => value !== null && value !== undefined)
+        .map(([name, value]) => ` ${name}="${escapeAttribute(String(value))}"`)
+        .join('');
+}
+
+/* ---------------------------------------------------------------------------
+ * Zones (spec 6.3)
+ *
+ * Header and footer repeat on every page and are laid out absolutely; the body
+ * flows, which is what lets the engine break pages by itself. All three are fixed
+ * furniture: they cannot be removed, copied or dragged, because a document without
+ * them has nowhere to put anything.
+ * ------------------------------------------------------------------------ */
+function registerZones(editor, config) {
+    /*
+     * `isComponent` is what makes any of this apply.
+     *
+     * These three types carried their names, their locks and their reduced style list
+     * from the first phase and none of it ever took effect: without `isComponent`,
+     * GrapesJS has no way to recognise a parsed `<div class="zone zone--header">` as
+     * this type, so every zone became a generic component. Measured in the layer tree,
+     * which listed "Div, Div, Div" where the document's three bands should be — and
+     * with them went `removable: false`, so the bands were deletable too.
+     */
+    const zone = (name, flow) => ({
+        isComponent: (el) => el?.dataset?.tplZone === name,
+        model: {
+            defaults: {
+                name: config.strings['zone.' + name],
+                removable: false,
+                copyable: false,
+                draggable: false,
+                selectable: true,
+                highlightable: true,
+                attributes: { class: 'zone zone--' + name },
+                // The body is the only zone whose children flow; in the other two the
+                // user places blocks where they want them (RF-C03).
+                'custom-name': config.strings['zone.' + name],
+                layerable: true,
+                stylable: flow
+                    ? ['background-color']
+                    : ['background-color', 'height'],
+            },
+        },
+    });
+
+    editor.DomComponents.addType('zone-header', zone('header', false));
+    editor.DomComponents.addType('zone-body', zone('body', true));
+    editor.DomComponents.addType('zone-footer', zone('footer', false));
+
+    editor.DomComponents.addType('page', {
+        isComponent: (el) => el?.classList?.contains('page'),
+        model: {
+            defaults: {
+                name: config.strings['zone.page'],
+                // The sheet is the container, not a layer: leaving it in the tree puts
+                // an extra level above the three bands and nothing can be done to it.
+                layerable: false,
+                removable: false,
+                copyable: false,
+                draggable: false,
+                selectable: false,
+                attributes: { class: 'page' },
+                stylable: false,
+            },
+        },
+    });
+}
+
+/* ---------------------------------------------------------------------------
+ * Static text (spec 6.4)
+ * ------------------------------------------------------------------------ */
+function registerStaticText(editor, config) {
+    editor.DomComponents.addType('static-text', {
+        isComponent: (el) => el?.dataset?.tplType === 'static-text',
+        model: {
+            defaults: {
+                name: config.strings['block.static_text'],
+                tagName: 'div',
+                attributes: { class: 'block block--text', 'data-tpl-type': 'static-text' },
+                // Editable as text, but never as HTML: `textable` off and the content
+                // is written through `content`, so no markup can be pasted in.
+                editable: true,
+                components: [{ type: 'textnode', content: config.strings['block.static_text_default'] }],
+                traits: [
+                    {
+                        type: 'text',
+                        name: 'content',
+                        label: config.strings['trait.content'],
+                        changeProp: true,
+                    },
+                ],
+                stylable: TEXT_STYLES,
+            },
+
+            init() {
+                this.on('change:content', this.syncContent);
+            },
+
+            /** The trait writes plain text, so nothing typed there can become markup. */
+            syncContent() {
+                const value = this.get('content');
+
+                if (typeof value === 'string') {
+                    this.components(escapeText(value));
+                }
+            },
+        },
+    });
+
+    addBlock(editor, 'static-text', config.strings['block.static_text'], icons.font);
+}
+
+/* ---------------------------------------------------------------------------
+ * Data field (spec 6.4)
+ * ------------------------------------------------------------------------ */
+function registerDataField(editor, config) {
+    /*
+     * Two chained selects (spec 5.1): the node, and then the fields of that node. The
+     * flattened list of every key is gone — it was eighteen entries and it will be
+     * hundreds once the graph reaches the whole customer table.
+     *
+     * What is STORED is unchanged: `data-tpl-binding="adquirente.vat_number"`, node and
+     * field joined by a dot, exactly the shape the declared keys already had. The
+     * validator, the compositor and the Twig template therefore need no change at all.
+     */
+    const nodeOptions = nodeOptionsOf(config);
+    const fieldOptionsOf = (nodeId) => fieldsOfNode(config, nodeId).map((field) => ({ id: field.key, name: field.label }));
+
+    /*
+     * A freshly dropped data field must NOT be born legal.
+     *
+     * `applyLegalMarking()` keys off the block's CURRENT binding, so a block that lands on
+     * a legal key is undeletable and its binding unreassignable from the moment it hits
+     * the canvas — and nothing forbids a second data field on a key the initial layout
+     * already places, so what the user actually got was an undeletable duplicate of a
+     * legal field. The default node is `documento` and its first field is the declared
+     * legal `documento.designacao`, which is precisely that case.
+     *
+     * So the default is the first NON-LEGAL field of the default node. The fallback to
+     * `[0]` covers a node whose every field is legal: there is nothing better to offer
+     * then, and an empty binding would be worse.
+     */
+    const firstNode = nodeOptions[0]?.id ?? '';
+    const firstFieldOptions = fieldOptionsOf(firstNode);
+    const firstField = (
+        firstFieldOptions.find((option) => !findBinding(config, option.id)?.legal) ?? firstFieldOptions[0]
+    )?.id ?? '';
+
+    const formatOptions = [{ id: '', name: config.strings['format.none'] }].concat(
+        config.formats.map((format) => ({ id: format, name: config.strings['format.' + format] })),
+    );
+
+    editor.DomComponents.addType('data-field', {
+        isComponent: (el) => el?.dataset?.tplType === 'data-field',
+        model: {
+            defaults: {
+                name: config.strings['block.data_field'],
+                tagName: 'div',
+                attributes: {
+                    class: 'block block--field',
+                    'data-tpl-type': 'data-field',
+                    'data-tpl-node': firstNode,
+                    'data-tpl-binding': firstField,
+                    'data-tpl-format': '',
+                },
+                editable: false,
+                /*
+                 * The node, the binding and the format are ATTRIBUTES, not model
+                 * properties. Traits with `changeProp` would live only in the model,
+                 * and a layout initialised from HTML — which is how `layout_inicial`
+                 * reaches the editor — would arrive with the choices lost. As
+                 * attributes they round trip through HTML for free.
+                 */
+                traits: [
+                    {
+                        type: 'select',
+                        name: 'data-tpl-node',
+                        label: config.strings['trait.node'],
+                        options: nodeOptions,
+                        changeProp: false,
+                    },
+                    {
+                        type: 'select',
+                        name: 'data-tpl-binding',
+                        label: config.strings['trait.field_source'],
+                        options: fieldOptionsOf(firstNode),
+                        changeProp: false,
+                    },
+                    {
+                        type: 'select',
+                        name: 'data-tpl-format',
+                        label: config.strings['trait.format'],
+                        options: formatOptions,
+                    },
+                ],
+                stylable: TEXT_STYLES,
+            },
+
+            init() {
+                /*
+                 * A layout saved before the node select existed carries only
+                 * `data-tpl-binding` — the node is recovered from it so the select
+                 * opens on the right value. Set through the same re-entry guard
+                 * `onNodeChange` uses, so recovering it here does not also clear the
+                 * field it belongs to.
+                 */
+                const node = this.getAttributes()['data-tpl-node'] || nodeOfBinding(this.binding());
+
+                this.on('change:attributes:data-tpl-node', this.onNodeChange);
+                this.on('change:attributes:data-tpl-binding', this.onBindingChange);
+                this.on('change:attributes:data-tpl-format', this.onBindingChange);
+
+                if (this.getAttributes()['data-tpl-node'] !== node) {
+                    this.__pfSyncingNode = true;
+
+                    try {
+                        this.addAttributes({ 'data-tpl-node': node });
+                    } finally {
+                        this.__pfSyncingNode = false;
+                    }
+                }
+
+                this.getTrait('data-tpl-binding')?.set('options', fieldOptionsOf(node));
+                this.onBindingChange();
+            },
+
+            binding() {
+                return this.getAttributes()['data-tpl-binding'] ?? '';
+            },
+
+            formatName() {
+                return this.getAttributes()['data-tpl-format'] ?? '';
+            },
+
+            /*
+             * Changing the node clears the field: the fields of one node mean nothing
+             * in another, and leaving the old key would keep a binding the new node
+             * cannot satisfy. It is the rule the line table already applies when its
+             * collection changes.
+             *
+             * Guarded like `onBindingChange`: `addAttributes` replaces the whole
+             * attribute object, so GrapesJS reports every key as changed, including
+             * `data-tpl-node` itself — without the guard, setting the cleared binding
+             * below re-enters this handler and recurses.
+             */
+            onNodeChange() {
+                if (this.__pfSyncingNode) {
+                    return;
+                }
+
+                this.__pfSyncingNode = true;
+
+                try {
+                    const options = fieldOptionsOf(this.getAttributes()['data-tpl-node']);
+
+                    this.getTrait('data-tpl-binding')?.set('options', options);
+                    this.addAttributes({ 'data-tpl-binding': options[0]?.id ?? '' });
+                } finally {
+                    this.__pfSyncingNode = false;
+                }
+            },
+
+            /**
+             * Guarded against re-entry.
+             *
+             * `addAttributes` replaces the attribute object, and GrapesJS then reports
+             * every key as changed — including the binding this method listens to. The
+             * first version without this flag recursed until the stack blew, and the
+             * only visible symptom was that the validation panel and the repair button
+             * silently stopped working.
+             */
+            onBindingChange() {
+                if (this.__pfSyncing) {
+                    return;
+                }
+
+                this.__pfSyncing = true;
+
+                try {
+                    this.applyLegalMarking(config);
+                    this.renderPreviewText(config);
+                    nameAfterBinding(this, config, config.strings['block.data_field']);
+                } finally {
+                    this.__pfSyncing = false;
+                }
+            },
+
+            /**
+             * A block bound to a legal field is marked, cannot be removed or copied,
+             * and its binding cannot be reassigned (RF-L02, RF-C06). This is UX
+             * convenience: the server is what actually refuses (spec 3.2).
+             */
+            applyLegalMarking(config) {
+                const binding = findBinding(config, this.binding());
+                const isLegal = Boolean(binding?.legal);
+
+                // Not silent: the component toolbar is rebuilt from `removable` and
+                // `copyable`, so a silent change left the delete and duplicate icons
+                // sitting on a block that must never be deleted or duplicated.
+                if (this.get('removable') !== !isLegal) {
+                    this.set({ removable: !isLegal, copyable: !isLegal });
+                }
+
+                const marking = isLegal ? '1' : null;
+
+                if ((this.getAttributes()['data-tpl-legal'] ?? null) !== marking) {
+                    this.addAttributes({ 'data-tpl-legal': marking });
+                }
+
+                /*
+                 * A legal field's node AND field are locked by leaving each select
+                 * nothing else to choose.
+                 *
+                 * The first version set `disabled` on the trait, and GrapesJS's trait
+                 * model has no such property — it was written, ignored, and the select
+                 * stayed as open as any other. Measured: the binding of a legal field
+                 * could still be reassigned in the panel. Narrowing the options is a
+                 * lock the library actually renders, and it reads correctly too: the
+                 * one field this block may carry is the one it carries.
+                 *
+                 * The node is derived from the binding itself, everything before its
+                 * last dot — a legal key is always declared, never one of the current
+                 * node's calculated fields, so the single option each select locks to
+                 * is built by hand rather than looked up in the graph.
+                 */
+                const currentNode = nodeOfBinding(this.binding());
+                const nodeTrait = this.getTrait('data-tpl-node');
+
+                if (nodeTrait) {
+                    // Every legal prefix IS a node today — the `totais` node closed the
+                    // last gap, and `test_every_declared_field_belongs_to_a_declared_node`
+                    // keeps it closed. The fallback stays as a floor rather than a case:
+                    // a node the graph reports unreachable is filtered out of
+                    // `nodeOptions`, and a select with nothing in it shows nothing at all.
+                    const lockedOption = nodeOptions.find((option) => option.id === currentNode)
+                        ?? { id: currentNode, name: currentNode };
+
+                    const options = isLegal ? [lockedOption] : nodeOptions;
+
+                    if (nodeTrait.get('options')?.length !== options.length) {
+                        nodeTrait.set('options', options);
+                    }
+                }
+
+                const bindingTrait = this.getTrait('data-tpl-binding');
+
+                if (bindingTrait) {
+                    const options = isLegal
+                        ? [{ id: this.binding(), name: binding?.label ?? this.binding() }]
+                        : fieldOptionsOf(currentNode);
+
+                    if (bindingTrait.get('options')?.length !== options.length) {
+                        bindingTrait.set('options', options);
+                    }
+                }
+            },
+
+            /**
+             * What the canvas shows: the fixture value when there is one, otherwise the
+             * field's label. Never the template expression — the user is placing a
+             * field, not writing syntax.
+             */
+            renderPreviewText(config) {
+                const binding = findBinding(config, this.binding());
+                const sample = config.fixture?.[this.binding()];
+                const text = String(sample ?? binding?.label ?? this.binding());
+
+                /*
+                 * `content` and not `components()`: the preview text is furniture, and
+                 * a child component would be a row in the layer tree. Measured on the
+                 * invoice, those rows turned 19 blocks into 76 layers, with the blocks
+                 * buried among `Box`. `content` renders as inner HTML and creates no
+                 * component at all — which is also why `layerable: false` could never
+                 * reach them.
+                 *
+                 * Rebuilding on every event would also mean a change event on every
+                 * event, and the editor would never settle.
+                 */
+                /*
+                 * A version saved before this change carries the old child components
+                 * in its `project_data`, and `loadProjectData` restores them — so the
+                 * children are emptied here as well as replaced by content. Done before
+                 * the load cycle takes its snapshot, so it does not mark the version
+                 * dirty on opening.
+                 */
+                if (this.components().length) {
+                    this.components().reset();
+                }
+
+                if (this.get('content') !== escapeText(text)) {
+                    this.set('content', escapeText(text));
+                }
+            },
+
+            /**
+             * Export is the only place the template expression exists (spec 6.4).
+             * Nothing the user can type reaches it: the binding comes from a closed
+             * select and the format from another, both validated again on the server.
+             */
+            toHTML() {
+                const binding = this.binding();
+                const formatName = this.formatName();
+                const expression = formatName
+                    ? `{{ ${binding}|${formatName} }}`
+                    : `{{ ${binding} }}`;
+
+                return `<div${this.attributesToHTML()}>${expression}</div>`;
+            },
+
+            /** GrapesJS gives no helper for this, and hand-built strings must be escaped. */
+            attributesToHTML() {
+                return attributesToHTML(this);
+            },
+        },
+    });
+
+    addBlock(editor, 'data-field', config.strings['block.data_field'], icons.bracketsCurly);
+}
+
+/* ---------------------------------------------------------------------------
+ * Image (spec 6.4)
+ *
+ * Read in the browser and stored as a data URI, not uploaded. The engine has no
+ * network, so a referenced image would never reach the PDF; embedding is the only
+ * shape that works, and it removes the upload endpoint entirely.
+ * ------------------------------------------------------------------------ */
+function registerImage(editor, config) {
+    editor.DomComponents.addType('print-image', {
+        isComponent: (el) => el?.dataset?.tplType === 'image',
+        model: {
+            defaults: {
+                name: config.strings['block.image'],
+                tagName: 'img',
+                void: true,
+                attributes: {
+                    class: 'block block--image',
+                    'data-tpl-type': 'image',
+                    src: TRANSPARENT_PIXEL,
+                    alt: '',
+                },
+                traits: [
+                    {
+                        type: 'tpl-file',
+                        name: 'src',
+                        label: config.strings['trait.file'],
+                    },
+                    {
+                        type: 'select',
+                        name: 'object-fit',
+                        label: config.strings['trait.fit'],
+                        options: [
+                            { id: 'contain', name: config.strings['fit.contain'] },
+                            { id: 'cover', name: config.strings['fit.cover'] },
+                            { id: 'fill', name: config.strings['fit.fill'] },
+                        ],
+                    },
+                ],
+                stylable: ['width', 'height', 'opacity'],
+            },
+        },
+    });
+
+    registerFileTrait(editor, config);
+    addBlock(editor, 'print-image', config.strings['block.image'], icons.image);
+}
+
+/**
+ * The file trait: reads the chosen file in the browser and writes a data URI.
+ *
+ * The size limit is enforced here and again on the server. A large image is refused
+ * rather than silently shrunk: an illegible logo in a certified document is worse
+ * than a rejected upload.
+ */
+function registerFileTrait(editor, config) {
+    editor.TraitManager.addType('tpl-file', {
+        createInput({ trait }) {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/png,image/jpeg,image/svg+xml';
+            input.className = 'gjs-field';
+
+            input.addEventListener('change', () => {
+                const file = input.files?.[0];
+
+                if (!file) {
+                    return;
+                }
+
+                if (file.size > config.imageMaxBytes) {
+                    input.value = '';
+                    window.alert(config.strings['error.image_too_large']);
+
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.addEventListener('load', () => {
+                    this.model.setAttributes({ src: String(reader.result) });
+                });
+                reader.readAsDataURL(file);
+            });
+
+            return input;
+        },
+    });
+}
+
+/* ---------------------------------------------------------------------------
+ * Line / rectangle (spec 6.4)
+ *
+ * Thickness is a closed set, not free millimetres. The engine snaps fills to whole
+ * CSS pixels (0.264583mm), so 0.1mm and 0.4mm print identically at 0.25mm — a free
+ * field would promise a thickness that never appears.
+ * See docs/impressos/NOTAS-FIDELIDADE.md.
+ * ------------------------------------------------------------------------ */
+function registerRule(editor, config) {
+    const widthOptions = Object.entries(config.ruleWidths).map(([name, millimetres]) => ({
+        id: String(millimetres),
+        name: config.strings['rule_width.' + name],
+    }));
+
+    editor.DomComponents.addType('print-rule', {
+        isComponent: (el) => el?.dataset?.tplType === 'rule',
+        model: {
+            defaults: {
+                name: config.strings['block.rule'],
+                tagName: 'div',
+                void: true,
+                attributes: { class: 'block block--rule', 'data-tpl-type': 'rule' },
+                traits: [
+                    {
+                        type: 'select',
+                        name: 'tpl-width',
+                        label: config.strings['trait.thickness'],
+                        options: widthOptions,
+                        changeProp: true,
+                    },
+                    {
+                        type: 'checkbox',
+                        name: 'tpl-filled',
+                        label: config.strings['trait.filled'],
+                        changeProp: true,
+                    },
+                ],
+                'tpl-width': widthOptions[0]?.id,
+                'tpl-filled': false,
+                stylable: ['width', 'height', 'background-color', 'border-color'],
+            },
+
+            init() {
+                this.on('change:tpl-width change:tpl-filled', this.applyGeometry);
+                this.applyGeometry();
+            },
+
+            /**
+             * A filled shape uses its own height; an unfilled one is a rule, and its
+             * thickness IS its height. Writing both as styles keeps the export free of
+             * anything the compositor has to interpret.
+             */
+            applyGeometry() {
+                const thickness = this.get('tpl-width');
+                const filled = Boolean(this.get('tpl-filled'));
+
+                this.addStyle(
+                    filled
+                        ? { 'background-color': this.getStyle()['background-color'] || '#000000' }
+                        : { height: thickness + 'mm', 'background-color': '#000000' },
+                );
+            },
+        },
+    });
+
+    addBlock(editor, 'print-rule', config.strings['block.rule'], icons.minus);
+}
+
+/* ---------------------------------------------------------------------------
+ * Shared
+ * ------------------------------------------------------------------------ */
+
+/** Style properties a text block may change. Deliberately short (spec 6.6). */
+const TEXT_STYLES = [
+    'font-size',
+    'font-weight',
+    'font-style',
+    'text-align',
+    'color',
+    'line-height',
+    'letter-spacing',
+    'width',
+    'height',
+];
+
+export const TRANSPARENT_PIXEL =
+    'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+/*
+ * The icon goes in `media` and the text in `label`, not both inside `label`.
+ * GrapesJS renders `media` into `.gjs-block__media`, which is the element the chrome
+ * styles as an icon pill; an `<i>` smuggled into the label is just inline text with
+ * nowhere to be styled.
+ */
+/**
+ * Name a block after the field it carries.
+ *
+ * Seventeen rows called "Campo de dados" tell the user nothing about which is which.
+ * The binding's own label does.
+ */
+export function nameAfterBinding(component, config, fallback) {
+    const key = component.getAttributes?.()['data-tpl-binding'] ?? '';
+    const binding = findBinding(config, key);
+    const name = binding?.label ?? fallback;
+
+    if (name && component.get('custom-name') !== name) {
+        component.set({ name, 'custom-name': name });
+    }
+}
+
+function addBlock(editor, type, label, icon) {
+    editor.BlockManager.add(type, {
+        media: icon,
+        label: escapeText(label),
+        category: BLOCK_CATEGORY,
+        content: { type },
+    });
+}
+
+/**
+ * A binding by key — a declared one first, and a calculated field of the graph
+ * otherwise. Falling through to the graph is what lets a block on the canvas name and
+ * preview a field nobody hand-declared; a calculated field carries no `legal` key at
+ * all, so it is never mistaken for one.
+ */
+function findBinding(config, key) {
+    return config.bindings.find((binding) => binding.key === key)
+        ?? (config.nodes ?? []).flatMap((node) => node.fields ?? []).find((field) => field.key === key);
+}
+
+/**
+ * The nodes offered as "Model" (spec 4.1).
+ *
+ * Two exclusions, both of them honesty rather than taste. A COLLECTION's node has no
+ * meaning outside a row. And a node the graph reports UNREACHABLE has no path from the
+ * document to its values — `linha_artigo` is the standing case, `article` being a relation
+ * of a line and not of the document — so every one of its fields would print blank for
+ * ever while looking perfectly functional in the preview and in validation.
+ *
+ * `reachable !== false` and not `reachable`: a payload from before the flag existed must
+ * keep offering everything it used to.
+ */
+export function nodeOptionsOf(config) {
+    return (config.nodes ?? [])
+        .filter((node) => !node.collection && node.reachable !== false)
+        .map((node) => ({ id: node.id, name: node.label }));
+}
+
+/** The fields of one node, in the shape the catalogue returns them. */
+export function fieldsOfNode(config, nodeId) {
+    return (config.nodes ?? []).find((node) => node.id === nodeId)?.fields ?? [];
+}
+
+/** Everything before the last dot: `adquirente.nif` belongs to `adquirente`. */
+export function nodeOfBinding(key) {
+    const lastDot = key.lastIndexOf('.');
+
+    return lastDot === -1 ? key : key.slice(0, lastDot);
+}
+
+function escapeText(value) {
+    const element = document.createElement('div');
+    element.textContent = value;
+
+    return element.innerHTML;
+}
+
+function escapeAttribute(value) {
+    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}

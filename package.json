@@ -1,0 +1,15 @@
+{
+    "name": "@controlink/laravel-templates-editor",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "build": "vite build",
+        "dev": "vite build --watch"
+    },
+    "dependencies": {
+        "grapesjs": "0.23.6"
+    },
+    "devDependencies": {
+        "vite": "^7.0.0"
+    }
+}

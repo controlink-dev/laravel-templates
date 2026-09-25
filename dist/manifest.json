@@ -1,0 +1,11 @@
+{
+  "resources/js/editor/editor.js": {
+    "file": "editor.js",
+    "name": "editor",
+    "src": "resources/js/editor/editor.js",
+    "isEntry": true,
+    "css": [
+      "editor.css"
+    ]
+  }
+}

@@ -27,11 +27,193 @@ return [
         'header' => 'Header',
         'body'   => 'Body',
         'footer' => 'Footer',
+        'page'   => 'Page',
     ],
 
     'blocks' => [
-        'line_table'  => 'Line table',
-        'page_number' => 'Page number',
+        'static_text'         => 'Text',
+        'static_text_default' => 'Text',
+        'data_field'          => 'Data field',
+        'image'               => 'Image',
+        'rule'                => 'Line / Rectangle',
+        'line_table'          => 'Line table',
+        'code_slot'           => 'QR / barcode',
+        'page_number'         => 'Page number',
+    ],
+
+    'traits' => [
+        'content'       => 'Content',
+        'format'        => 'Format',
+        'file'          => 'File',
+        'fit'           => 'Fit',
+        'thickness'     => 'Thickness',
+        'filled'        => 'Filled',
+        'collection'    => 'Collection',
+        'columns'       => 'Columns',
+        'column_label'  => 'Label',
+        'column_width'  => 'Width',
+        'column_remove' => 'Remove column',
+        'node'          => 'Model',
+        'field_source'  => 'Data source',
+        'code_source'   => 'Source',
+        'code_type'     => 'Type',
+        'page_format'   => 'Format',
+    ],
+
+    'states' => [
+        'draft'     => 'Draft',
+        'validated' => 'Validated',
+        'active'    => 'Active',
+        'archived'  => 'Archived',
+    ],
+
+    'editor' => [
+        'heading'         => 'Template editor',
+        'back'            => 'Back to templates',
+        'save'            => 'Save',
+        'preview'         => 'Preview',
+        'activate'        => 'Activate',
+        'activating'      => 'Validating and activating…',
+        'saving'          => 'Saving…',
+        'rendering'       => 'Generating the preview…',
+        'unsaved'         => 'Unsaved changes',
+        'unsaved_warning' => 'You have unsaved changes in this template. Leaving now discards them.',
+        'version'         => 'Version :number',
+        'document_type'   => 'Document type',
+        'open_full_page'  => 'Open in a full page',
+        'read_only'       => 'This version can no longer be changed. Create a new version from it.',
+    ],
+
+    /* Editor chrome: toolbar, panels and rulers — our own labels, not the canvas library's. */
+    'chrome' => [
+        'zoom'           => 'Zoom',
+        'zoom_out'       => 'Zoom out',
+        'zoom_in'        => 'Zoom in',
+        'fit'            => 'Fit to window',
+        'legal_fields'   => 'Legal fields',
+        'legal_hint'     => 'Marks the fields required by law while you check the layout.',
+        'zones'          => 'Zones',
+        'zones_hint'     => 'Shows where the header ends and the body begins.',
+        'rulers'         => 'Rulers',
+        'rulers_hint'    => 'Scale in millimetres, and the extent of the chosen block.',
+        'clean_view'     => 'Clean view',
+        'clean_hint'     => 'The sheet exactly as it prints.',
+        'blocks'         => 'Blocks',
+        'style'          => 'Style',
+        'field'          => 'Field',
+        'layers'         => 'Layers',
+        'nothing_chosen' => 'Choose a block on the sheet.',
+        'scope_any'      => 'visible on any page',
+        'scope_all'      => 'visible on every page',
+        'type'           => ':type',
+        'legal_chip'     => 'legal',
+        'count_fields'   => ':count field|:count fields',
+        'count_tables'   => ':count table|:count tables',
+        'count_codes'    => ':count code|:count codes',
+        'count_problems' => ':count problem|:count problems',
+    ],
+
+    'actions' => [
+        'restore_legal'      => 'Restore missing legal fields',
+        'restore_legal_none' => 'No legal field is missing.',
+        'restore_legal_done' => ':count legal field(s) restored.',
+    ],
+
+    'formats' => [
+        'none'   => 'No format',
+        'date'   => 'Date',
+        'number' => 'Number',
+        'money'  => 'Currency',
+        'upper'  => 'Uppercase',
+    ],
+
+    'fits' => [
+        'contain' => 'Fit without cropping',
+        'cover'   => 'Fill and crop',
+        'fill'    => 'Stretch',
+    ],
+
+    'rule_widths' => [
+        'thin'   => 'Thin',
+        'medium' => 'Medium',
+        'thick'  => 'Thick',
+    ],
+
+    'sectors' => [
+        'typography' => 'Typography',
+        'box'        => 'Box',
+        'border'     => 'Border',
+        'position'   => 'Position',
+    ],
+
+    /* Style panel property labels; the canvas library ships its own and never translates them. */
+    'properties' => [
+        'font_size'        => 'Size',
+        'font_weight'      => 'Weight',
+        'font_style'       => 'Style',
+        'text_align'       => 'Alignment',
+        'line_height'      => 'Line height',
+        'letter_spacing'   => 'Letter spacing',
+        'color'            => 'Colour',
+        'width'            => 'Width',
+        'height'           => 'Height',
+        'padding'          => 'Inner spacing',
+        'background_color' => 'Background colour',
+        'border_width'     => 'Border width',
+        'border_style'     => 'Border style',
+        'border_color'     => 'Border colour',
+        'top'              => 'Top',
+        'left'             => 'Left',
+    ],
+
+    /* Style property options; the canvas library offers 100-900 and raw CSS keywords. */
+    'style_options' => [
+        'weight_normal' => 'Normal',
+        'weight_bold'   => 'Bold',
+        'style_normal'  => 'Normal',
+        'style_italic'  => 'Italic',
+        'align_left'    => 'Left',
+        'align_center'  => 'Centre',
+        'align_right'   => 'Right',
+        'align_justify' => 'Justified',
+        'border_none'   => 'None',
+        'border_solid'  => 'Solid',
+        'border_dashed' => 'Dashed',
+        'border_dotted' => 'Dotted',
+    ],
+
+    'problems' => [
+        'heading'   => ':count problem(s) to resolve before this template can be activated',
+        'structure' => 'Structure',
+        'legal'     => 'Legal fields',
+        'render'    => 'Rendering',
+    ],
+
+    'checks' => [
+        'missing'   => 'The legally required field ":field" is not in the template.',
+        'font_size' => '":field" uses a font smaller than :minimum pt.',
+        'opacity'   => '":field" is transparent.',
+        'hidden'    => '":field" is hidden.',
+        'scope'     => '":field" has to appear on every page, so it can only sit in the header or the footer.',
+
+        'code_incomplete' => 'This fixed code has required fields left blank. Without them the code is valid but points at nothing.',
+    ],
+
+    'page_formats' => [
+        'x'      => 'Page number',
+        'x_of_y' => 'Number and total (1 of 3)',
+        'of'     => 'of',
+    ],
+
+    'aligns' => [
+        'left'   => 'Left',
+        'center' => 'Center',
+        'right'  => 'Right',
+    ],
+
+    'notices' => [
+        'legal_locked' => '":field" cannot be deleted. It is a field required by law on this document type.',
+        'close'        => 'Close notice',
     ],
 
     // Layer 1 of the validation: static, over `project_data` (Output\Pdf\LayoutValidator).
@@ -78,6 +260,10 @@ return [
         'unsafe_template'    => 'The layout received carries content a template must not carry. It was neither saved nor rendered.',
         'render_failed'      => 'The PDF could not be generated. The rendering engine did not respond as expected.',
         'type_not_creatable' => 'This document type cannot be created from scratch: it is obtained by duplicating an existing template.',
+        'image_too_large'    => 'The image is too large. Choose a smaller file.',
+        'catalogue_failed'   => 'The field catalogue for this document type could not be loaded. The editor does not open without it.',
+        'load_failed'        => 'The layout of this version could not be loaded.',
+        'save_failed'        => 'The layout could not be saved.',
     ],
 
     // Http\Requests\StoreTemplateRequest, Http\Requests\UpdateVersionRequest.
@@ -115,6 +301,18 @@ return [
     'code_sources' => [
         'dynamic' => 'Dynamic',
         'fixed'   => 'Fixed text',
+    ],
+
+    'code_fields' => [
+        'text'     => 'Text',
+        'url'      => 'URL',
+        'email'    => 'Email',
+        'subject'  => 'Subject',
+        'number'   => 'Number',
+        'message'  => 'Message',
+        'security' => 'Security',
+        'network'  => 'Network name',
+        'password' => 'Password',
     ],
 
 ];
