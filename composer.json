@@ -1,0 +1,45 @@
+{
+    "name": "controlink/laravel-templates",
+    "description": "Versioned templates for Laravel: GrapesJS editor, Twig sandbox rendering, PDF output via Gotenberg",
+    "type": "library",
+    "license": "proprietary",
+    "require": {
+        "php": "^8.1",
+        "ext-json": "*",
+        "illuminate/contracts": "^10.48 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/database": "^10.48 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/http": "^10.48 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/support": "^10.48 || ^11.0 || ^12.0 || ^13.0",
+        "illuminate/view": "^10.48 || ^11.0 || ^12.0 || ^13.0",
+        "twig/twig": "^3.28",
+        "bacon/bacon-qr-code": "^3.0",
+        "khanamiryan/qrcode-detector-decoder": "^2.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0",
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": { "Controlink\\Templates\\": "src/" }
+    },
+    "autoload-dev": {
+        "psr-4": { "Controlink\\Templates\\Tests\\": "tests/" }
+    },
+    "extra": {
+        "laravel": {
+            "providers": ["Controlink\\Templates\\TemplatesServiceProvider"],
+            "aliases": { "Templates": "Controlink\\Templates\\Templates" }
+        }
+    },
+    "config": {
+        "platform": { "php": "8.1.0" },
+        "sort-packages": true,
+        "policy": {
+            "advisories": {
+                "ignore": ["laravel/framework"]
+            }
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
