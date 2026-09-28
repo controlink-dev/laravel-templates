@@ -49,7 +49,10 @@ class InitialLayoutRenderTest extends TestCase
 
     public function test_the_initial_layout_survives_the_engine_and_the_render_rules(): void
     {
-        Http::preventStrayRequests(false);
+        // allowStrayRequests(), not preventStrayRequests(false): under the test
+        // harness the latter leaves the client in fake-recording mode, so a real
+        // request throws "without a matching fake" and this test silently skipped.
+        Http::allowStrayRequests();
 
         if (! $this->engineIsReachable()) {
             $this->markTestSkipped('The PDF engine is not reachable at '.config('templates.pdf.gotenberg.url').'.');

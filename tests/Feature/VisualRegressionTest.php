@@ -71,7 +71,10 @@ class VisualRegressionTest extends TestCase
 
         // The engine has to be the real one: a faked response would compare a
         // placeholder against the reference and pass for the wrong reason.
-        Http::preventStrayRequests(false);
+        // allowStrayRequests(), not preventStrayRequests(false): under the test
+        // harness the latter leaves the client in fake-recording mode, so a real
+        // request throws "without a matching fake" and this test silently skipped.
+        Http::allowStrayRequests();
 
         if (! $this->engineIsReachable()) {
             $this->markTestSkipped('The PDF engine is not reachable at '.config('templates.pdf.gotenberg.url').'.');
