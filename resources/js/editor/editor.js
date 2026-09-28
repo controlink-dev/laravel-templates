@@ -223,7 +223,9 @@ async function mountEditor(el) {
     // Now that the document is in place, and again for every field added afterwards.
     applyZoneIdentity(editor, config);
     lockLegalFields(editor);
-    editor.on('component:add', () => lockLegalFields(editor));
+    // Remove as well as add: deleting a redundant duplicate of a legal field must
+    // re-lock the one that stays, or the last copy would be left deletable too.
+    editor.on('component:add component:remove', () => lockLegalFields(editor));
 
     if (!config.editable) {
         // A convenience, not a guarantee: the server refuses to write an immutable

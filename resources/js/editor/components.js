@@ -411,11 +411,29 @@ function registerDataField(editor, config) {
                 const binding = findBinding(config, this.binding());
                 const isLegal = Boolean(binding?.legal);
 
+                // A legal field is locked from deletion only while it is the single block
+                // that keeps the document compliant. A second block bound to the same
+                // legal field is redundant — the server validates every occurrence but
+                // requires no particular one (V-10 fires only on total absence) — so the
+                // extra stays deletable and the user is never trapped with a duplicate
+                // they cannot undo. Copy stays disabled on any legal field, so the toolbar
+                // never makes a fresh duplicate.
+                //
+                // The count is recomputed here and re-run across every data field by
+                // `lockLegalFields()` on add and remove, so deleting the extra re-locks
+                // the one that remains. `getWrapper()` is undefined mid-load (see
+                // `lockLegalFields`), and the safe default there is the locked one.
+                const currentBinding = this.binding();
+                const sameBinding = (editor.getWrapper()?.find('[data-tpl-type="data-field"]') ?? [])
+                    .filter((component) => component.getAttributes()['data-tpl-binding'] === currentBinding)
+                    .length;
+                const removable = !isLegal || sameBinding > 1;
+
                 // Not silent: the component toolbar is rebuilt from `removable` and
                 // `copyable`, so a silent change left the delete and duplicate icons
                 // sitting on a block that must never be deleted or duplicated.
-                if (this.get('removable') !== !isLegal) {
-                    this.set({ removable: !isLegal, copyable: !isLegal });
+                if (this.get('removable') !== removable || this.get('copyable') !== !isLegal) {
+                    this.set({ removable, copyable: !isLegal });
                 }
 
                 const marking = isLegal ? '1' : null;
