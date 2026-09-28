@@ -151,16 +151,52 @@
  * which the PDF engine also reads.
  * ------------------------------------------------------------------------ */
 
-/* The columns editor: one row per column, inside the trait panel. */
+/*
+ * The columns editor: one row per column, inside the trait panel.
+ *
+ * The trait panel's field column is narrow (~209px once GrapesJS's own label
+ * takes its left gutter), and each column carries six controls — the source key,
+ * a label, a width, an alignment, a format and a remove button. Laid out on a
+ * single line they did not fit: the flexible label track collapsed to a few
+ * pixels and the remaining controls spilled past the panel edge behind a
+ * horizontal scrollbar. So this trait stacks its label above the field to reclaim
+ * the full width, and each column is laid out over two lines — the source key and
+ * the remove button on top, the four editable controls below.
+ */
+.gjs-trt-trait--tpl-columns {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.gjs-trt-trait--tpl-columns .gjs-label-wrp {
+    width: 100%;
+    max-width: none;
+}
+
 .tpl-columns__row {
     display: grid;
-    grid-template-columns: 4.5rem 1fr 3rem 4.5rem 5rem 1.25rem;
+    grid-template-columns: 1fr 3.25rem 3.75rem 4.75rem;
+    grid-template-areas:
+        "key   key   key   drop"
+        "label width align format";
     gap: 0.25rem;
+    row-gap: 0.15rem;
     align-items: center;
-    margin-bottom: 0.25rem;
+    margin-bottom: 0.55rem;
+}
+
+.tpl-columns__row > * {
+    min-width: 0;
+}
+
+.tpl-columns__row input,
+.tpl-columns__row select {
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .tpl-columns__key {
+    grid-area: key;
     overflow: hidden;
     font-size: 0.6875rem;
     font-family: ui-monospace, monospace;
@@ -168,7 +204,26 @@
     white-space: nowrap;
 }
 
+/* Order-based, matching the DOM `columnRow()` builds: label, width, align, format. */
+.tpl-columns__row > input:nth-of-type(1) {
+    grid-area: label;
+}
+
+.tpl-columns__width {
+    grid-area: width;
+}
+
+.tpl-columns__row > select:nth-of-type(1) {
+    grid-area: align;
+}
+
+.tpl-columns__row > select:nth-of-type(2) {
+    grid-area: format;
+}
+
 .tpl-columns__drop {
+    grid-area: drop;
+    justify-self: end;
     border: 0;
     background: none;
     color: #dc2626;
