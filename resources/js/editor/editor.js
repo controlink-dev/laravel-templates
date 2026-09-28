@@ -850,12 +850,39 @@ function wireChrome(editor, config, chrome, paper) {
 
     const isLegalField = (component) => (component.getAttributes?.() ?? {})['data-tpl-legal'] === '1';
 
+    // A legal field blocks deletion only while it is the last block carrying its binding.
+    // A redundant duplicate (a second block bound to the same legal field) is not the one
+    // the law requires — the server validates every occurrence but requires none in
+    // particular (V-10 fires only on total absence) — so removing it is allowed. This
+    // mirrors `applyLegalMarking`'s toolbar rule, on the keyboard path that shows the
+    // notice. Survivors are counted excluding the blocks being deleted, so selecting both
+    // copies and pressing Delete is still refused: that would erase the field entirely.
+    const legalBlocks = (ed) => {
+        const selected = ed.getSelectedAll();
+        const selectedCids = new Set(selected.map((component) => component.cid));
+        const dataFields = editor.getWrapper()?.find('[data-tpl-type="data-field"]') ?? [];
+
+        return selected.filter((component) => {
+            if (!isLegalField(component)) {
+                return false;
+            }
+
+            const binding = (component.getAttributes?.() ?? {})['data-tpl-binding'];
+            const survivors = dataFields.filter(
+                (candidate) => candidate.getAttributes()['data-tpl-binding'] === binding
+                    && !selectedCids.has(candidate.cid),
+            ).length;
+
+            return survivors === 0;
+        });
+    };
+
     editor.Keymaps.remove('core:component-delete');
 
     // `prevent: true` matches the default GrapesJS registers for this command: it calls
     // `preventDefault()` on the native keydown before the handler runs, same as before.
     editor.Keymaps.add('pf:component-delete', 'backspace, delete', (ed) => {
-        const blocked = ed.getSelectedAll().filter(isLegalField);
+        const blocked = legalBlocks(ed);
 
         if (blocked.length > 0) {
             showNotice(
