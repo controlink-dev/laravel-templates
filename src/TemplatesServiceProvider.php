@@ -12,6 +12,7 @@ use Controlink\Templates\Support\EmptyEncryptedFieldMap;
 use Controlink\Templates\Support\IntlMoneyFormatter;
 use Controlink\Templates\Support\NullAuditor;
 use Controlink\Templates\Support\NullTenantResolver;
+use Controlink\Templates\Toolkit\Documents;
 use Controlink\Templates\Types\TypeCatalogue;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Route;
@@ -37,6 +38,7 @@ class TemplatesServiceProvider extends ServiceProvider
         // Shared so a host's `FilterRegistry::register()` call, wherever it runs, is
         // visible to every `TemplateRenderer` the container later builds.
         $this->app->singleton(FilterRegistry::class);
+        $this->app->singleton(Documents::class);
     }
 
     public function boot(): void

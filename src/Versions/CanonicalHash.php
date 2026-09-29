@@ -5,10 +5,17 @@ namespace Controlink\Templates\Versions;
 /** SHA-256 of `project_data` with sorted keys, so key order never changes the hash. */
 final class CanonicalHash
 {
-    /** @param array<string, mixed> $projectData */
-    public static function of(array $projectData): string
+    /**
+     * @param array<string, mixed>      $projectData
+     * @param array<string, mixed>|null $geometry    part of the reproducible layout, so it is hashed too
+     */
+    public static function of(array $projectData, ?array $geometry = null): string
     {
-        return hash('sha256', self::canonicalise($projectData));
+        $canon = self::canonicalise($projectData);
+
+        // Geometry is appended only when present, so the hash of every layout that
+        // predates geometry (or has none) stays exactly what it always was.
+        return hash('sha256', ($geometry === null || $geometry === []) ? $canon : $canon.'|'.self::canonicalise($geometry));
     }
 
     /** @param array<string, mixed> $projectData */
