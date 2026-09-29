@@ -13,6 +13,7 @@ use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Output\Pdf\PageStructure;
 use Controlink\Templates\Rendering\TemplateRenderer;
 use Controlink\Templates\Templates;
+use Controlink\Templates\Tests\Concerns\BuildsFixtureDataset;
 use Controlink\Templates\Tests\Feature\Concerns\BuildsPdfLayouts;
 use Controlink\Templates\Tests\Fixtures\Models\Party;
 use Controlink\Templates\Tests\TestCase;
@@ -38,6 +39,7 @@ use RuntimeException;
 class PdfRenderTest extends TestCase
 {
     use BuildsPdfLayouts;
+    use BuildsFixtureDataset;
 
     private const DOCUMENT_TYPE = 'invoice';
 
@@ -83,7 +85,7 @@ class PdfRenderTest extends TestCase
         $structure = app(PageStructure::class)->build(
             $this->bodyOf($layout['html']),
             $type,
-            app(FixtureDataset::class)->for($type),
+            $this->fixtureDataset($type),
         );
 
         $this->assertCount(1, $structure['pages']);
@@ -96,7 +98,7 @@ class PdfRenderTest extends TestCase
     public function test_the_lines_are_chunked_one_slice_per_page(): void
     {
         $type    = Templates::type(self::DOCUMENT_TYPE);
-        $dataset = app(FixtureDataset::class)->for($type);
+        $dataset = $this->fixtureDataset($type);
         $layout  = $this->validPdfLayout($type);
 
         $structure = app(PageStructure::class)->build($this->bodyOf($layout['html']), $type, $dataset);
@@ -134,7 +136,7 @@ class PdfRenderTest extends TestCase
         $structure = app(PageStructure::class)->build(
             $this->bodyOf($layout['html']),
             $type,
-            app(FixtureDataset::class)->for($type),
+            $this->fixtureDataset($type),
         );
 
         $this->assertGreaterThan(2, count($structure['pages']), 'The fixture has to paginate for this to prove anything.');
@@ -165,7 +167,7 @@ class PdfRenderTest extends TestCase
         $structure = app(PageStructure::class)->build(
             $this->bodyOf($layout['html']),
             $type,
-            app(FixtureDataset::class)->for($type),
+            $this->fixtureDataset($type),
         );
 
         $pages = $structure['pages'];
@@ -185,7 +187,7 @@ class PdfRenderTest extends TestCase
     {
         $type     = Templates::type(self::DOCUMENT_TYPE);
         $layout   = $this->validPdfLayout($type);
-        $dataset  = app(FixtureDataset::class)->for($type);
+        $dataset  = $this->fixtureDataset($type);
         $document = app(DocumentComposer::class)->compose($layout['html'], $layout['css'], $type, $dataset);
 
         $sheets = app(PageStructure::class)->build($this->bodyOf($layout['html']), $type, $dataset);
@@ -219,7 +221,7 @@ class PdfRenderTest extends TestCase
             $layout['html'],
             $layout['css'],
             $type,
-            app(FixtureDataset::class)->for($type),
+            $this->fixtureDataset($type),
         );
 
         // The weights the template's own initial layout asks for.
@@ -253,7 +255,7 @@ class PdfRenderTest extends TestCase
     {
         $type    = Templates::type(self::DOCUMENT_TYPE);
         $layout  = $this->validPdfLayout($type);
-        $dataset = app(FixtureDataset::class)->for($type);
+        $dataset = $this->fixtureDataset($type);
 
         $document = app(DocumentComposer::class)->compose($layout['html'], $layout['css'], $type, $dataset);
 
@@ -435,7 +437,7 @@ class PdfRenderTest extends TestCase
     public function test_the_fixture_spans_more_than_two_pages(): void
     {
         $type    = Templates::type(self::DOCUMENT_TYPE);
-        $dataset = app(FixtureDataset::class)->for($type);
+        $dataset = $this->fixtureDataset($type);
         $pages   = (int) ceil(count($dataset['linhas']) / app(PageStructure::class)->rowsPerPage($type));
 
         $this->assertGreaterThanOrEqual(3, $pages);
@@ -444,7 +446,7 @@ class PdfRenderTest extends TestCase
     /** Values stay raw: the filters are what format them at render time. */
     public function test_the_fixture_keeps_values_raw(): void
     {
-        $dataset = app(FixtureDataset::class)->for(Templates::type(self::DOCUMENT_TYPE));
+        $dataset = $this->fixtureDataset(Templates::type(self::DOCUMENT_TYPE));
 
         $this->assertIsFloat($dataset['totais.total_a_pagar']);
         $this->assertSame('2026-12-31', $dataset['documento.data_emissao']);
@@ -453,7 +455,7 @@ class PdfRenderTest extends TestCase
     /** No two repeated lines are identical, or a misplaced page break would be invisible. */
     public function test_repeated_fixture_lines_are_distinguishable(): void
     {
-        $dataset = app(FixtureDataset::class)->for(Templates::type(self::DOCUMENT_TYPE));
+        $dataset = $this->fixtureDataset(Templates::type(self::DOCUMENT_TYPE));
 
         $codes = array_column($dataset['linhas'], 'codigo');
 

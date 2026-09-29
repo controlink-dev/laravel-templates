@@ -3,12 +3,12 @@
 namespace Controlink\Templates\Tests\Feature;
 
 use Controlink\Templates\Contracts\MoneyFormatter;
-use Controlink\Templates\Data\FixtureDataset;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Output\Pdf\PdfRenderer;
 use Controlink\Templates\Output\Pdf\RenderValidator;
 use Controlink\Templates\Output\Pdf\RenderedPdf;
 use Controlink\Templates\Templates;
+use Controlink\Templates\Tests\Concerns\BuildsFixtureDataset;
 use Controlink\Templates\Tests\TestCase;
 use Controlink\Templates\Types\TemplateType;
 use Illuminate\Support\Facades\Http;
@@ -34,6 +34,8 @@ use Symfony\Component\Process\ExecutableFinder;
  */
 class InitialLayoutRenderTest extends TestCase
 {
+    use BuildsFixtureDataset;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -70,7 +72,7 @@ class InitialLayoutRenderTest extends TestCase
         });
 
         $type    = Templates::type('invoice');
-        $dataset = app(FixtureDataset::class)->for($type);
+        $dataset = $this->fixtureDataset($type);
 
         $document = app(DocumentComposer::class)->compose(
             $type->initialLayout['html'],
