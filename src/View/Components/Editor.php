@@ -3,10 +3,9 @@
 namespace Controlink\Templates\View\Components;
 
 use Closure;
-use Controlink\Templates\Models\Template;
-use Controlink\Templates\Models\TemplateVersion;
 use Controlink\Templates\Types\TemplateType;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\View\Component;
 use RuntimeException;
 
@@ -42,8 +41,8 @@ class Editor extends Component
      * @param  string  $mode  phase 1 supports only `print`
      */
     public function __construct(
-        public Template $template,
-        public TemplateVersion $version,
+        public Model $template,
+        public Model $version,
         public string $height = '100%',
         public bool $actions = true,
         public string $mode = 'print',
