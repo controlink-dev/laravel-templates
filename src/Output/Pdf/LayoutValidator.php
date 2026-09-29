@@ -2,7 +2,7 @@
 
 namespace Controlink\Templates\Output\Pdf;
 
-use Controlink\Templates\Data\DocumentGraph;
+use Controlink\Templates\Contracts\BindingResolver;
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
 use Controlink\Templates\Types\TemplateType;
 
@@ -29,6 +29,10 @@ use Controlink\Templates\Types\TemplateType;
  */
 class LayoutValidator
 {
+    public function __construct(private readonly BindingResolver $resolver)
+    {
+    }
+
     /**
      * Which block places which kind of binding.
      *
@@ -752,7 +756,7 @@ class LayoutValidator
                 continue;
             }
 
-            $resolved = DocumentGraph::resolve($key, $type);
+            $resolved = $this->resolver->resolve($key, $type);
 
             if ($resolved !== null) {
                 $indexed[$key] = $resolved;

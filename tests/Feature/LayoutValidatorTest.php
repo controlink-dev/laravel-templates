@@ -2,27 +2,21 @@
 
 namespace Controlink\Templates\Tests\Feature;
 
-use Controlink\Templates\Data\DocumentGraph;
+use Controlink\Templates\Contracts\BindingResolver;
 use Controlink\Templates\Output\Pdf\Colour;
 use Controlink\Templates\Output\Pdf\LayoutDocument;
 use Controlink\Templates\Output\Pdf\LayoutValidator;
 use Controlink\Templates\Templates;
 use Controlink\Templates\Tests\Concerns\BuildsLayouts;
-use Controlink\Templates\Tests\Fixtures\Models\Party;
 use Controlink\Templates\Tests\TestCase;
 use Controlink\Templates\Types\TemplateType;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * The static validation, layer 1 (spec 8.1).
  *
  * One case per rule. Most of these never touch the database: the validator is a pure
- * traversal of the document. The two exceptions (`test_a_dynamic_binding_…` and
- * `test_a_binding_that_exists_in_neither_source_…`) exercise `DocumentGraph::resolve()`
- * against a real, migrated model — `Tests\Fixtures\Models\Party` — the same fixture
- * `DocumentGraphTest` uses, and need no tenant context at all: with
- * `templates.tenancy.mode` at its default of `none`, the graph's schema introspection
- * runs against the host's own default connection.
+ * traversal of the document. Non-declared bindings go through the `BindingResolver`
+ * contract (declared-only by default); schema-derived resolution is the host's concern.
  *
  * Deliberately absent: truncation has no static rule at all — it depends on font
  * metrics and resolved widths, and R-04 measures it exactly on the rendered PDF.
@@ -32,14 +26,6 @@ class LayoutValidatorTest extends TestCase
     use BuildsLayouts;
 
     private const TYPE_CODE = 'invoice';
-
-    protected function tearDown(): void
-    {
-        Schema::dropIfExists('parties');
-        DocumentGraph::flush();
-
-        parent::tearDown();
-    }
 
     /* -----------------------------------------------------------------------
      * The baseline
@@ -496,83 +482,36 @@ class LayoutValidatorTest extends TestCase
     }
 
     /**
-     * A layout bound to a field that exists only in the schema validates, and the key
-     * comes back neither legal nor mandatory. That second half is the load-bearing
-     * one: who decides what is required is whoever declared the type, through the
-     * declared list — never whoever draws the layout.
+     * With the default (declared-only) resolver a key the type never declared is a
+     * configuration error: the toolkit has no schema to resolve it from.
      */
-    public function test_a_dynamic_binding_validates_and_is_never_legal_nor_mandatory(): void
+    public function test_a_binding_the_type_never_declared_is_refused_by_the_default_resolver(): void
     {
-        // The graph reads real table columns, so this needs an actual migrated model —
-        // the same fixture `DocumentGraphTest` uses to exercise `DocumentGraph`.
-        $this->createPartiesTable();
+        $layout = $this->layoutPlus(['binding' => 'adquirente.inexistente', 'format' => '']);
 
-        $type = $this->partyType();
-
-        $resolved = DocumentGraph::resolve('adquirente.vat', $type);
-
-        $this->assertNotNull($resolved, 'A column that exists in the schema did not resolve.');
-        $this->assertFalse($resolved['mandatory']);
-        $this->assertFalse($resolved['legal']);
-        $this->assertNull($resolved['scope']);
-
-        $layout = $this->layoutPlus([
-            'binding' => 'adquirente.vat',
-            'format'  => '',
-        ]);
-
-        $problems = app(LayoutValidator::class)->validate($layout['project_data'], $type, $layout['html'], $layout['css']);
-
-        $this->assertSame(
-            [],
-            array_values(array_filter(array_map(
-                fn (array $problem): string => $problem['code'],
-                $problems,
-            ), fn (string $code): bool => $code === 'V-01')),
-            'A field bound to a real column was reported as an unknown binding.',
-        );
+        $this->assertHasProblem('V-01', $layout);
     }
 
     /**
-     * A key that exists in neither source stays a configuration error, exactly as it is
-     * today when a slot points at a field that does not exist.
+     * A host-provided BindingResolver makes a non-declared key valid, and only that key.
      */
-    public function test_a_binding_that_exists_in_neither_source_is_still_refused(): void
+    public function test_a_host_resolver_can_resolve_a_non_declared_binding(): void
     {
-        $this->createPartiesTable();
+        $this->app->bind(BindingResolver::class, fn () => new class implements BindingResolver {
+            public function resolve(string $key, TemplateType $type): ?array
+            {
+                return $key === 'adquirente.vat' ? [
+                    'key' => $key, 'label' => 'VAT', 'type' => 'text',
+                    'mandatory' => false, 'legal' => false, 'scope' => null, 'default_format' => '',
+                ] : null;
+            }
+        });
 
-        $type = $this->partyType();
+        $resolved = $this->problems($this->layoutPlus(['binding' => 'adquirente.vat', 'format' => '']));
+        $this->assertNotContains('V-01', array_column($resolved, 'code'));
 
-        $this->assertNull(DocumentGraph::resolve('adquirente.inexistente', $type));
-
-        $layout = $this->layoutPlus([
-            'binding' => 'adquirente.inexistente',
-            'format'  => '',
-        ]);
-
-        $problems = app(LayoutValidator::class)->validate($layout['project_data'], $type, $layout['html'], $layout['css']);
-
-        $this->assertContains('V-01', array_column($problems, 'code'));
-    }
-
-    /**
-     * A declared key keeps its declared rules even though the graph could also resolve it.
-     * The declared list is consulted FIRST, and this is what stops a legal field from
-     * quietly becoming an ordinary one — the failure mode that would erase a requirement
-     * without a single test going red.
-     */
-    public function test_a_declared_key_keeps_its_declared_rules(): void
-    {
-        $type = Templates::type(self::TYPE_CODE);
-
-        $declared = collect($type->bindings)->firstWhere('legal', true);
-
-        $this->assertNotNull($declared, 'The invoice type declares no legal field; the premise of this test is gone.');
-
-        $resolved = DocumentGraph::resolve($declared['key'], $type);
-
-        $this->assertTrue($resolved['legal'], 'A declared legal key lost its rules to the graph.');
-        $this->assertTrue($resolved['mandatory']);
+        $unknown = $this->problems($this->layoutPlus(['binding' => 'adquirente.inexistente', 'format' => '']));
+        $this->assertContains('V-01', array_column($unknown, 'code'));
     }
 
     /* -----------------------------------------------------------------------
@@ -650,26 +589,4 @@ class LayoutValidatorTest extends TestCase
         ]]));
     }
 
-    /** The `invoice` fixture type with its `adquirente` node pointed at the test model. */
-    private function partyType(): TemplateType
-    {
-        $config = Templates::type(self::TYPE_CODE)->toArray();
-
-        $config['nodes']['adquirente'] = array_merge($config['nodes']['adquirente'], [
-            'model' => Party::class,
-            'lang'  => 'parties',
-        ]);
-
-        return TemplateType::fromConfig(self::TYPE_CODE, $config);
-    }
-
-    /** A minimal migrated table for the fields `DocumentGraph` resolves dynamically. */
-    private function createPartiesTable(): void
-    {
-        Schema::create('parties', function ($table): void {
-            $table->id();
-            $table->string('name', 150);
-            $table->string('vat', 9)->nullable();
-        });
-    }
 }

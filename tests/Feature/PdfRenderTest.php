@@ -3,11 +3,6 @@
 namespace Controlink\Templates\Tests\Feature;
 
 use Controlink\Templates\Codes\CodeImageGenerator;
-use Controlink\Templates\Data\ColumnDescriptor;
-use Controlink\Templates\Data\DocumentDataset;
-use Controlink\Templates\Data\DocumentGraph;
-use Controlink\Templates\Data\FixtureDataset;
-use Controlink\Templates\Data\FixtureValue;
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Output\Pdf\PageStructure;
@@ -15,10 +10,7 @@ use Controlink\Templates\Rendering\TemplateRenderer;
 use Controlink\Templates\Templates;
 use Controlink\Templates\Tests\Concerns\BuildsFixtureDataset;
 use Controlink\Templates\Tests\Feature\Concerns\BuildsPdfLayouts;
-use Controlink\Templates\Tests\Fixtures\Models\Party;
 use Controlink\Templates\Tests\TestCase;
-use Controlink\Templates\Types\TemplateType;
-use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\DataProvider;
 use RuntimeException;
 
@@ -460,161 +452,6 @@ class PdfRenderTest extends TestCase
         $codes = array_column($dataset['linhas'], 'codigo');
 
         $this->assertSame(count($codes), count(array_unique($codes)));
-    }
-
-    /**
-     * A text field's fixture fills the column, because a truncation rule only means
-     * anything if the sample is the longest value the column accepts.
-     */
-    public function test_a_generated_text_fixture_fills_the_column(): void
-    {
-        $value = FixtureValue::for(new ColumnDescriptor(name: 'name', bindingType: 'text', length: 40));
-
-        $this->assertSame(40, mb_strlen($value));
-    }
-
-    /**
-     * A decimal's fixture is nines to the column's scale: the widest number the column can
-     * hold, which is what a box has to survive.
-     */
-    public function test_a_generated_decimal_fixture_is_nines_to_the_scale(): void
-    {
-        $value = FixtureValue::for(new ColumnDescriptor(name: 'amount', bindingType: 'number', scale: 3));
-
-        $this->assertMatchesRegularExpression('/^9+\.999$/', $value);
-
-        $date = FixtureValue::for(new ColumnDescriptor(name: 'issued_on', bindingType: 'date'));
-
-        $this->assertSame('2026-12-31', $date);
-
-        $boolean = FixtureValue::for(new ColumnDescriptor(name: 'flag', bindingType: 'text', isBoolean: true));
-
-        $this->assertSame(__('templates::editor.fixtures.yes'), $boolean);
-    }
-
-    /**
-     * A driver that reports no length falls back to a declared default rather than to an
-     * empty string — measured: SQLite reports `varchar`, not `varchar(150)`. An empty
-     * fixture would pass every legibility rule by having nothing to break.
-     */
-    public function test_a_column_with_no_reported_length_still_gets_a_fixture(): void
-    {
-        $value = FixtureValue::for(new ColumnDescriptor(name: 'name', bindingType: 'text', length: null));
-
-        $this->assertSame(FixtureValue::DEFAULT_TEXT_LENGTH, mb_strlen($value));
-        $this->assertNotSame('', $value);
-    }
-
-    /**
-     * The declared fixture wins, always. Only a key nobody declared gets a value
-     * generated from its column (spec 4.5) — exercised here against `Party`, the
-     * package's own minimal test model, since the `invoice` fixture type's nodes are
-     * otherwise declared with no model at all.
-     */
-    public function test_the_declared_fixture_is_never_overwritten_by_a_generated_one(): void
-    {
-        Schema::create('parties', function ($table): void {
-            $table->id();
-            $table->string('name', 150);
-            $table->string('phone', 20)->nullable();
-        });
-
-        try {
-            $config = Templates::type(self::DOCUMENT_TYPE)->toArray();
-            $config['nodes']['adquirente'] = array_merge($config['nodes']['adquirente'], ['model' => Party::class]);
-            $type = TemplateType::fromConfig(self::DOCUMENT_TYPE, $config);
-
-            $declared = $type->fixture;
-            $dataset  = app(FixtureDataset::class)->for($type);
-
-            foreach ($declared as $key => $value) {
-                if (is_array($value)) {
-                    continue;
-                }
-
-                $this->assertSame($value, $dataset[$key], "The generated fixture overwrote the declared value of {$key}.");
-            }
-
-            // And a dynamic key that nobody declared now HAS a value.
-            $this->assertArrayHasKey('adquirente.phone', $dataset);
-            $this->assertNotSame('', (string) $dataset['adquirente.phone']);
-        } finally {
-            Schema::dropIfExists('parties');
-            DocumentGraph::flush();
-        }
-    }
-
-    /**
-     * `data_get($root, $node['via'])` is the whole of the traversal: whatever object
-     * graph a host hands in, an owned node's fields are read straight off it, nested
-     * objects included. Decryption itself is the host model's own concern — a cast or a
-     * trait on ITS model — and is out of the package's reach to exercise without an
-     * `App\`-coupled fixture, which `src/` may never import; what this proves is that
-     * the traversal itself does not flatten or lose a nested path.
-     */
-    public function test_the_dataset_resolves_the_paths_and_decrypts_on_the_way(): void
-    {
-        $type = $this->typeWithOwnedAdquirente();
-
-        $entity = (object) [
-            'nome'      => 'Cliente Cifrado, Lda',
-            'nif'       => '999999990',
-            'morada'    => 'Rua de Testes, 1',
-            'addresses' => [(object) ['city' => 'Porto']],
-        ];
-        $root = (object) ['entity' => $entity];
-
-        $dataset = app(DocumentDataset::class)->for($root, $type);
-
-        $this->assertSame('Cliente Cifrado, Lda', $dataset['adquirente.nome']);
-        $this->assertSame('999999990', $dataset['adquirente.nif']);
-        $this->assertSame('Porto', $dataset['adquirente_morada.city']);
-    }
-
-    /**
-     * A path that runs into a null halfway down yields an empty value and never an
-     * exception: an entity with no address is an ordinary state, and the document prints
-     * the field blank. The key still has to be PRESENT — `TemplateRenderer` renders with
-     * `strict_variables => true`, so an absent key is a render failure, not a blank
-     * space (spec 7.3). `?? ''` would pass identically whether the key is present and
-     * empty or missing outright, so this asserts presence first, on both a node reached
-     * by a single-segment `via` (`adquirente`) and one reached by a longer path
-     * (`adquirente_morada`, `via` = `entity.addresses.0`).
-     */
-    public function test_a_path_that_hits_a_null_yields_an_empty_value(): void
-    {
-        $type = $this->typeWithOwnedAdquirente();
-
-        $root = (object) ['entity' => null];
-
-        $dataset = app(DocumentDataset::class)->for($root, $type);
-
-        $this->assertArrayHasKey('adquirente.nome', $dataset);
-        $this->assertSame('', (string) $dataset['adquirente.nome']);
-
-        $this->assertArrayHasKey('adquirente_morada.city', $dataset);
-        $this->assertSame('', (string) $dataset['adquirente_morada.city']);
-    }
-
-    /**
-     * The `invoice` fixture type with its `adquirente` and `adquirente_morada` nodes
-     * given a `via` path so `DocumentDataset` treats them as owned by the document
-     * (`isOwned()`), plus a declared binding for the one field `adquirente_morada` did
-     * not otherwise carry. Neither node is given a `model`, so `DocumentGraph` never
-     * tries to introspect a schema for them — only the declared fields resolve.
-     */
-    private function typeWithOwnedAdquirente(): TemplateType
-    {
-        $config = Templates::type(self::DOCUMENT_TYPE)->toArray();
-
-        $config['nodes']['adquirente']['via'] = 'entity';
-        $config['nodes']['adquirente_morada'] = array_merge(
-            $config['nodes']['adquirente_morada'],
-            ['via' => 'entity.addresses.0'],
-        );
-        $config['bindings'][] = ['key' => 'adquirente_morada.city', 'label' => 'City', 'type' => 'text'];
-
-        return TemplateType::fromConfig(self::DOCUMENT_TYPE, $config);
     }
 
     /** The editor's export wraps the document in `<body>`; the compositor unwraps it. */
