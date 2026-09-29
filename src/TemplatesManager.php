@@ -19,16 +19,4 @@ class TemplatesManager
     {
         return $this->catalogue->all();
     }
-
-    /** Absolute path of the package migrations, for hosts that run tenant migrations by `--path`. */
-    public function migrationPath(): string
-    {
-        $path = realpath(__DIR__.'/../database/migrations');
-
-        if ($path === false) {
-            throw new \RuntimeException('The package migrations directory is missing.');
-        }
-
-        return $path;
-    }
 }

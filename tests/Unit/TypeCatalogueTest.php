@@ -2,7 +2,6 @@
 
 namespace Controlink\Templates\Tests\Unit;
 
-use Controlink\Templates\Models\Template;
 use Controlink\Templates\Templates;
 use Controlink\Templates\Types\InvalidTemplateType;
 use Controlink\Templates\Types\TemplateType;
@@ -74,15 +73,5 @@ class TypeCatalogueTest extends TestCase
         \Illuminate\Support\Facades\DB::purge('testing');
 
         (new TypeCatalogue(['invoice' => $this->invoice()]))->validate();
-    }
-
-    public function test_a_template_resolves_its_type_through_the_catalogue(): void
-    {
-        $template = new Template(['type_code' => 'invoice']);
-
-        $type = $template->type();
-
-        $this->assertInstanceOf(TemplateType::class, $type);
-        $this->assertSame('invoice', $type->code);
     }
 }

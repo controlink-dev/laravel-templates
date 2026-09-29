@@ -13,21 +13,7 @@ return [
         'connection' => env('TEMPLATES_TENANCY_CONNECTION'),
     ],
 
-    /*
-     * The models the package instantiates. Extend them in the host to add auditing or
-     * relations, and point these at the subclasses. Never referenced by class name
-     * inside the package: always through this config.
-     */
-    'models' => [
-        'template' => \Controlink\Templates\Models\Template::class,
-        'version'  => \Controlink\Templates\Models\TemplateVersion::class,
-    ],
-
-    'http' => [
-        // `false` registers no routes; the host registers its own.
-        'routes'     => true,
-        'prefix'     => 'templates',
-        'middleware' => ['web', 'auth'],
+    'editor' => [
         // Header the editor sends with the tenant id, or null for none.
         'tenant_header' => null,
     ],
@@ -94,14 +80,4 @@ return [
      * tests/Fixtures/types/invoice.php for a complete example.
      */
     'types' => [],
-
-    /*
-     * `Data\DocumentGraph`'s introspection of a node's model. `excluded_columns` is an
-     * extra host-declared rule, on top of the package's own plumbing/blind-index/hidden
-     * exclusions — a column a host never wants offered as a document field without
-     * hiding it from the model everywhere else.
-     */
-    'graph' => [
-        'excluded_columns' => [],
-    ],
 ];

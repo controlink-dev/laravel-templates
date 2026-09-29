@@ -10,7 +10,7 @@ class ProviderTest extends TestCase
     {
         $this->assertSame('none', config('templates.tenancy.mode'));
         $this->assertSame(['date', 'number', 'money', 'upper'], config('templates.formats'));
-        $this->assertSame('templates', config('templates.http.prefix'));
+        $this->assertNull(config('templates.http'));
         $this->assertSame('EUR', config('templates.money.currency'));
         $this->assertArrayHasKey('invoice', config('templates.types'));
         $this->assertArrayHasKey('LiberationSans', config('templates.fonts'));

@@ -5,21 +5,18 @@ namespace Controlink\Templates\Tests\Unit;
 use PHPUnit\Framework\TestCase;
 
 /**
- * The stateless library must not know about state or the catalogue: the toolkit facade
- * and the pure pipeline behind it never import HTTP, Eloquent models, the version
- * lifecycle or the type catalogue. `src/Data` is covered for the same imports but is NOT
- * fully stateless: `DocumentGraph` reads `Contracts\TenantResolver` and `templates.*`
- * config, `NodeFields` reads `Contracts\EncryptedFieldMap`, `TableColumns` reads the DB
- * schema. Those are host-state dependencies, not imports of the forbidden symbols.
+ * The package is a thin stateless toolkit: the toolkit facade and the pure pipeline
+ * behind it never import HTTP, Eloquent models, the version lifecycle or the type
+ * catalogue, and the state/HTTP/data pieces the host owns are gone from `src/`.
  */
 class LibraryBoundaryTest extends TestCase
 {
     private const FORBIDDEN = [
-        'Controlink\\Templates\\Http',
-        'Controlink\\Templates\\Models',
-        'Controlink\\Templates\\Versions\\VersionActivator',
-        'Controlink\\Templates\\Versions\\VersionState',
-        'Controlink\\Templates\\Types\\TypeCatalogue',
+        'Controlink\Templates\Http',
+        'Controlink\Templates\Models',
+        'Controlink\Templates\Versions\VersionActivator',
+        'Controlink\Templates\Versions\VersionState',
+        'Controlink\Templates\Types\TypeCatalogue',
     ];
 
     public function test_toolkit_and_pure_pipeline_do_not_import_state_or_catalogue(): void
@@ -32,7 +29,6 @@ class LibraryBoundaryTest extends TestCase
         $files = array_merge(
             $toolkit,
             glob($src.'/Output/Pdf/*.php') ?: [],
-            glob($src.'/Data/*.php') ?: [],
             [$src.'/Versions/CanonicalHash.php'],
         );
 
@@ -50,5 +46,18 @@ class LibraryBoundaryTest extends TestCase
         }
 
         $this->assertSame([], $offenders, implode(', ', $offenders));
+    }
+
+    public function test_the_host_owned_pieces_are_gone_from_src(): void
+    {
+        $src = realpath(__DIR__.'/../../src');
+
+        foreach (['Http', 'Data', 'Models/Template.php', 'Models/TemplateVersion.php', 'Models/Concerns/HasTemplatesConnection.php', 'Versions/VersionActivator.php'] as $gone) {
+            $this->assertFileDoesNotExist($src.'/'.$gone, "src/{$gone} must not exist.");
+        }
+
+        $this->assertFileExists($src.'/Models/Concerns/GuardsIssuableVersion.php');
+        $this->assertFileDoesNotExist(realpath(__DIR__.'/../..').'/routes');
+        $this->assertFileDoesNotExist(realpath(__DIR__.'/../..').'/database');
     }
 }

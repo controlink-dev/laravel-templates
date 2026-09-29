@@ -169,11 +169,11 @@
                     <div
                         data-tpl-editor
                         style="height: {{ $height }}"
-        data-load-url="{{ route('templates.versions.show', ['template' => $template->id, 'version' => $version->id]) }}"
-        data-save-url="{{ route('templates.versions.update', ['template' => $template->id, 'version' => $version->id]) }}"
-        data-preview-url="{{ route('templates.versions.preview', ['template' => $template->id, 'version' => $version->id]) }}"
-        data-activate-url="{{ route('templates.versions.activate', ['template' => $template->id, 'version' => $version->id]) }}"
-        data-catalogue-url="{{ route('templates.catalogue', ['type' => $template->type_code]) }}"
+        data-load-url="{{ $urls['load'] ?? '' }}"
+        data-save-url="{{ $urls['save'] ?? '' }}"
+        data-preview-url="{{ $urls['preview'] ?? '' }}"
+        data-activate-url="{{ $urls['activate'] ?? '' }}"
+        data-catalogue-url="{{ $urls['catalogue'] ?? '' }}"
 
         {{-- Served raw, not through the bundle, so the canvas and the PDF engine read
              the same bytes of the same stylesheet. --}}

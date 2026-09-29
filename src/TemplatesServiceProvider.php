@@ -17,7 +17,6 @@ use Controlink\Templates\Support\NullTenantResolver;
 use Controlink\Templates\Toolkit\Documents;
 use Controlink\Templates\Types\TypeCatalogue;
 use Illuminate\Support\Facades\Blade;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 class TemplatesServiceProvider extends ServiceProvider
@@ -46,7 +45,6 @@ class TemplatesServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'templates');
         $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'templates');
 
@@ -58,12 +56,5 @@ class TemplatesServiceProvider extends ServiceProvider
 
         // Structural validation only: no database access here (see spec, section 5).
         $this->app->make(TypeCatalogue::class)->validate();
-
-        if (config('templates.http.routes')) {
-            Route::middleware(config('templates.http.middleware'))
-                ->prefix(config('templates.http.prefix'))
-                ->name('templates.')
-                ->group(__DIR__.'/../routes/api.php');
-        }
     }
 }

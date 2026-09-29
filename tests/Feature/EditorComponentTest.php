@@ -3,12 +3,11 @@
 namespace Controlink\Templates\Tests\Feature;
 
 use Controlink\Templates\Contracts\TenantResolver;
-use Controlink\Templates\Models\Template;
-use Controlink\Templates\Models\TemplateVersion;
+use Controlink\Templates\Tests\Fixtures\Models\EditorTemplate;
+use Controlink\Templates\Tests\Fixtures\Models\GuardedVersion;
 use Controlink\Templates\Tests\TestCase;
 use Controlink\Templates\Versions\VersionState;
 use Controlink\Templates\View\Components\Editor;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Blade;
 use InvalidArgumentException;
 use RuntimeException;
@@ -25,8 +24,6 @@ use RuntimeException;
  */
 class EditorComponentTest extends TestCase
 {
-    use RefreshDatabase;
-
     /**
      * The hooks the pane behaviour hangs off. Each one is load-bearing: without the
      * root, every lookup would fall back to the document and find another editor's
@@ -95,7 +92,7 @@ class EditorComponentTest extends TestCase
     {
         [, $version] = $this->createTemplate();
 
-        $other = Template::create(['type_code' => 'invoice', 'name' => 'Outro modelo']);
+        $other = new EditorTemplate(['id' => 'other', 'type_code' => 'invoice']);
 
         $this->expectException(RuntimeException::class);
 
@@ -107,9 +104,9 @@ class EditorComponentTest extends TestCase
     {
         [$template, $version] = $this->createTemplate();
 
-        $version->forceFill(['state' => VersionState::Active])->save();
+        $version->forceFill(['state' => VersionState::Active]);
 
-        $html = $this->render($template, $version->fresh());
+        $html = $this->render($template, $version);
 
         $this->assertStringContainsString('data-editable="0"', $html);
         $this->assertStringNotContainsString('data-tpl-save', $html);
@@ -208,7 +205,7 @@ class EditorComponentTest extends TestCase
      */
     public function test_the_tenant_header_and_id_arrive_as_data_attributes(): void
     {
-        config(['templates.http.tenant_header' => 'X-License-Id']);
+        config(['templates.editor.tenant_header' => 'X-License-Id']);
 
         $this->app->bind(TenantResolver::class, fn () => new class implements TenantResolver
         {
@@ -236,7 +233,7 @@ class EditorComponentTest extends TestCase
         $this->assertStringContainsString('data-tenant="L1"', $html);
     }
 
-    private function render(Template $template, TemplateVersion $version): string
+    private function render(EditorTemplate $template, GuardedVersion $version): string
     {
         return Blade::render(
             '<x-templates::editor :template="$template" :version="$version" />',
@@ -244,17 +241,17 @@ class EditorComponentTest extends TestCase
         );
     }
 
-    /** @return array{0: Template, 1: TemplateVersion} */
+    /** @return array{0: EditorTemplate, 1: GuardedVersion} */
     private function createTemplate(): array
     {
-        $template = Template::create(['type_code' => 'invoice', 'name' => 'Fatura A4']);
+        $template = new EditorTemplate(['id' => 'tpl-1', 'type_code' => 'invoice', 'name' => 'Fatura A4']);
 
-        $version = $template->versions()->create([
-            'number'       => 1,
-            'state'        => VersionState::Draft,
-            'project_data' => ['pages' => []],
-            'html'         => '<div class="page"></div>',
-            'css'          => '',
+        $version = new GuardedVersion([
+            'template_id' => 'tpl-1',
+            'number'      => 1,
+            'state'       => VersionState::Draft,
+            'html'        => '<div class="page"></div>',
+            'css'         => '',
         ]);
 
         return [$template, $version];

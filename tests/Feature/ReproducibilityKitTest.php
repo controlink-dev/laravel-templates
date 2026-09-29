@@ -2,21 +2,20 @@
 
 namespace Controlink\Templates\Tests\Feature;
 
-use Controlink\Templates\Models\Template;
+use Controlink\Templates\Tests\Fixtures\Models\GuardedVersion;
 use Controlink\Templates\Tests\Feature\Concerns\BuildsPdfLayouts;
 use Controlink\Templates\Tests\TestCase;
 use Controlink\Templates\Testing\AssertsReproducibility;
 use Controlink\Templates\Types\TemplateType;
 use Controlink\Templates\Versions\VersionState;
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\Process\ExecutableFinder;
 
-/** Proves the conformance-kit against the package's own model and facade. */
+/** Proves the conformance-kit against a test-only guarded model and the facade. */
 class ReproducibilityKitTest extends TestCase
 {
     use AssertsReproducibility;
     use BuildsPdfLayouts;
-    use RefreshDatabase;
 
     private function fields(): array
     {
@@ -33,9 +32,20 @@ class ReproducibilityKitTest extends TestCase
     {
         foreach ([VersionState::Active, VersionState::Archived] as $state) {
             $this->assertVersionImmutableWhenIssuable(function () use ($state) {
-                $template = Template::create(['type_code' => 'invoice', 'name' => 'Fatura']);
+                Schema::dropIfExists('guarded_versions');
+                Schema::create('guarded_versions', function ($t): void {
+                    $t->id();
+                    $t->string('template_id')->nullable();
+                    $t->unsignedInteger('number')->default(1);
+                    $t->string('state');
+                    $t->json('project_data')->nullable();
+                    $t->text('html')->nullable();
+                    $t->text('css')->nullable();
+                    $t->string('hash')->nullable();
+                    $t->timestamps();
+                });
 
-                return $template->versions()->create([
+                return GuardedVersion::create([
                     'number' => 1, 'state' => $state, 'project_data' => ['pages' => []], 'html' => '<div class="page"></div>', 'css' => '',
                 ]);
             });

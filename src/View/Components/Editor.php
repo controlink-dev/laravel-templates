@@ -39,6 +39,7 @@ class Editor extends Component
      * @param  string  $height  any CSS length; the component fills its container's width
      * @param  bool  $actions  render the save/preview/activate bar, or leave it to the host page
      * @param  string  $mode  phase 1 supports only `print`
+     * @param  array<string, string>  $urls  the host's own endpoints (the package registers no routes): load, save, preview, activate, catalogue, stylesheet, font (with {family}/{weight})
      */
     public function __construct(
         public Model $template,
@@ -46,6 +47,7 @@ class Editor extends Component
         public string $height = '100%',
         public bool $actions = true,
         public string $mode = 'print',
+        public array $urls = [],
     ) {
         if ($this->mode !== 'print') {
             throw new \InvalidArgumentException("Unsupported editor mode [{$this->mode}]; phase 1 supports only 'print'.");
@@ -70,9 +72,8 @@ class Editor extends Component
      * The canvas loads each face by URL and the compositor embeds the same files as
      * data URIs; the same bytes on both sides is what makes a measured text width mean
      * anything. An absolute path (the package's own default font, which lives inside
-     * `vendor/`, outside the host's public directory) is served by the package's own
-     * `templates.font` route; a relative one is served straight from the host's public
-     * directory, the way the host's own assets are.
+     * `vendor/`, outside the host's public directory) is served by the host at `$urls['font']`;
+     * a relative one is served straight from the host's public directory, the way the host's own assets are.
      *
      * @return array{family: string, faces: array<int, array{weight: int, url: string, format: string}>}
      */
@@ -97,7 +98,7 @@ class Editor extends Component
                 // `DocumentComposer::fontFaces()` embeds, or the width it shows is a
                 // promise the PDF does not keep.
                 'url' => self::isAbsolutePath((string) $face['path'])
-                    ? route('templates.font', ['family' => $family, 'weight' => $weight]).'?v='.self::fontVersion((string) $face['path'])
+                    ? str_replace(['{family}', '{weight}'], [$family, (string) $weight], $this->urls['font'] ?? '').'?v='.self::fontVersion((string) $face['path'])
                     : asset($face['path']).'?v='.self::fontVersion((string) $face['path']),
                 'format' => (string) $face['format'],
             ];
@@ -301,7 +302,7 @@ class Editor extends Component
     /** Header the editor sends with the tenant id, or null when the host declares none. */
     public function tenantHeader(): ?string
     {
-        return config('templates.http.tenant_header');
+        return config('templates.editor.tenant_header');
     }
 
     public function tenantId(): ?string
@@ -330,7 +331,7 @@ class Editor extends Component
      */
     public function stylesheetUrl(): string
     {
-        return route('templates.stylesheet').'?v='.app(\Controlink\Templates\Output\Pdf\DocumentComposer::class)->printStylesheetVersion();
+        return ($this->urls['stylesheet'] ?? '').'?v='.app(\Controlink\Templates\Output\Pdf\DocumentComposer::class)->printStylesheetVersion();
     }
 
     /**
