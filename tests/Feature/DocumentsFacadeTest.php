@@ -97,4 +97,40 @@ class DocumentsFacadeTest extends TestCase
 
         $this->assertSame(['R-07'], array_column($problems, 'code'));
     }
+
+    public function test_render_for_activation_returns_pdf_hash_and_seconds(): void
+    {
+        $finder = new ExecutableFinder;
+
+        foreach (['pdfinfo', 'pdftotext', 'pdftoppm'] as $tool) {
+            if (! $finder->find($tool)) {
+                $this->markTestSkipped('poppler-utils not installed');
+            }
+        }
+
+        $result = app(Documents::class)->renderForActivation(
+            $this->validPdfLayout($this->type()),
+            ['documento.atcud' => 'JFT7-0000000001'],
+            $this->geometry(),
+            '',
+            $this->fields(),
+        );
+
+        $this->assertStringStartsWith('%PDF', $result['pdf']);
+        $this->assertSame(\Controlink\Templates\Output\Pdf\PdfHash::of($result['pdf']), $result['hash']);
+        $this->assertNotSame('', $result['hash']);
+        $this->assertIsFloat($result['seconds']);
+        $this->assertGreaterThan(0.0, $result['seconds']);
+    }
+
+    public function test_code_slot_boxes_are_produced_from_the_facade(): void
+    {
+        $fields = [['key' => 'documento.qr', 'label' => 'QR', 'type' => 'qr', 'mandatory' => true]];
+        $type   = TemplateType::fromConfig('x', ['bindings' => $fields]);
+
+        $boxes = app(Documents::class)->codeSlotBoxes($this->validPdfLayout($type), $fields, $this->geometry());
+
+        $this->assertArrayHasKey('documento.qr', $boxes);
+        $this->assertGreaterThan(0, $boxes['documento.qr']['width']);
+    }
 }

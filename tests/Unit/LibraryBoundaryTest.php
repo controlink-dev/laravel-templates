@@ -7,7 +7,10 @@ use PHPUnit\Framework\TestCase;
 /**
  * The stateless library must not know about state or the catalogue: the toolkit facade
  * and the pure pipeline behind it never import HTTP, Eloquent models, the version
- * lifecycle or the type catalogue.
+ * lifecycle or the type catalogue. `src/Data` is covered for the same imports but is NOT
+ * fully stateless: `DocumentGraph` reads `Contracts\TenantResolver` and `templates.*`
+ * config, `NodeFields` reads `Contracts\EncryptedFieldMap`, `TableColumns` reads the DB
+ * schema. Those are host-state dependencies, not imports of the forbidden symbols.
  */
 class LibraryBoundaryTest extends TestCase
 {
@@ -29,6 +32,7 @@ class LibraryBoundaryTest extends TestCase
         $files = array_merge(
             $toolkit,
             glob($src.'/Output/Pdf/*.php') ?: [],
+            glob($src.'/Data/*.php') ?: [],
             [$src.'/Versions/CanonicalHash.php'],
         );
 

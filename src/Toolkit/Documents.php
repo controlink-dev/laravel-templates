@@ -4,6 +4,7 @@ namespace Controlink\Templates\Toolkit;
 
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Output\Pdf\LayoutValidator;
+use Controlink\Templates\Output\Pdf\PdfHash;
 use Controlink\Templates\Output\Pdf\PdfRenderer;
 use Controlink\Templates\Output\Pdf\RenderValidator;
 use Controlink\Templates\Types\TemplateType;
@@ -46,10 +47,40 @@ final class Documents
      */
     public function render(array $layout, array $data, array $geometry = [], string $css = '', array $fields = []): string
     {
-        $type = $this->carrier($fields, $geometry);
-        $html = $this->composer->compose($layout['html'], $css !== '' ? $css : (string) ($layout['css'] ?? ''), $type, $data);
+        return $this->renderForActivation($layout, $data, $geometry, $css, $fields)['pdf'];
+    }
 
-        return $this->renderer->render($html, $type)['pdf'];
+    /**
+     * Render like `render()`, but also return the PDF hash and the render duration, which
+     * is what activation records and what `validateRender()` takes as `$seconds`.
+     *
+     * @param  array{project_data?: array<string, mixed>, html: string, css?: string}  $layout
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $geometry
+     * @param  list<array<string, mixed>>  $fields
+     * @return array{pdf: string, hash: string, seconds: float}
+     */
+    public function renderForActivation(array $layout, array $data, array $geometry = [], string $css = '', array $fields = []): array
+    {
+        $type  = $this->carrier($fields, $geometry);
+        $start = microtime(true);
+        $html  = $this->composer->compose($layout['html'], $css !== '' ? $css : (string) ($layout['css'] ?? ''), $type, $data);
+        $pdf   = $this->renderer->render($html, $type)['pdf'];
+
+        return ['pdf' => $pdf, 'hash' => PdfHash::of($pdf), 'seconds' => microtime(true) - $start];
+    }
+
+    /**
+     * The boxes of the layout's code slots, the last argument of `validateRender()`.
+     *
+     * @param  array{project_data: array<string, mixed>, html?: string, css?: string}  $layout
+     * @param  list<array<string, mixed>>  $fields
+     * @param  array<string, mixed>  $geometry
+     * @return array<string, array{left: float, top: float, width: float, height: float, attributes: array<string, string>}>
+     */
+    public function codeSlotBoxes(array $layout, array $fields, array $geometry = []): array
+    {
+        return $this->layoutValidator->codeSlotBoxes($layout['project_data'], $this->carrier($fields, $geometry));
     }
 
     /**
