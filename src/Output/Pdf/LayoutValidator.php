@@ -392,8 +392,10 @@ class LayoutValidator
         }
 
         // V-16: a value required on every page cannot come from the body, which flows
-        // and does not repeat.
+        // and does not repeat. A roll is one continuous page: there are no other pages
+        // to miss, so the requirement is trivially met wherever the field sits.
         if (($binding['scope'] ?? null) === 'every_page'
+            && PageGeometry::fromType($type->pdf)->medium !== 'roll'
             && ! in_array($field['zone'], self::ABSOLUTE_ZONES, true)) {
             $problems[] = $this->problem('V-16', $field, 'scope', $label);
         }

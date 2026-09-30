@@ -379,6 +379,32 @@ class LayoutValidatorTest extends TestCase
         $this->assertHasProblem('V-16', $layout);
     }
 
+    public function test_v16_is_skipped_on_a_roll_but_kept_on_a_sheet(): void
+    {
+        $layout = $this->layoutWith(
+            'documento.atcud',
+            fn (array $block): array => [...$block, 'zone' => 'body'],
+        );
+
+        $base = Templates::type(self::TYPE_CODE);
+        $roll = new TemplateType(
+            $base->code, $base->label, $base->output, $base->seeded, $base->layoutRevision,
+            $base->bindings, $base->nodes, $base->fixture, $base->fixtureRepeats,
+            $base->initialLayout,
+            ['medium' => 'roll', 'width_mm' => 80, 'fit' => 'measure', 'max_height_mm' => 4000,
+                'margins' => ['top' => 3, 'right' => 3, 'bottom' => 3, 'left' => 3]],
+            [],
+        );
+
+        $validate = fn (TemplateType $type): array => array_column(
+            app(LayoutValidator::class)->validate($layout['project_data'], $type, $layout['html'], $layout['css']),
+            'code',
+        );
+
+        $this->assertNotContains('V-16', $validate($roll));
+        $this->assertContains('V-16', $validate($base));
+    }
+
     /* -----------------------------------------------------------------------
      * The shape the caller depends on
      *
