@@ -191,6 +191,9 @@
              renders differently. --}}
         data-font-faces="{{ json_encode($typeface['faces']) }}"
         data-paper-format="{{ $type->pdf['paper_format'] ?? 'A4' }}"
+        data-formats="{{ json_encode($pageFormats()) }}"
+        data-geometry="{{ $geometry() ? json_encode($geometry()) : '' }}"
+        data-locked="{{ $locked() ? '1' : '' }}"
         data-margins="{{ json_encode($type->pdf['margins'] ?? []) }}"
         data-editable="{{ $readOnly ? '0' : '1' }}"
         data-initial-html="{{ $version->html ?? '<div class=&quot;page&quot;></div>' }}"

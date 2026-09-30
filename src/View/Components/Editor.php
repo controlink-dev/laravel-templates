@@ -406,6 +406,35 @@ class Editor extends Component
         ];
     }
 
+    /**
+     * The page formats the editor offers, from `config('templates.page_formats')`.
+     * Falls back to a single A4 sheet so the editor works without any configuration.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function pageFormats(): array
+    {
+        $formats = array_values((array) config('templates.page_formats', []));
+
+        return $formats !== []
+            ? $formats
+            : [['id' => 'A4', 'label' => 'A4', 'medium' => 'sheet', 'paper_format' => 'A4']];
+    }
+
+    /** The current version's geometry, or null when it has none. */
+    public function geometry(): ?array
+    {
+        $geometry = $this->version->geometry ?? null;
+
+        return is_array($geometry) && $geometry !== [] ? $geometry : null;
+    }
+
+    /** Whether the version can no longer be edited. */
+    public function locked(): bool
+    {
+        return ! $this->version->isEditable();
+    }
+
     public function render(): View|Closure|string
     {
         return view('templates::components.editor');
