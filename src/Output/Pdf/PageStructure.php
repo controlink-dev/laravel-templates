@@ -2,6 +2,7 @@
 
 namespace Controlink\Templates\Output\Pdf;
 
+use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
 use DOMDocument;
 use DOMElement;
@@ -44,6 +45,21 @@ class PageStructure
         $zones = $this->zonesOf($editorHtml);
         $table = $this->tableIn($zones['body']);
 
+        // A roll is one continuous page: every row, no repeated header or footer.
+        if (PageGeometry::fromType($type->pdf)->medium === 'roll') {
+            $rows = $table !== null && $table['collection'] !== ''
+                ? ($dataset[$table['collection']] ?? [])
+                : [];
+
+            return [
+                'pages' => [[
+                    'template' => $this->pageTemplate($zones, $table, withTrailingBlocks: true),
+                    'dataset'  => $this->datasetFor($dataset, $table, is_array($rows) ? $rows : [], 1, 1),
+                ]],
+                'css' => $this->css($type),
+            ];
+        }
+
         $chunks = $this->chunkRows($table, $type, $dataset);
         $total  = count($chunks);
 
@@ -74,7 +90,14 @@ class PageStructure
         $margins = $type->pdf['margins'] ?? [];
         $zones   = $type->initialLayout['zones'] ?? [];
 
-        $bodyHeight = 297.0
+        $sheetHeight = PageGeometry::fromType($type->pdf)->sheetSizeMm()['height'];
+
+        // A roll has no page to fill: rows never paginate.
+        if (is_infinite($sheetHeight)) {
+            return PHP_INT_MAX;
+        }
+
+        $bodyHeight = $sheetHeight
             - (float) ($margins['top'] ?? 15)
             - (float) ($margins['bottom'] ?? 15)
             - (float) ($zones['header_height'] ?? 35)

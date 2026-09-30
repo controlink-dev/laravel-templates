@@ -127,6 +127,37 @@ class RenderedPdf
     }
 
     /**
+     * Where the content of page 1 ends, in millimetres from the top: the last raster
+     * row holding any non-white pixel. Measured on pixels rather than by running script
+     * in the document, which the composed document is not allowed to contain.
+     */
+    public function contentHeightMm(int $dpi = 72): float
+    {
+        $image = imagecreatefromstring($this->rasterOf(1, $dpi));
+
+        if ($image === false) {
+            throw new RuntimeException('The rasterised page could not be read for measuring.');
+        }
+
+        $width = imagesx($image);
+        $last  = 0;
+
+        for ($y = imagesy($image) - 1; $y >= 0 && $last === 0; $y--) {
+            for ($x = 0; $x < $width; $x++) {
+                // Greyscale raster: the red channel is the grey level.
+                if ((imagecolorat($image, $x, $y) & 0xFF) < 250) {
+                    $last = $y + 1;
+                    break;
+                }
+            }
+        }
+
+        imagedestroy($image);
+
+        return $last / ($dpi / 25.4);
+    }
+
+    /**
      * @param  array{left: float, top: float, width: float, height: float}  $boxMm
      */
     private function crop(string $png, array $boxMm, int $dpi): string

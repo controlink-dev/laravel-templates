@@ -5,6 +5,7 @@ namespace Controlink\Templates\Output\Pdf;
 use Controlink\Templates\Codes\CodeImageGenerator;
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
 use Controlink\Templates\Rendering\TemplateRenderer;
+use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
 use Illuminate\Support\Facades\File;
 use RuntimeException;
@@ -84,9 +85,27 @@ class DocumentComposer
             .'<style>'.$this->fontFaces().'</style>'
             .'<style>'.$this->printStylesheet().'</style>'
             .'<style>'.$this->pageVariables($type).'</style>'
+            .'<style>'.$this->geometryStyles(PageGeometry::fromType($type->pdf)).'</style>'
             .'<style>'.$css.'</style>'
             .'<style>'.$structure['css'].'</style>'
             .'</head><body>'.$body.'</body></html>';
+    }
+
+    /**
+     * The page geometry as a CSS override, emitted after print.css so it wins by
+     * cascade. Sheets restate the named format; rolls set width and auto height.
+     */
+    public function geometryStyles(PageGeometry $g): string
+    {
+        if ($g->medium === 'roll') {
+            // Provisional height: PdfRenderer re-emits the measured one.
+            $height = $g->maxHeightMm ?: 4000.0;
+
+            return '@page{size: '.$g->widthMm.'mm '.$height.'mm;margin:0}'
+                .'.page{width: '.$g->widthMm.'mm;height: auto;overflow: visible}';
+        }
+
+        return '@page{size: '.$g->paperFormat.';margin:0}';
     }
 
     /**
