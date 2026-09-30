@@ -264,6 +264,7 @@ class Editor extends Component
             'rendering'      => __('templates::editor.editor.rendering'),
             'unsaved'        => __('templates::editor.editor.unsaved'),
             'unsavedWarning' => __('templates::editor.editor.unsaved_warning'),
+            'formatSwitchConfirm' => __('templates::editor.editor.format_switch_confirm'),
             'loadFailed'     => __('templates::editor.errors.load_failed'),
             'saveFailed'     => __('templates::editor.errors.save_failed'),
             'previewFailed'  => __('templates::editor.errors.render_failed'),

@@ -261,6 +261,11 @@ async function mountEditor(el) {
     let savedSnapshot = null;
     let dirty = false;
 
+    // The canvas as the editor itself last laid it out (the type's default, or a format's
+    // starting layout). While the canvas still equals it there is no work to lose; null
+    // means a saved version was loaded, which always counts as content.
+    let pristineSnapshot = null;
+
     /*
      * Coalesced, not merely guarded.
      *
@@ -318,7 +323,7 @@ async function mountEditor(el) {
     };
 
     editor.on('load', async () => {
-        await loadVersion(editor, config);
+        const loadedSaved = await loadVersion(editor, config);
         await editor.Canvas.getDocument().fonts.ready;
 
         // The document is in place: the chrome can measure it now.
@@ -335,6 +340,7 @@ async function mountEditor(el) {
          * is how a warning stops being read.
          */
         savedSnapshot = snapshot(editor);
+        pristineSnapshot = loadedSaved ? null : savedSnapshot;
         dirty = false;
         announce(false);
 
@@ -519,7 +525,7 @@ function resolvePaper(geometry, fallbackFormat) {
 
 /** The geometry a format entry stands for, without the entry's own id and label. */
 function geometryOf(format) {
-    const { id, label, ...geometry } = format ?? {};
+    const { id, label, initial_layout, ...geometry } = format ?? {};
 
     return geometry;
 }
@@ -888,6 +894,29 @@ function wireChrome(editor, config, chrome, paper) {
         drawRulers();
     };
 
+    /*
+     * A format can carry its own starting layout (a roll is a single column, not the A4
+     * sheet clipped). Loading it replaces the canvas the way the first open does: the
+     * page variables first, then the layout's own rules, then its markup, then the same
+     * identity and locking a freshly parsed document gets.
+     */
+    const loadLayout = (layout) => {
+        editor.Css.clear();
+        editor.Css.addRules(pageVariables(config));
+
+        if (layout.css) {
+            editor.Css.addRules(layout.css);
+        }
+
+        editor.setComponents(layout.html);
+        applyZoneIdentity(editor, config);
+        lockLegalFields(editor);
+
+        // What is on the canvas now is a starting point again, not work.
+        pristineSnapshot = snapshot(editor);
+        refreshChecks();
+    };
+
     const formatSelect = chrome.toolbar?.querySelector('[data-tpl-format]');
 
     if (formatSelect) {
@@ -916,6 +945,24 @@ function wireChrome(editor, config, chrome, paper) {
 
             if (!chosen) {
                 return;
+            }
+
+            const layout = chosen.initial_layout;
+            const hasLayout = layout && typeof layout.html === 'string' && layout.html !== '';
+
+            if (hasLayout && config.editable && !config.locked) {
+                const hasContent = pristineSnapshot === null || snapshot(editor) !== pristineSnapshot;
+
+                if (hasContent && !window.confirm(config.strings.formatSwitchConfirm
+                    || 'Trocar de formato substitui o layout atual. Continuar?')) {
+                    // Declined: keep the layout, change only the geometry.
+                    config.geometry = geometryOf(chosen);
+                    applyPaper(config.geometry);
+
+                    return;
+                }
+
+                loadLayout(layout);
             }
 
             config.geometry = geometryOf(chosen);
@@ -1663,11 +1710,12 @@ async function loadVersion(editor, config) {
     if (!response.ok) {
         renderStatus(config.strings.loadFailed, config.root);
 
-        return;
+        return false;
     }
 
     const payload = await response.json();
     const projectData = payload.data?.project_data;
+    let loadedSaved = false;
 
     // An empty layout means a version that has never been saved: what is already on
     // the canvas came from the document type's initial layout, and loading nothing
@@ -1680,7 +1728,10 @@ async function loadVersion(editor, config) {
         // while the wrapper did not yet exist.
         applyZoneIdentity(editor, config);
         lockLegalFields(editor);
+        loadedSaved = true;
     }
+
+    return loadedSaved;
 }
 
 async function saveVersion(editor, config) {

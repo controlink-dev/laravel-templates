@@ -78,6 +78,7 @@ return [
         'rendering'       => 'A gerar a pré-visualização…',
         'unsaved'         => 'Alterações não gravadas',
         'unsaved_warning' => 'Tem alterações não gravadas neste modelo. Se sair agora, perde-as.',
+        'format_switch_confirm' => 'Trocar de formato substitui o layout atual. Continuar?',
         'version'         => 'Versão :number',
         'document_type'   => 'Tipo de documento',
         'open_full_page'  => 'Abrir em página inteira',

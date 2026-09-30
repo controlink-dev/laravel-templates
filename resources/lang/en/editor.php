@@ -78,6 +78,7 @@ return [
         'rendering'       => 'Generating the preview…',
         'unsaved'         => 'Unsaved changes',
         'unsaved_warning' => 'You have unsaved changes in this template. Leaving now discards them.',
+        'format_switch_confirm' => 'Switching format replaces the current layout. Continue?',
         'version'         => 'Version :number',
         'document_type'   => 'Document type',
         'open_full_page'  => 'Open in a full page',
