@@ -107,10 +107,12 @@ async function mountEditor(el) {
     };
 
     // The sheet's own size, which the canvas document and the chrome both need.
-    const paper = PAPER_SIZES[config.paperFormat] ?? PAPER_SIZES.A4;
+    // A mutable object on purpose: a format change rewrites it in place, and the
+    // rulers, the zoom-fit and the canvas all read it.
+    const paper = { ...resolvePaper(config.geometry, config.paperFormat) };
 
-    root.style.setProperty('--tpl-paper-width', paper.width + 'mm');
-    root.style.setProperty('--tpl-paper-height', paper.height + 'mm');
+    config.paper = paper;
+    applyPaperVars(root, paper);
 
     /*
      * The tenant colour has to be handed to the canvas explicitly: the iframe is a
@@ -495,6 +497,58 @@ const PAPER_SIZES = {
 };
 
 /**
+ * The fixed canvas height of a roll (talão), in millimetres.
+ *
+ * A roll has no fixed height: it is measured when the document is rendered. The
+ * canvas, though, needs a sheet to lay out on, so a roll is edited on a strip of the
+ * roll's own width and this generous height.
+ */
+const ROLL_CANVAS_HEIGHT = 297;
+
+/** The formats offered when the host declares none: the A4 sheet, as ever. */
+const DEFAULT_PAGE_FORMATS = [{ id: 'A4', label: 'A4', medium: 'sheet', paper_format: 'A4' }];
+
+/** @returns {{width: number, height: number}} the canvas paper a geometry stands for. */
+function resolvePaper(geometry, fallbackFormat) {
+    if (geometry?.medium === 'roll' && Number(geometry.width_mm) > 0) {
+        return { width: Number(geometry.width_mm), height: ROLL_CANVAS_HEIGHT };
+    }
+
+    return PAPER_SIZES[geometry?.paper_format ?? fallbackFormat] ?? PAPER_SIZES.A4;
+}
+
+/** The geometry a format entry stands for, without the entry's own id and label. */
+function geometryOf(format) {
+    const { id, label, ...geometry } = format ?? {};
+
+    return geometry;
+}
+
+function sameGeometry(a, b) {
+    if (!a || !b || a.medium !== b.medium) {
+        return false;
+    }
+
+    return a.medium === 'roll'
+        ? Number(a.width_mm) === Number(b.width_mm)
+        : (a.paper_format ?? 'A4') === (b.paper_format ?? 'A4');
+}
+
+function applyPaperVars(root, paper) {
+    root.style.setProperty('--tpl-paper-width', paper.width + 'mm');
+    root.style.setProperty('--tpl-paper-height', paper.height + 'mm');
+}
+
+/** Parse a JSON data attribute, falling back to a default on absence or garbage. */
+function parseJson(value, fallback) {
+    try {
+        return value ? JSON.parse(value) : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+/**
  * The decorations drawn on the sheet while it is being edited.
  *
  * Delivered through `canvasCss` rather than living in `editor.css`, and that is a
@@ -805,6 +859,69 @@ function wireChrome(editor, config, chrome, paper) {
     chrome.toolbar?.querySelectorAll('[data-tpl-command]').forEach((button) => {
         button.addEventListener('click', () => commands[button.dataset.tplCommand]?.());
     });
+
+    /* ------------------------------------------------------------ page format */
+
+    /**
+     * Put the canvas on the paper of a geometry: the CSS variables, the canvas body,
+     * the mount's size and the rulers. The one path both the initial mount and a
+     * format change take.
+     */
+    const applyPaper = (geometry) => {
+        Object.assign(paper, resolvePaper(geometry, config.paperFormat));
+        applyPaperVars(root, paper);
+
+        const body = editor.Canvas.getBody?.();
+
+        if (body) {
+            body.style.width = paper.width + 'mm';
+            body.style.height = paper.height + 'mm';
+            body.style.minHeight = paper.height + 'mm';
+        }
+
+        if (userChoseZoom) {
+            setZoom(editor.Canvas.getZoom() || 100);
+        } else {
+            fitZoom();
+        }
+
+        drawRulers();
+    };
+
+    const formatSelect = chrome.toolbar?.querySelector('[data-tpl-format]');
+
+    if (formatSelect) {
+        const formats = config.pageFormats;
+        const current = formats.find((format) => sameGeometry(geometryOf(format), config.geometry))
+            ?? formats[0];
+
+        // Nothing declared by the version: it is, and stays, the first format offered.
+        config.geometry = config.geometry ?? geometryOf(current);
+
+        formatSelect.replaceChildren(...formats.map((format) => {
+            const option = document.createElement('option');
+
+            option.value = format.id;
+            option.textContent = format.label ?? format.id;
+
+            return option;
+        }));
+        formatSelect.value = current.id;
+        formatSelect.disabled = config.locked || !config.editable;
+        // A single offer is no choice: leave the control out.
+        formatSelect.closest('.tpl-tools')?.toggleAttribute('hidden', formats.length < 2);
+
+        formatSelect.addEventListener('change', () => {
+            const chosen = formats.find((format) => format.id === formatSelect.value);
+
+            if (!chosen) {
+                return;
+            }
+
+            config.geometry = geometryOf(chosen);
+            applyPaper(config.geometry);
+        });
+    }
 
     /* ------------------------------------------------------------------- tabs */
 
@@ -1124,6 +1241,7 @@ function wireChrome(editor, config, chrome, paper) {
      * registration is guesswork; ordering by the caller is not.
      */
     const attach = () => {
+        applyPaper(config.geometry);
         applyViews();
         renderSelection();
         refreshLayers();
@@ -1301,6 +1419,19 @@ function readConfig(el) {
         fontFamily: el.dataset.fontFamily,
         fontFaces: JSON.parse(el.dataset.fontFaces || '[]'),
         paperFormat: el.dataset.paperFormat,
+        // Not `formats`: the catalogue's field formats already own that name.
+        pageFormats: (() => {
+            const list = parseJson(el.dataset.formats, []);
+
+            return Array.isArray(list) && list.length > 0 ? list : DEFAULT_PAGE_FORMATS;
+        })(),
+        // The version's geometry as the host stored it; null means "the default".
+        geometry: (() => {
+            const value = parseJson(el.dataset.geometry, null);
+
+            return value && typeof value === 'object' && !Array.isArray(value) && value.medium ? value : null;
+        })(),
+        locked: el.dataset.locked === '1' || el.dataset.locked === 'true',
         margins: JSON.parse(el.dataset.margins || '{}'),
         editable: el.dataset.editable === '1',
         initialHtml: el.dataset.initialHtml || '<div class="page"></div>',
@@ -1391,7 +1522,7 @@ function reparentToZone(editor, config, component) {
     const marginTop = Number(config.margins?.top ?? 15);
     const header = Number(zones.header_height ?? 0);
     const footer = Number(zones.footer_height ?? 0);
-    const pageHeight = (PAPER_SIZES[config.paperFormat] ?? PAPER_SIZES.A4).height;
+    const pageHeight = (config.paper ?? PAPER_SIZES[config.paperFormat] ?? PAPER_SIZES.A4).height;
     const bodyHeight = pageHeight - marginTop - Number(config.margins?.bottom ?? 15) - header - footer;
 
     // Where the block's top edge is, in millimetres from the top of the printable area.
@@ -1560,6 +1691,8 @@ async function saveVersion(editor, config) {
             project_data: editor.getProjectData(),
             html: editor.getHtml(),
             css: editor.getCss(),
+            // The page format picked in the toolbar; the host persists it.
+            geometry: config.geometry ?? null,
         }),
     });
 

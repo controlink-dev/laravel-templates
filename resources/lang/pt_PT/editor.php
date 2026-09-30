@@ -93,6 +93,7 @@ return [
         'zoom_out'       => 'Reduzir',
         'zoom_in'        => 'Ampliar',
         'fit'            => 'Ajustar à janela',
+        'page_format'    => 'Formato da página',
         'legal_fields'   => 'Campos legais',
         'legal_hint'     => 'Marca os campos obrigatórios por lei enquanto confere o layout.',
         'zones'          => 'Zonas',

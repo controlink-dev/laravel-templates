@@ -91,6 +91,13 @@
             </button>
         </div>
 
+        {{-- The page format, filled by the editor script from `data-formats` and
+             `data-geometry`. --}}
+        <div class="tpl-tools">
+            <select class="tpl-tool tpl-tool--format" data-tpl-format
+                    aria-label="{{ __('templates::editor.chrome.page_format') }}"></select>
+        </div>
+
         {{-- Three ways of looking at the same sheet. Each is a class on the root, so
              none of it can reach the PDF. --}}
         <div class="tpl-tools">

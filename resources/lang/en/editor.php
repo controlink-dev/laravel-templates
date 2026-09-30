@@ -90,6 +90,7 @@ return [
         'zoom_out'       => 'Zoom out',
         'zoom_in'        => 'Zoom in',
         'fit'            => 'Fit to window',
+        'page_format'    => 'Page format',
         'legal_fields'   => 'Legal fields',
         'legal_hint'     => 'Marks the fields required by law while you check the layout.',
         'zones'          => 'Zones',
