@@ -204,7 +204,11 @@ async function mountEditor(el) {
     registerComponents(editor, config);
     registerTableAndSlot(editor, config);
 
-    const chromeApi = wireChrome(editor, config, chrome, paper);
+    // Declared before the chrome is wired and filled in below: the format selector lives in
+    // `wireChrome`, a different scope from the load/dirty tracking.
+    const layoutState = { pristine: null, refresh: () => {} };
+
+    const chromeApi = wireChrome(editor, config, chrome, paper, layoutState);
 
     /*
      * With the panels off, GrapesJS's "view code" button is gone with them — which
@@ -264,7 +268,8 @@ async function mountEditor(el) {
     // The canvas as the editor itself last laid it out (the type's default, or a format's
     // starting layout). While the canvas still equals it there is no work to lose; null
     // means a saved version was loaded, which always counts as content.
-    let pristineSnapshot = null;
+    // Shared with `wireChrome`, whose format selector reads and resets it.
+    layoutState.pristine = null;
 
     /*
      * Coalesced, not merely guarded.
@@ -322,6 +327,8 @@ async function mountEditor(el) {
         }, 50);
     };
 
+    layoutState.refresh = refreshChecks;
+
     editor.on('load', async () => {
         const loadedSaved = await loadVersion(editor, config);
         await editor.Canvas.getDocument().fonts.ready;
@@ -340,7 +347,7 @@ async function mountEditor(el) {
          * is how a warning stops being read.
          */
         savedSnapshot = snapshot(editor);
-        pristineSnapshot = loadedSaved ? null : savedSnapshot;
+        layoutState.pristine = loadedSaved ? null : savedSnapshot;
         dirty = false;
         announce(false);
 
@@ -712,7 +719,7 @@ function canvasDecorations(paper) {
  *
  * @returns {{sync: function(number): void}} what the save and check cycle calls back
  */
-function wireChrome(editor, config, chrome, paper) {
+function wireChrome(editor, config, chrome, paper, layoutState) {
     const root = config.root;
 
     const views = { legal: false, zones: true, rulers: true, clean: false };
@@ -913,8 +920,8 @@ function wireChrome(editor, config, chrome, paper) {
         lockLegalFields(editor);
 
         // What is on the canvas now is a starting point again, not work.
-        pristineSnapshot = snapshot(editor);
-        refreshChecks();
+        layoutState.pristine = snapshot(editor);
+        layoutState.refresh();
     };
 
     const formatSelect = chrome.toolbar?.querySelector('[data-tpl-format]');
@@ -951,7 +958,7 @@ function wireChrome(editor, config, chrome, paper) {
             const hasLayout = layout && typeof layout.html === 'string' && layout.html !== '';
 
             if (hasLayout && config.editable && !config.locked) {
-                const hasContent = pristineSnapshot === null || snapshot(editor) !== pristineSnapshot;
+                const hasContent = layoutState.pristine === null || snapshot(editor) !== layoutState.pristine;
 
                 if (hasContent && !window.confirm(config.strings.formatSwitchConfirm
                     || 'Trocar de formato substitui o layout atual. Continuar?')) {
