@@ -293,6 +293,7 @@ return [
         'value_missing'       => 'O valor de «:field» não aparece no PDF gerado.',
         'missing_on_page'     => 'Página :page: «:field» tem de aparecer em todas as páginas e falta nesta.',
         'outside_printable'   => 'Página :page: «:field» saiu fora da área imprimível.',
+        'page_size_mismatch'  => 'O PDF gerado tem :actual mas o modelo pede :expected.',
         'code_unreadable'     => 'O código «:field» não foi possível ler no PDF gerado.',
         'code_mismatch'       => 'Página :page: o código «:field» lê um conteúdo diferente do esperado.',
         'code_reader_missing' => 'Não é possível verificar o código «:field»: falta a biblioteca de leitura de QR nesta instalação.',

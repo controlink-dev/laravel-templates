@@ -283,6 +283,7 @@ return [
         'value_missing'       => 'The value of ":field" does not appear in the generated PDF.',
         'missing_on_page'     => 'Page :page: ":field" has to appear on every page and is missing from this one.',
         'outside_printable'   => 'Page :page: ":field" fell outside the printable area.',
+        'page_size_mismatch'  => 'The generated PDF is :actual but the template asks for :expected.',
         'code_unreadable'     => 'The ":field" code could not be read from the generated PDF.',
         'code_mismatch'       => 'Page :page: the ":field" code reads different content from the expected one.',
         'code_reader_missing' => 'The ":field" code cannot be checked: the QR reading library is missing from this installation.',

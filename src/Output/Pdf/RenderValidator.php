@@ -4,6 +4,7 @@ namespace Controlink\Templates\Output\Pdf;
 
 use Controlink\Templates\Codes\CodePayload;
 use Controlink\Templates\Rendering\TemplateRenderer;
+use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
 use Throwable;
 
@@ -45,6 +46,7 @@ class RenderValidator
 
         return RenderedPdf::open($pdf, function (RenderedPdf $rendered) use ($type, $dataset, $problems, $codeSlotBoxes): array {
             $problems = array_merge($problems, $this->checkPageCount($rendered, $type));
+            $problems = array_merge($problems, $this->checkPageSize($rendered, PageGeometry::fromType($type->pdf)));
 
             foreach ($type->bindings as $binding) {
                 $problems = array_merge(
@@ -84,6 +86,45 @@ class RenderValidator
             'seconds' => number_format($seconds, 1),
             'limit'   => number_format($limit, 1),
         ])];
+    }
+
+    /**
+     * R-08: the page the engine produced has to be the page the geometry asked for.
+     *
+     * A sheet is checked on both sides; a roll on its width only, since its height is
+     * whatever the content measured.
+     *
+     * @return array<int, array{code: string, page: int|null, message: string}>
+     */
+    private function checkPageSize(RenderedPdf $rendered, PageGeometry $geometry): array
+    {
+        $tolerance = (float) config('templates.geometry_tolerance_mm', 0.5);
+        $expected  = $this->expectedPageSize($geometry);
+        $actual    = $rendered->pageSizeMm();
+
+        $wrong = abs($actual['width'] - $expected['width']) > $tolerance
+            || ($expected['height'] !== null && abs($actual['height'] - $expected['height']) > $tolerance);
+
+        if (! $wrong) {
+            return [];
+        }
+
+        return [$this->problem('R-08', null, 'page_size_mismatch', [
+            'actual'   => round($actual['width']).' x '.round($actual['height']).' mm',
+            'expected' => round($expected['width']).' x '.($expected['height'] === null ? '...' : round($expected['height'])).' mm',
+        ])];
+    }
+
+    /**
+     * The page the geometry asks for, in millimetres; a roll has no fixed height (null).
+     *
+     * @return array{width: float, height: float|null}
+     */
+    private function expectedPageSize(PageGeometry $geometry): array
+    {
+        $size = $geometry->sheetSizeMm();
+
+        return ['width' => $size['width'], 'height' => is_infinite($size['height']) ? null : $size['height']];
     }
 
     /**
@@ -202,15 +243,19 @@ class RenderValidator
         $margins   = $type->pdf['margins'] ?? [];
         $tolerance = (float) config('templates.geometry_tolerance_mm', 0.5);
 
-        $left   = (float) ($margins['left'] ?? 15);
-        $top    = (float) ($margins['top'] ?? 15);
-        $right  = 210.0 - (float) ($margins['right'] ?? 15);
-        $bottom = 297.0 - (float) ($margins['bottom'] ?? 15);
+        $size = $this->expectedPageSize(PageGeometry::fromType($type->pdf));
+
+        $left  = (float) ($margins['left'] ?? 15);
+        $top   = (float) ($margins['top'] ?? 15);
+        $right = $size['width'] - (float) ($margins['right'] ?? 15);
+
+        // A roll is as tall as its content: there is no bottom to fall off.
+        $bottom = $size['height'] === null ? null : $size['height'] - (float) ($margins['bottom'] ?? 15);
 
         $outside = $box['left'] < $left - $tolerance
             || $box['top'] < $top - $tolerance
             || $box['right'] > $right + $tolerance
-            || $box['bottom'] > $bottom + $tolerance;
+            || ($bottom !== null && $box['bottom'] > $bottom + $tolerance);
 
         return $outside
             ? [$this->problem('R-04', $page, 'outside_printable', ['field' => $binding['label']])]

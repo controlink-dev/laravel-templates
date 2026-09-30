@@ -72,6 +72,22 @@ class RenderedPdf
     }
 
     /**
+     * The size of the first page in millimetres, as `pdfinfo` reports it (points).
+     *
+     * @return array{width: float, height: float}
+     */
+    public function pageSizeMm(): array
+    {
+        $output = $this->run(['pdfinfo', $this->path], 'pdfinfo');
+
+        if (preg_match('/^Page size:\s+([\d.]+)\s+x\s+([\d.]+)\s+pts/m', $output, $m) !== 1) {
+            throw new RuntimeException('The rendered PDF does not report a page size.');
+        }
+
+        return ['width' => (float) $m[1] * 25.4 / 72, 'height' => (float) $m[2] * 25.4 / 72];
+    }
+
+    /**
      * Every word on a page, with its box in millimetres from the top left.
      *
      * Millimetres because that is the unit the layout, the limits and the whole of this

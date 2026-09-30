@@ -4,6 +4,7 @@ namespace Controlink\Templates\Output\Pdf;
 
 use Controlink\Templates\Contracts\BindingResolver;
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
+use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
 
 /**
@@ -586,10 +587,9 @@ class LayoutValidator
      */
     private function pageSize(TemplateType $type): array
     {
-        return match ($type->pdf['paper_format'] ?? 'A4') {
-            'A5'    => ['width' => 148.0, 'height' => 210.0],
-            default => ['width' => 210.0, 'height' => 297.0],
-        };
+        // A roll has its width and no fixed height (INF): nothing can run past a bottom
+        // that does not exist.
+        return PageGeometry::fromType($type->pdf)->sheetSizeMm();
     }
 
     /**
