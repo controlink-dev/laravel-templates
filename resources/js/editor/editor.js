@@ -974,6 +974,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
 
             config.geometry = geometryOf(chosen);
             applyPaper(config.geometry);
+            // The rules depend on the geometry (V-16 is skipped for a roll): re-check.
+            layoutState.refresh();
         });
     }
 

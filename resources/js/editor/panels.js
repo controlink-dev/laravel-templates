@@ -248,8 +248,9 @@ export function checkLegalFieldsLocally(editor, config) {
         }
 
         // `every_page` cannot be satisfied from the body: the body flows and does
-        // not repeat (spec 6.3).
-        if (binding.scope === 'every_page' && !isInRepeatingZone(component)) {
+        // not repeat (spec 6.3). A roll is a single page, so it satisfies `every_page`
+        // wherever the field sits (the server skips V-16 for a roll the same way).
+        if (config.geometry?.medium !== 'roll' && binding.scope === 'every_page' && !isInRepeatingZone(component)) {
             problems.push({
                 code: 'V-16',
                 componentId: id,
