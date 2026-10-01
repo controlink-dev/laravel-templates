@@ -4,7 +4,7 @@ namespace Controlink\Templates\Types;
 
 final class TemplateType
 {
-    public const OUTPUTS       = ['pdf'];
+    public const OUTPUTS       = ['pdf', 'html'];
     public const BINDING_TYPES = ['text', 'number', 'date', 'money', 'collection', 'image', 'qr', 'barcode'];
     public const SCOPES        = ['any_page', 'every_page'];
 

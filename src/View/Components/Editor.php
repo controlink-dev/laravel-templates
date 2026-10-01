@@ -417,6 +417,18 @@ class Editor extends Component
     {
         $formats = array_values((array) config('templates.page_formats', []));
 
+        // A type offers only the formats it allows (per-type allow-list); a type that
+        // declares none falls back to the whole registry.
+        $allowed = config('templates.types.'.$this->template->type_code.'.formats');
+
+        if (is_array($allowed) && $allowed !== []) {
+            $allowed  = array_map('strval', $allowed);
+            $formats  = array_values(array_filter(
+                $formats,
+                static fn (array $format): bool => in_array((string) $format['id'], $allowed, true),
+            ));
+        }
+
         return $formats !== []
             ? $formats
             : [['id' => 'A4', 'label' => 'A4', 'medium' => 'sheet', 'paper_format' => 'A4']];

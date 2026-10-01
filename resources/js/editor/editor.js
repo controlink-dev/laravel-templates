@@ -11,6 +11,7 @@ import '../../css/editor.css';
  * ========================================================================= */
 
 import grapesjs from 'grapesjs';
+import grapesjsMjml from 'grapesjs-mjml';
 import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
 import { icons } from './icons.js';
@@ -106,6 +107,14 @@ async function mountEditor(el) {
         rulers:   root.querySelectorAll('[data-tpl-ruler]'),
     };
 
+    // Email is a third medium: no page, no geometry — designed in MJML, output is HTML.
+    // It takes its own init path and shares none of the page editor's setup.
+    if (config.geometry?.medium === 'email') {
+        mountEmailEditor(el, config, chrome);
+
+        return;
+    }
+
     // The sheet's own size, which the canvas document and the chrome both need.
     // A mutable object on purpose: a format change rewrites it in place, and the
     // rulers, the zoom-fit and the canvas all read it.
@@ -137,14 +146,20 @@ async function mountEditor(el) {
             + `font-weight:${face.weight};src:url(${face.url}) format("${face.format}")}`)
         .join('') + `.page{font-family:"${config.fontFamily}",sans-serif}`;
 
+    // A roll (talão) is a flowing receipt, not a fixed sheet: blocks stack and the text
+    // wraps, so it is edited in GrapesJS's native flow mode (the sorter reorders blocks in
+    // the tree) rather than the absolute drag the A4 sheet uses.
+    const rollMode = config.geometry?.medium === 'roll';
+
     const editor = grapesjs.init({
         container: el,
         height: '100%',
         fromElement: false,
         // The template never touches browser storage (spec 3.2).
         storageManager: false,
-        // Header and footer are laid out by hand; the body flows (RF-C03).
-        dragMode: 'absolute',
+        // A4/A5 place blocks by coordinate (absolute); a roll flows (empty dragMode = the
+        // native sorter, which reorders instead of free-positioning).
+        dragMode: rollMode ? '' : 'absolute',
         canvas: {
             styles: [
                 config.printStylesheet,
@@ -182,7 +197,7 @@ async function mountEditor(el) {
         },
         // The editing decorations, delivered to the canvas document itself. See
         // `canvasDecorations()` for why they cannot live in `editor.css`.
-        canvasCss: `:root{--tpl-accent:${accent};--tpl-desk:${desk}}` + canvasDecorations(paper),
+        canvasCss: `:root{--tpl-accent:${accent};--tpl-desk:${desk}}` + canvasDecorations(paper, rollMode),
         blockManager: { appendTo: chrome.blocks },
         // Only the reduced set (spec 6.6): no flex, no grid, no transitions.
         styleManager: { appendTo: chrome.styles, sectors: styleManagerSectors(config.strings) },
@@ -328,6 +343,26 @@ async function mountEditor(el) {
     };
 
     layoutState.refresh = refreshChecks;
+
+    // The format switch and the custom-size control live in `wireChrome`, another scope,
+    // but must drive this one dirty state: the editor tracks dirtiness by snapshot, which
+    // a geometry change (size, format) does not touch, so they signal it explicitly.
+    layoutState.isDirty = () => dirty;
+
+    layoutState.markDirty = () => {
+        dirty = true;
+        announce(true);
+        renderStatus(config.strings.unsaved, root);
+    };
+
+    layoutState.resetSaved = () => {
+        savedSnapshot = snapshot(editor);
+        dirty = false;
+        announce(false);
+        renderStatus('', root);
+    };
+
+    layoutState.save = () => saveVersion(editor, config);
 
     editor.on('load', async () => {
         const loadedSaved = await loadVersion(editor, config);
@@ -503,10 +538,18 @@ const PX_PER_MM = 96 / 25.4;
 /** Width of a ruler, matching `--tpl-ruler` in the stylesheet. */
 const RULER = 17;
 
-/** Paper sizes, in millimetres. The catalogue names the format; this maps it. */
+/**
+ * Paper sizes, in millimetres. The catalogue names the format; this maps it.
+ *
+ * Mirror of the server's one source, `PageGeometry::SHEET_SIZES`. Two hand-kept
+ * maps is how A3 came to render as A4 in the editor while the PDF was correct —
+ * keep them in step.
+ */
 const PAPER_SIZES = {
+    A3: { width: 297, height: 420 },
     A4: { width: 210, height: 297 },
     A5: { width: 148, height: 210 },
+    LETTER: { width: 215.9, height: 279.4 },
 };
 
 /**
@@ -527,7 +570,23 @@ function resolvePaper(geometry, fallbackFormat) {
         return { width: Number(geometry.width_mm), height: ROLL_CANVAS_HEIGHT };
     }
 
+    // A label: a sheet sized in mm. A fixed box, edited like a small A4 sheet.
+    if (isLabelGeometry(geometry)) {
+        return { width: Number(geometry.width_mm), height: Number(geometry.height_mm) };
+    }
+
     return PAPER_SIZES[geometry?.paper_format ?? fallbackFormat] ?? PAPER_SIZES.A4;
+}
+
+/**
+ * A label: a sheet whose size is given explicitly in mm, not by a named CSS format.
+ * It is edited absolutely like an A4 sheet, but has no header/body/footer zones — a
+ * 30mm label has no room for them.
+ */
+function isLabelGeometry(geometry) {
+    return geometry?.medium === 'sheet'
+        && Number(geometry.width_mm) > 0
+        && Number(geometry.height_mm) > 0;
 }
 
 /** The geometry a format entry stands for, without the entry's own id and label. */
@@ -542,9 +601,17 @@ function sameGeometry(a, b) {
         return false;
     }
 
-    return a.medium === 'roll'
-        ? Number(a.width_mm) === Number(b.width_mm)
-        : (a.paper_format ?? 'A4') === (b.paper_format ?? 'A4');
+    if (a.medium === 'roll') {
+        return Number(a.width_mm) === Number(b.width_mm);
+    }
+
+    // A sheet in mm (a label) is identified by its mm size; a named sheet by its format.
+    if (isLabelGeometry(a) || isLabelGeometry(b)) {
+        return Number(a.width_mm) === Number(b.width_mm)
+            && Number(a.height_mm) === Number(b.height_mm);
+    }
+
+    return (a.paper_format ?? 'A4') === (b.paper_format ?? 'A4');
 }
 
 function applyPaperVars(root, paper) {
@@ -575,8 +642,21 @@ function parseJson(value, fallback) {
  * Every rule hangs off a class on the canvas body, so the toolbar can turn each one on
  * and off, and the printed document carries none of them.
  */
-function canvasDecorations(paper) {
+function canvasDecorations(paper, rollMode = false) {
     return `
+        /*
+         * The page width in the canvas. The print stylesheet fixes .page to the A4 sheet
+         * width; a roll is 80/58mm and its content must wrap to that width (not to 210mm
+         * and get clipped by the narrower body). A roll also has no fixed height — it
+         * flows to its content — so it is not boxed to the sheet height here.
+         */
+        .page {
+            width: ${paper.width}mm;
+            box-sizing: border-box;
+            ${rollMode ? 'height: auto; min-height: 0; overflow: visible;'
+                + ' padding: var(--margin-top) var(--margin-right) var(--margin-bottom) var(--margin-left);' : ''}
+        }
+
         /*
          * The canvas document is the sheet, and nothing more.
          *
@@ -722,7 +802,22 @@ function canvasDecorations(paper) {
 function wireChrome(editor, config, chrome, paper, layoutState) {
     const root = config.root;
 
-    const views = { legal: false, zones: true, rulers: true, clean: false };
+    // A roll flows: no sheet rulers, no header/body/footer bands, no fixed page height.
+    const rollMode = config.geometry?.medium === 'roll';
+
+    // A label is a fixed sheet with rulers but no zones — it is too small for bands.
+    const labelMode = isLabelGeometry(config.geometry);
+
+    const views = { legal: false, zones: !rollMode && !labelMode, rulers: !rollMode, clean: false };
+
+    // The ruler and zone toggles are sheet-only; a roll has neither, a label keeps rulers.
+    if (rollMode) {
+        chrome.toolbar?.querySelectorAll('[data-tpl-toggle="rulers"],[data-tpl-toggle="zones"]')
+            .forEach((button) => { (button.closest('.tpl-tool') ?? button).hidden = true; });
+    } else if (labelMode) {
+        chrome.toolbar?.querySelectorAll('[data-tpl-toggle="zones"]')
+            .forEach((button) => { (button.closest('.tpl-tool') ?? button).hidden = true; });
+    }
 
     /* ------------------------------------------------------------------ views */
 
@@ -763,8 +858,14 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     /** Air around the sheet, in pixels. Dead space is dead space. */
     const AIR = 12;
 
+    // The zoom ceiling. It has to clear the fit zoom of the smallest page, not just a
+    // comfortable hand-zoom: a 50×30mm label fits the pane at ~850%, and a ceiling of 400%
+    // would clamp that fit and leave the small label stranded in grey while a 100×50 label
+    // nearly filled — the asymmetry that read as "one format goes full-screen".
+    const MAX_ZOOM = 1000;
+
     const setZoom = (percent) => {
-        const clamped = Math.min(400, Math.max(10, Math.round(percent)));
+        const clamped = Math.min(MAX_ZOOM, Math.max(10, Math.round(percent)));
 
         editor.Canvas.setZoom(clamped);
 
@@ -888,6 +989,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
 
         if (body) {
             body.style.width = paper.width + 'mm';
+            // The canvas (GrapesJS iframe) needs a height to render into; the roll's .page
+            // flows to its own content height inside it, and the rest is scroll area.
             body.style.height = paper.height + 'mm';
             body.style.minHeight = paper.height + 'mm';
         }
@@ -898,7 +1001,9 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             fitZoom();
         }
 
-        drawRulers();
+        if (!rollMode) {
+            drawRulers();
+        }
     };
 
     /*
@@ -908,14 +1013,14 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
      * identity and locking a freshly parsed document gets.
      */
     const loadLayout = (layout) => {
-        editor.Css.clear();
-        editor.Css.addRules(pageVariables(config));
-
-        if (layout.css) {
-            editor.Css.addRules(layout.css);
-        }
-
         editor.setComponents(layout.html);
+
+        // setStyle replaces the whole sheet and re-renders the canvas in one step. The
+        // Css.clear()+addRules path updates the model but leaves the already-mounted canvas
+        // iframe showing the old rules, so a format switch kept the previous positions and
+        // the new layout's fields stacked at 0,0.
+        editor.setStyle(pageVariables(config) + (layout.css || ''));
+
         applyZoneIdentity(editor, config);
         lockLegalFields(editor);
 
@@ -977,6 +1082,173 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             // The rules depend on the geometry (V-16 is skipped for a roll): re-check.
             layoutState.refresh();
         });
+    }
+
+    /* ----------------------------------------------------------- format tabs */
+
+    /*
+     * Switching page format in place. Each format is its own version lineage (per-format
+     * drafts on the server), so a switch is not a geometry swap on the current version: it
+     * fetches the target format's own version, rewires the lifecycle URLs to it, and loads
+     * its layout — all without navigating, so the workspace pane is never left for the
+     * full-page editor. Same-medium only (A3↔A4↔A5, 50×30↔100×50); a type never mixes a
+     * page format with email, which has a single format and no tabs.
+     */
+    const formatTabs = root.querySelectorAll('[data-tpl-format-tab]');
+
+    if (formatTabs.length > 0 && config.formatSwitchUrl) {
+        let switching = false;
+
+        // The custom ("Personalizado") size inputs, shown only while the custom format is
+        // active. Changing them resizes the page live; Save persists the size with the
+        // geometry. The server clamps the dimensions into bounds whatever is typed here.
+        const customControl = root.querySelector('[data-tpl-custom-size]');
+        const widthInput    = root.querySelector('[data-tpl-custom-width]');
+        const heightInput   = root.querySelector('[data-tpl-custom-height]');
+
+        let currentFormat = [...formatTabs].find((tab) => tab.getAttribute('aria-current') === 'page')?.dataset.tplFormatTab
+            ?? config.pageFormats.find((format) => sameGeometry(geometryOf(format), config.geometry))?.id;
+
+        const isCustomFormat = (formatId) => config.pageFormats.some((format) => format.id === formatId && format.custom === true);
+
+        const updateCustomControl = () => {
+            if (! customControl) {
+                return;
+            }
+
+            const custom = isCustomFormat(currentFormat);
+
+            customControl.hidden = ! custom;
+
+            // Do not fight the user's own typing: only refill when the field is not focused.
+            if (custom && widthInput && heightInput
+                && document.activeElement !== widthInput && document.activeElement !== heightInput) {
+                widthInput.value  = Math.round(Number(config.geometry?.width_mm) || 0);
+                heightInput.value = Math.round(Number(config.geometry?.height_mm) || 0);
+            }
+        };
+
+        const applyCustomSize = () => {
+            if (! isCustomFormat(currentFormat) || ! widthInput || ! heightInput) {
+                return;
+            }
+
+            const clamp = (value) => Math.max(20, Math.min(1200, Math.round(Number(value) || 0)));
+
+            config.geometry = {
+                ...config.geometry,
+                medium: 'sheet',
+                width_mm: clamp(widthInput.value),
+                height_mm: clamp(heightInput.value),
+            };
+
+            applyPaper(config.geometry);
+            // A size change is real work: mark it so preview/activate save it first and
+            // leaving the page warns. The snapshot would not otherwise notice a geometry change.
+            layoutState.markDirty?.();
+        };
+
+        [widthInput, heightInput].forEach((input) => {
+            input?.addEventListener('change', applyCustomSize);
+        });
+
+        const markActiveTab = (formatId) => {
+            formatTabs.forEach((tab) => {
+                const isActive = tab.dataset.tplFormatTab === formatId;
+
+                tab.classList.toggle('font-semibold', isActive);
+                tab.classList.toggle('ring-1', isActive);
+                tab.classList.toggle('ring-slate-300', isActive);
+                tab.classList.toggle('opacity-70', !isActive);
+
+                if (isActive) {
+                    tab.setAttribute('aria-current', 'page');
+                } else {
+                    tab.removeAttribute('aria-current');
+                }
+            });
+        };
+
+        const renderSwitched = (info) => {
+            if (info.project_data && Object.keys(info.project_data).length > 0) {
+                // A format edited before: its saved project data carries its own styles, the
+                // same path a normal load takes.
+                editor.loadProjectData(info.project_data);
+                applyZoneIdentity(editor, config);
+                lockLegalFields(editor);
+
+                layoutState.pristine = snapshot(editor);
+                layoutState.refresh();
+            } else {
+                // A fresh format draft carries its format's starting layout as HTML, not yet
+                // project data; loadLayout resets the canvas to it and marks it pristine.
+                loadLayout({ html: info.html || config.initialHtml, css: info.css || '' });
+            }
+        };
+
+        const switchFormat = async (formatId) => {
+            const active = [...formatTabs].find((tab) => tab.getAttribute('aria-current') === 'page');
+
+            if (switching || active?.dataset.tplFormatTab === formatId) {
+                return;
+            }
+
+            switching = true;
+
+            try {
+                // Each format is its own version, so a switch is not a discard: the current
+                // format's unsaved work is saved to ITS version first, the same rule preview
+                // and activate follow. A failed save aborts the switch.
+                if (config.editable && layoutState.isDirty?.()) {
+                    renderStatus(config.strings.saving, root);
+                    await layoutState.save();
+                    layoutState.resetSaved?.();
+                }
+
+                const url = config.formatSwitchUrl.replace('__FORMAT__', encodeURIComponent(formatId));
+                const response = await fetch(url, { headers: requestHeaders(config) });
+
+                if (! response.ok) {
+                    throw new Error(config.strings.loadFailed);
+                }
+
+                const info = await response.json();
+
+                config.saveUrl     = info.urls.save;
+                config.loadUrl     = info.urls.load;
+                config.previewUrl  = info.urls.preview;
+                config.activateUrl = info.urls.activate;
+                config.geometry    = info.geometry ?? config.geometry;
+
+                applyPaper(config.geometry);
+                renderSwitched(info);
+                currentFormat = info.format;
+                markActiveTab(info.format);
+                updateCustomControl();
+
+                // In the full-page editor, keep the address bar on the version now shown, so
+                // a reload returns to this format. In a pane the workspace owns the URL, so
+                // only touch it when the URL is the editor route itself.
+                if (info.urls.edit && location.pathname.includes('/versions/')) {
+                    history.replaceState(null, '', info.urls.edit);
+                }
+
+                // The loaded version is the new clean baseline: no stale "unsaved" from the
+                // one we left, no snapshot belonging to the previous format.
+                layoutState.resetSaved?.();
+            } catch (error) {
+                renderStatus(error.message, root);
+            } finally {
+                switching = false;
+            }
+        };
+
+        formatTabs.forEach((tab) => {
+            tab.addEventListener('click', () => switchFormat(tab.dataset.tplFormatTab));
+        });
+
+        // Reflect the format the editor opened on (custom inputs visible if it is custom).
+        updateCustomControl();
     }
 
     /* ------------------------------------------------------------------- tabs */
@@ -1169,7 +1441,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
      * one call, is marked private in GrapesJS and would be a silent break on upgrade.
      */
     function drawRulers() {
-        if (!chrome.rulers?.length) {
+        // A roll has no rulers (it is not placed by coordinate).
+        if (rollMode || !chrome.rulers?.length) {
             return;
         }
 
@@ -1331,8 +1604,12 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
 
     editor.on('component:update component:add component:remove', drawRulers);
 
-    // The tree has to follow the geometry; see `reparentToZone`.
-    editor.on('component:drag:end', ({ target }) => reparentToZone(editor, config, target));
+    // The tree has to follow the geometry; see `reparentToZone`. A roll has no bands, and
+    // flow mode reorders in the tree already, so there is nothing to reparent. A label has
+    // no bands either — a header plus footer would exceed its height and scatter blocks.
+    if (!rollMode && !isLabelGeometry(config.geometry)) {
+        editor.on('component:drag:end', ({ target }) => reparentToZone(editor, config, target));
+    }
 
     return { sync, drawRulers, fitZoom, attach };
 }
@@ -1471,6 +1748,8 @@ function readConfig(el) {
         previewUrl: el.dataset.previewUrl,
         activateUrl: el.dataset.activateUrl,
         catalogueUrl: el.dataset.catalogueUrl,
+        // `__FORMAT__` is replaced with the chosen format id on an in-place format switch.
+        formatSwitchUrl: el.dataset.formatSwitchUrl,
         printStylesheet: el.dataset.printStylesheet,
         fontFamily: el.dataset.fontFamily,
         fontFaces: JSON.parse(el.dataset.fontFaces || '[]'),
@@ -1535,8 +1814,11 @@ async function loadCatalogue(config) {
 /** The page geometry `print.css` reads, from the same config the compositor uses. */
 function pageVariables(config) {
     const sides = ['top', 'right', 'bottom', 'left'];
+    // A roll carries its own margins in its geometry (3mm); the `config.margins` from the
+    // type is the sheet's. Prefer the geometry's when it has them.
+    const margins = config.geometry?.margins ?? config.margins;
     const declarations = sides
-        .map((side) => `--margin-${side}:${Number(config.margins[side] || 0)}mm`)
+        .map((side) => `--margin-${side}:${Number(margins[side] || 0)}mm`)
         .concat([
             `--header-height:${Number(config.zones?.header_height ?? 35)}mm`,
             `--footer-height:${Number(config.zones?.footer_height ?? 20)}mm`,
@@ -1741,6 +2023,200 @@ async function loadVersion(editor, config) {
     }
 
     return loadedSaved;
+}
+
+/**
+ * The email editor: GrapesJS with the MJML preset instead of the page editor.
+ *
+ * It shares none of the page setup — no paper, zones, rulers, format tabs or page blocks.
+ * The MJML plugin bundles mjml-browser, so MJML→HTML is compiled in the browser; the
+ * server only stores and serves the compiled HTML. Save, preview and activate reuse the
+ * host's own toolbar buttons and the shared network helpers.
+ */
+async function mountEmailEditor(el, config, chrome) {
+    const root = config.root;
+
+    // Email mode: lets the MJML device switch own the frame width (see editor.css).
+    root.classList.add('tpl-email');
+
+    const editor = grapesjs.init({
+        container: el,
+        height: '100%',
+        fromElement: false,
+        storageManager: false,
+        plugins: [grapesjsMjml],
+        panels: { defaults: [] },
+        blockManager: { appendTo: chrome.blocks },
+        styleManager: { appendTo: chrome.styles, sectors: [] },
+        traitManager: { appendTo: chrome.traits },
+        layerManager: { appendTo: chrome.layers, showWrapper: false },
+    });
+
+    config.geometry = config.geometry ?? { medium: 'email' };
+
+    // The page editor gives the mount an explicit pixel size through its zoom; the email
+    // editor has no zoom, so the mount would collapse to 0×0 (a grid item with no intrinsic
+    // size) and GrapesJS's canvas with it. Size the mount to the canvas pane and keep it in
+    // step, so the MJML frame has somewhere to render.
+    const sizeToCanvas = () => {
+        if (!chrome.canvas) {
+            return;
+        }
+
+        el.style.width = chrome.canvas.clientWidth + 'px';
+        el.style.height = chrome.canvas.clientHeight + 'px';
+        editor.refresh?.();
+    };
+
+    sizeToCanvas();
+
+    const canvasObserver = new ResizeObserver(sizeToCanvas);
+
+    if (chrome.canvas) {
+        canvasObserver.observe(chrome.canvas);
+    }
+
+    editor.on('destroy', () => canvasObserver.disconnect());
+
+    // The page toolbar's controls — zoom, rulers, zones, clean view, legal restore — mean
+    // nothing for an email; hide them, leaving only the host's Save/Preview/Activate.
+    chrome.toolbar?.querySelectorAll('[data-tpl-toggle],[data-tpl-command],[data-tpl-zoom]')
+        .forEach((control) => { (control.closest('.tpl-tool') ?? control).hidden = true; });
+
+    // The starting MJML, carried by the email format's `initial_layout.mjml`.
+    const initialMjml = (config.pageFormats || [])
+        .map((format) => format.initial_layout?.mjml)
+        .find(Boolean) || '<mjml><mj-body></mj-body></mjml>';
+
+    try {
+        const response = await fetch(config.loadUrl, { headers: requestHeaders(config) });
+        const data = response.ok ? await response.json() : {};
+        const projectData = data.data?.project_data;
+
+        if (projectData && Object.keys(projectData).length > 0) {
+            editor.loadProjectData(projectData);
+        } else {
+            // The MJML plugin registers the parser, so setting MJML as components parses it.
+            editor.setComponents(initialMjml);
+        }
+    } catch {
+        editor.setComponents(initialMjml);
+    }
+
+    const marker = root.querySelector('[data-templates-dirty]');
+    let dirty = false;
+
+    const announce = (isDirty) => {
+        dirty = isDirty;
+
+        if (marker) {
+            marker.hidden = !isDirty;
+        }
+
+        root.dispatchEvent(new CustomEvent('templates:dirty', { detail: { dirty: isDirty }, bubbles: true }));
+    };
+
+    // Loading the starting MJML fires `update` too; those are not the user's edits, so
+    // ignore everything until the first render settles, or the email opens announcing
+    // unsaved changes it never had.
+    let ready = false;
+
+    editor.on('update', () => {
+        if (ready && !dirty) {
+            announce(true);
+            renderStatus(config.strings.unsaved, root);
+        }
+    });
+
+    requestAnimationFrame(() => requestAnimationFrame(() => { ready = true; }));
+
+    // The compiled, inlined email HTML and the editor's own project data.
+    const saveEmail = async () => {
+        const compiled = editor.runCommand('mjml-code-to-html');
+
+        if (compiled?.errors?.length) {
+            const error = new Error(config.strings.saveFailed);
+            error.problems = compiled.errors.map((problem) => ({
+                code: 'MJML', page: null, message: problem.message ?? String(problem),
+            }));
+
+            throw error;
+        }
+
+        const response = await fetch(config.saveUrl, {
+            method: 'PUT',
+            headers: { ...requestHeaders(config), 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                project_data: editor.getProjectData(),
+                html: compiled.html,
+                css: '',
+                geometry: config.geometry,
+            }),
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({}));
+            const error = new Error(payload.message || config.strings.saveFailed);
+            error.problems = payload.problems ?? [];
+
+            throw error;
+        }
+
+        announce(false);
+
+        return response.json();
+    };
+
+    root.querySelector('[data-tpl-save]')?.addEventListener('click', async () => {
+        renderStatus(config.strings.saving, root);
+
+        try {
+            await saveEmail();
+            renderStatus(config.strings.saved, root);
+            root.dispatchEvent(new CustomEvent('templates:saved', { bubbles: true }));
+        } catch (error) {
+            renderStatus(error.message, root);
+            root.dispatchEvent(new CustomEvent('templates:validation-failed', {
+                detail: { problems: error.problems ?? [] }, bubbles: true,
+            }));
+        }
+    });
+
+    root.querySelector('[data-tpl-preview]')?.addEventListener('click', async () => {
+        renderStatus(config.strings.rendering, root);
+
+        try {
+            if (dirty && config.editable) {
+                await saveEmail();
+            }
+
+            // The email preview endpoint serves the stored HTML; a blob URL opens it as a page.
+            const url = await renderPreview(config);
+
+            window.open(url, '_blank');
+            renderStatus('', root);
+        } catch (error) {
+            renderStatus(error.message, root);
+        }
+    });
+
+    root.querySelector('[data-tpl-activate]')?.addEventListener('click', async () => {
+        renderStatus(config.strings.activating, root);
+
+        try {
+            if (dirty) {
+                await saveEmail();
+            }
+
+            await activateVersion(config);
+            renderStatus(config.strings.activated, root);
+            root.dispatchEvent(new CustomEvent('templates:activated', { bubbles: true }));
+        } catch (error) {
+            renderStatus(error.message, root);
+        }
+    });
+
+    root.dispatchEvent(new CustomEvent('templates:loaded', { bubbles: true }));
 }
 
 async function saveVersion(editor, config) {

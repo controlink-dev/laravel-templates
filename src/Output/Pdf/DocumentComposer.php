@@ -97,12 +97,38 @@ class DocumentComposer
      */
     public function geometryStyles(PageGeometry $g): string
     {
+        if ($g->medium === 'email') {
+            // Email renders HTML, never a PDF: reaching the PDF composer is a routing bug.
+            throw new \LogicException('An email template has no page geometry and must not be rendered as a PDF.');
+        }
+
         if ($g->medium === 'roll') {
             // Provisional height: PdfRenderer re-emits the measured one.
             $height = $g->maxHeightMm ?: 4000.0;
 
+            // The roll's margins become the page padding (box-sizing keeps the paper width):
+            // without them the content runs to the paper edge, falls outside the printable
+            // area (R-04) and the edge-most values are clipped out of the PDF (R-02). The
+            // BOTTOM is 0: a roll is cut at its content, and a bottom pad is trailing white
+            // the measure-to-fit cannot see, so it would overflow into a phantom page 2.
+            $m       = $g->margins;
+            $padding = $m['top'].'mm '.$m['right'].'mm 0 '.$m['left'].'mm';
+
             return '@page{size: '.$g->widthMm.'mm '.$height.'mm;margin:0}'
-                .'.page{width: '.$g->widthMm.'mm;height: auto;overflow: visible}';
+                .'.page{width: '.$g->widthMm.'mm;height: auto;overflow: visible;'
+                .'box-sizing: border-box;padding: '.$padding.'}';
+        }
+
+        // A label: a sheet sized in mm, so the @page is explicit millimetres (no CSS
+        // format name) and the .page is a fixed box — it clips rather than paginating,
+        // and all four margins become its padding.
+        if ($g->paperFormat === null && $g->widthMm > 0 && $g->heightMm > 0) {
+            $m       = $g->margins;
+            $padding = $m['top'].'mm '.$m['right'].'mm '.$m['bottom'].'mm '.$m['left'].'mm';
+
+            return '@page{size: '.$g->widthMm.'mm '.$g->heightMm.'mm;margin:0}'
+                .'.page{width: '.$g->widthMm.'mm;height: '.$g->heightMm.'mm;overflow: hidden;'
+                .'box-sizing: border-box;padding: '.$padding.'}';
         }
 
         return '@page{size: '.$g->paperFormat.';margin:0}';

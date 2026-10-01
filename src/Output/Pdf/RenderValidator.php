@@ -344,9 +344,7 @@ class RenderValidator
         $problems = [];
 
         for ($page = 1; $page <= $pages; $page++) {
-            // Cropped to the slot, because the decoder cannot find a small code in a
-            // whole page (see RenderedPdf::rasterOf).
-            $decoded = $this->codes->read($rendered->rasterOf($page, 300, $slot));
+            $decoded = $this->decodeCode($rendered, $page, $slot);
 
             if ($decoded === $expected) {
                 $seen = true;
@@ -372,6 +370,51 @@ class RenderValidator
         }
 
         return $problems;
+    }
+
+    /**
+     * Read a code off one page, returning the first non-null decode (match or mismatch) for
+     * the caller to judge.
+     *
+     * A code with a known slot box is cropped to it and retried across a few resolutions (a
+     * module grid can alias against one dpi and read cleanly at the next). A code with NO
+     * box — a slot in a flowing layout, e.g. a roll receipt — sits somewhere in a tall,
+     * narrow page where a whole-page scan cannot find it; it is sought in full-width
+     * horizontal bands from the bottom up (a receipt puts its code low), each band small
+     * enough for the decoder to locate the finder patterns.
+     *
+     * @param  array{left: float, top: float, width: float, height: float}|null  $slot
+     */
+    private function decodeCode(RenderedPdf $rendered, int $page, ?array $slot): ?string
+    {
+        if ($slot !== null) {
+            foreach ([300, 250, 200] as $dpi) {
+                $decoded = $this->codes->read($rendered->rasterOf($page, $dpi, $slot));
+
+                if ($decoded !== null) {
+                    return $decoded;
+                }
+            }
+
+            return null;
+        }
+
+        ['width' => $width, 'height' => $height] = $rendered->pageSizeMm();
+        $band = 55.0;
+        $step = 35.0;
+
+        for ($top = max(0.0, $height - $band); ; $top -= $step) {
+            $box = ['left' => 0.0, 'top' => max(0.0, $top), 'width' => $width, 'height' => min($band, $height)];
+            $decoded = $this->codes->read($rendered->rasterOf($page, 250, $box));
+
+            if ($decoded !== null) {
+                return $decoded;
+            }
+
+            if ($top <= 0.0) {
+                return null;
+            }
+        }
     }
 
     /**

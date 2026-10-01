@@ -491,6 +491,23 @@
     height: var(--tpl-paper-height, 297mm);
 }
 
+/*
+ * Email has no paper: the MJML editor owns the frame width through its device switch
+ * (desktop/tablet/mobile), which sets the wrapper width inline. Letting the page-paper
+ * rule above force a fixed width would override that, and the device buttons would do
+ * nothing. So in email mode the wrapper keeps GrapesJS's own width and the frame fills it.
+ */
+.tpl-editor-root.tpl-email .gjs-frame-wrapper {
+    width: auto;
+    /* Desktop has no device width, so cap it: an email is ~600mm wide, not the whole pane. */
+    max-width: 820px;
+    margin: 0 auto;
+}
+
+.tpl-editor-root.tpl-email .gjs-frame {
+    width: 100%;
+}
+
 /* No auto margin: the container is the paper's width, so there is nothing to centre
    inside it. The grid centres the whole thing instead. */
 .tpl-editor-root .gjs-cv-canvas .gjs-frame-wrapper {
