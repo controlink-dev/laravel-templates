@@ -1330,13 +1330,17 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         const blocked = legalBlocks(ed);
 
         if (blocked.length > 0) {
-            showNotice(
-                config.strings['notice.legal_locked'].replace(':field', legalFieldName(blocked[0])),
-                root,
-                config.strings['notice.close'],
+            // Soft lock: a legal field CAN be removed, but deliberately. The confirm is the
+            // guard against an accidental Delete, not the compliance boundary — the problems
+            // panel flags a missing legal field live, and the server refuses to save a layout
+            // without it (spec 8.1). Declining leaves the block untouched.
+            const confirmed = window.confirm(
+                config.strings['confirm.delete_legal'].replace(':field', legalFieldName(blocked[0])),
             );
 
-            return;
+            if (!confirmed) {
+                return;
+            }
         }
 
         ed.runCommand('core:component-delete');

@@ -370,8 +370,18 @@ function registerDataField(editor, config) {
                 try {
                     const options = fieldOptionsOf(this.getAttributes()['data-tpl-node']);
 
+                    // Default to the first NON-legal field, exactly as a freshly dropped
+                    // field does (see `firstField` above). Snapping to a legal field here
+                    // would mark the whole block legal and lock BOTH selects to a single
+                    // option — trapping the user on the model they just picked, who would
+                    // then have to delete the field and drop a new one to choose another.
+                    // A legal field stays reachable: the user selects it in the field
+                    // select, and the lock is intended only once they deliberately do so.
+                    const firstField = options.find((option) => !findBinding(config, option.id)?.legal)
+                        ?? options[0];
+
                     this.getTrait('data-tpl-binding')?.set('options', options);
-                    this.addAttributes({ 'data-tpl-binding': options[0]?.id ?? '' });
+                    this.addAttributes({ 'data-tpl-binding': firstField?.id ?? '' });
                 } finally {
                     this.__pfSyncingNode = false;
                 }
@@ -443,50 +453,27 @@ function registerDataField(editor, config) {
                 }
 
                 /*
-                 * A legal field's node AND field are locked by leaving each select
-                 * nothing else to choose.
-                 *
-                 * The first version set `disabled` on the trait, and GrapesJS's trait
-                 * model has no such property — it was written, ignored, and the select
-                 * stayed as open as any other. Measured: the binding of a legal field
-                 * could still be reassigned in the panel. Narrowing the options is a
-                 * lock the library actually renders, and it reads correctly too: the
-                 * one field this block may carry is the one it carries.
-                 *
-                 * The node is derived from the binding itself, everything before its
-                 * last dot — a legal key is always declared, never one of the current
-                 * node's calculated fields, so the single option each select locks to
-                 * is built by hand rather than looked up in the graph.
+                 * Soft lock: a legal field's node AND field selects stay fully editable, so
+                 * it can be reassigned in place without deleting it first. Compliance is not
+                 * weakened — the problems panel flags a missing legal field live, and the
+                 * server refuses to save a layout without it (spec 8.1). The previous hard
+                 * lock narrowed each select to a single option, which trapped the user on the
+                 * model they had just picked: to choose another they had to delete the field
+                 * and drop a new one. Reassigning a legal field away simply makes it a problem
+                 * to resolve, exactly as moving or removing it does.
                  */
                 const currentNode = nodeOfBinding(this.binding());
                 const nodeTrait = this.getTrait('data-tpl-node');
 
-                if (nodeTrait) {
-                    // Every legal prefix IS a node today — the `totais` node closed the
-                    // last gap, and `test_every_declared_field_belongs_to_a_declared_node`
-                    // keeps it closed. The fallback stays as a floor rather than a case:
-                    // a node the graph reports unreachable is filtered out of
-                    // `nodeOptions`, and a select with nothing in it shows nothing at all.
-                    const lockedOption = nodeOptions.find((option) => option.id === currentNode)
-                        ?? { id: currentNode, name: currentNode };
-
-                    const options = isLegal ? [lockedOption] : nodeOptions;
-
-                    if (nodeTrait.get('options')?.length !== options.length) {
-                        nodeTrait.set('options', options);
-                    }
+                if (nodeTrait && nodeTrait.get('options')?.length !== nodeOptions.length) {
+                    nodeTrait.set('options', nodeOptions);
                 }
 
                 const bindingTrait = this.getTrait('data-tpl-binding');
+                const fieldOptions = fieldOptionsOf(currentNode);
 
-                if (bindingTrait) {
-                    const options = isLegal
-                        ? [{ id: this.binding(), name: binding?.label ?? this.binding() }]
-                        : fieldOptionsOf(currentNode);
-
-                    if (bindingTrait.get('options')?.length !== options.length) {
-                        bindingTrait.set('options', options);
-                    }
+                if (bindingTrait && bindingTrait.get('options')?.length !== fieldOptions.length) {
+                    bindingTrait.set('options', fieldOptions);
                 }
             },
 

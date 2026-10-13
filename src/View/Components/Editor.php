@@ -271,6 +271,8 @@ class Editor extends Component
 
             'notice.legal_locked' => __('templates::editor.notices.legal_locked'),
             'notice.close'        => __('templates::editor.notices.close'),
+
+            'confirm.delete_legal' => __('templates::editor.notices.confirm_delete_legal'),
         ];
 
         // The format and rule width labels follow the config, so adding one there does

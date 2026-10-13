@@ -98,6 +98,15 @@ class LayoutValidator
      */
     public function codeSlotBoxes(array $projectData, TemplateType $type): array
     {
+        // A roll is one continuous page whose height is measured only after the content
+        // flows, so a code's absolute box from the layout's zones does not match where it
+        // actually lands on the rendered page. Hand R-05 no box: it then scans the page in
+        // bands to find the code (see RenderValidator::decodeCode), which is how a flowing
+        // code is meant to be located.
+        if (PageGeometry::fromType($type->pdf)->medium === 'roll') {
+            return [];
+        }
+
         $document = LayoutDocument::fromProjectData($projectData);
         $boxes    = [];
 

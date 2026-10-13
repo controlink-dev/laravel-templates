@@ -216,6 +216,7 @@ return [
     'notices' => [
         'legal_locked' => '":field" cannot be deleted. It is a field required by law on this document type.',
         'close'        => 'Close notice',
+        'confirm_delete_legal' => '":field" is a field required by law. Delete it anyway? You will need to place it again before you can save.',
     ],
 
     // Layer 1 of the validation: static, over `project_data` (Output\Pdf\LayoutValidator).

@@ -25,6 +25,13 @@ use Throwable;
  */
 class RenderValidator
 {
+    /**
+     * Resolutions R-05 rasterises a code at, in order, retrying the next when one fails: a
+     * module grid can alias against one dpi and read cleanly at another, so a single pass is
+     * flaky. Both the cropped-slot read and the roll band scan walk this same list.
+     */
+    private const CODE_DPIS = [300, 250, 200];
+
     public function __construct(
         private readonly TemplateRenderer $renderer,
         private readonly CodeReader $codes,
@@ -388,7 +395,7 @@ class RenderValidator
     private function decodeCode(RenderedPdf $rendered, int $page, ?array $slot): ?string
     {
         if ($slot !== null) {
-            foreach ([300, 250, 200] as $dpi) {
+            foreach (self::CODE_DPIS as $dpi) {
                 $decoded = $this->codes->read($rendered->rasterOf($page, $dpi, $slot));
 
                 if ($decoded !== null) {
@@ -405,10 +412,13 @@ class RenderValidator
 
         for ($top = max(0.0, $height - $band); ; $top -= $step) {
             $box = ['left' => 0.0, 'top' => max(0.0, $top), 'width' => $width, 'height' => min($band, $height)];
-            $decoded = $this->codes->read($rendered->rasterOf($page, 250, $box));
 
-            if ($decoded !== null) {
-                return $decoded;
+            foreach (self::CODE_DPIS as $dpi) {
+                $decoded = $this->codes->read($rendered->rasterOf($page, $dpi, $box));
+
+                if ($decoded !== null) {
+                    return $decoded;
+                }
             }
 
             if ($top <= 0.0) {

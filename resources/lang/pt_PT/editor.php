@@ -226,6 +226,7 @@ return [
     'notices' => [
         'legal_locked' => '«:field» não pode ser eliminado. É um campo obrigatório por lei neste tipo de documento.',
         'close'        => 'Fechar aviso',
+        'confirm_delete_legal' => '«:field» é um campo obrigatório por lei. Eliminar à mesma? Terá de o voltar a colocar antes de poder gravar.',
     ],
 
     // Camada 1 da validação: estática, sobre `project_data` (Output\Pdf\LayoutValidator).
