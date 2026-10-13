@@ -9,7 +9,6 @@ use Controlink\Templates\Testing\AssertsReproducibility;
 use Controlink\Templates\Types\TemplateType;
 use Controlink\Templates\Versions\VersionState;
 use Illuminate\Support\Facades\Schema;
-use Symfony\Component\Process\ExecutableFinder;
 
 /** Proves the conformance-kit against a test-only guarded model and the facade. */
 class ReproducibilityKitTest extends TestCase
@@ -54,12 +53,7 @@ class ReproducibilityKitTest extends TestCase
 
     public function test_re_render_reproduces(): void
     {
-        $finder = new ExecutableFinder;
-        foreach (['pdfinfo', 'pdftotext', 'pdftoppm'] as $tool) {
-            if (! $finder->find($tool)) {
-                $this->markTestSkipped('poppler-utils not installed');
-            }
-        }
+        $this->skipWithoutPdfEngine();
 
         $type = TemplateType::fromConfig('x', ['bindings' => $this->fields()]);
         $geo  = ['paper_format' => 'A4', 'margins' => ['top' => 15, 'right' => 15, 'bottom' => 15, 'left' => 15], 'zones' => ['header_height' => 40, 'footer_height' => 18]];

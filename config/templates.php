@@ -2,19 +2,14 @@
 
 return [
 
-    /*
-     * How the package finds the tenant's database. `none`: models use the default
-     * connection. `column`: shared database, a `tenant_id` column filled from the
-     * TenantResolver. `connection`: models use the named connection the host points at
-     * the tenant before the package runs. See README, "Tenancy".
-     */
-    'tenancy' => [
-        'mode'       => env('TEMPLATES_TENANCY_MODE', 'none'),
-        'connection' => env('TEMPLATES_TENANCY_CONNECTION'),
-    ],
-
     'editor' => [
-        // Header the editor sends with the tenant id, or null for none.
+        /*
+         * Optional header the embedded editor sends with the current tenant id on every
+         * request to the host's own endpoints (the id comes from the host's
+         * TenantResolver). null sends no header. The package owns no database and no
+         * tenancy mode of its own — the host resolves and scopes the tenant; this is
+         * only how the editor tells the host which tenant a request is for.
+         */
         'tenant_header' => null,
     ],
 

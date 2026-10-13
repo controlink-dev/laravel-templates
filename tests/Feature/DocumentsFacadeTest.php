@@ -7,7 +7,6 @@ use Controlink\Templates\Tests\TestCase;
 use Controlink\Templates\Toolkit\Documents;
 use Controlink\Templates\Types\TemplateType;
 use Controlink\Templates\Versions\CanonicalHash;
-use Symfony\Component\Process\ExecutableFinder;
 
 class DocumentsFacadeTest extends TestCase
 {
@@ -77,13 +76,7 @@ class DocumentsFacadeTest extends TestCase
 
     public function test_render_returns_pdf_bytes_and_render_validation_flags_a_slow_render(): void
     {
-        $finder = new ExecutableFinder;
-
-        foreach (['pdfinfo', 'pdftotext', 'pdftoppm'] as $tool) {
-            if (! $finder->find($tool)) {
-                $this->markTestSkipped('poppler-utils not installed');
-            }
-        }
+        $this->skipWithoutPdfEngine();
 
         $documents = app(Documents::class);
         $data      = ['documento.atcud' => 'JFT7-0000000001'];
@@ -100,13 +93,7 @@ class DocumentsFacadeTest extends TestCase
 
     public function test_render_for_activation_returns_pdf_hash_and_seconds(): void
     {
-        $finder = new ExecutableFinder;
-
-        foreach (['pdfinfo', 'pdftotext', 'pdftoppm'] as $tool) {
-            if (! $finder->find($tool)) {
-                $this->markTestSkipped('poppler-utils not installed');
-            }
-        }
+        $this->skipWithoutPdfEngine();
 
         $result = app(Documents::class)->renderForActivation(
             $this->validPdfLayout($this->type()),

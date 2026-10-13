@@ -2,16 +2,12 @@
 
 namespace Controlink\Templates;
 
-use Controlink\Templates\Contracts\Auditor;
 use Controlink\Templates\Contracts\BindingResolver;
-use Controlink\Templates\Contracts\EncryptedFieldMap;
 use Controlink\Templates\Contracts\MoneyFormatter;
 use Controlink\Templates\Contracts\PdfEngine;
 use Controlink\Templates\Contracts\TenantResolver;
 use Controlink\Templates\Rendering\FilterRegistry;
-use Controlink\Templates\Support\EmptyEncryptedFieldMap;
 use Controlink\Templates\Support\IntlMoneyFormatter;
-use Controlink\Templates\Support\NullAuditor;
 use Controlink\Templates\Support\NullBindingResolver;
 use Controlink\Templates\Support\NullTenantResolver;
 use Controlink\Templates\Toolkit\Documents;
@@ -28,9 +24,7 @@ class TemplatesServiceProvider extends ServiceProvider
         // Host bindings override these because the host's provider boots later and
         // `bind()` replaces; the package never uses `singletonIf`.
         $this->app->bindIf(TenantResolver::class, NullTenantResolver::class);
-        $this->app->bindIf(Auditor::class, NullAuditor::class);
         $this->app->bindIf(BindingResolver::class, NullBindingResolver::class);
-        $this->app->bindIf(EncryptedFieldMap::class, EmptyEncryptedFieldMap::class);
         $this->app->bindIf(MoneyFormatter::class, IntlMoneyFormatter::class);
         $this->app->bindIf(PdfEngine::class, fn ($app) => $app->make(config('templates.pdf.engine')));
 

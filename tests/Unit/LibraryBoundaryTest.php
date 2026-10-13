@@ -52,7 +52,20 @@ class LibraryBoundaryTest extends TestCase
     {
         $src = realpath(__DIR__.'/../../src');
 
-        foreach (['Http', 'Data', 'Models/Template.php', 'Models/TemplateVersion.php', 'Models/Concerns/HasTemplatesConnection.php', 'Versions/VersionActivator.php'] as $gone) {
+        foreach ([
+            'Http',
+            'Data',
+            'Models/Template.php',
+            'Models/TemplateVersion.php',
+            'Models/Concerns/HasTemplatesConnection.php',
+            'Versions/VersionActivator.php',
+            // Contracts the extraction left behind with no consumer: auditing and field
+            // encryption are the host's concern now, so the toolkit no longer ships them.
+            'Contracts/Auditor.php',
+            'Support/NullAuditor.php',
+            'Contracts/EncryptedFieldMap.php',
+            'Support/EmptyEncryptedFieldMap.php',
+        ] as $gone) {
             $this->assertFileDoesNotExist($src.'/'.$gone, "src/{$gone} must not exist.");
         }
 
