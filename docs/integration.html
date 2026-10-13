@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>laravel-templates · Integration</title>
+<style>
+  :root {
+    --bg: #fbfbfa;
+    --panel: #ffffff;
+    --ink: #1c1d1f;
+    --muted: #6b6f76;
+    --line: #e7e7e4;
+    --accent: #b5533b;
+    --accent-ink: #8f3f2c;
+    --code-bg: #f4f3f0;
+    --code-ink: #2a2b2d;
+    --ok: #3f7a52;
+    --radius: 12px;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17181a; --panel: #1f2023; --ink: #e9e9e7; --muted: #9aa0a8;
+      --line: #313337; --accent: #e07a5f; --accent-ink: #e8917a;
+      --code-bg: #27282b; --code-ink: #dcdcda; --ok: #74b98c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17181a; --panel: #1f2023; --ink: #e9e9e7; --muted: #9aa0a8;
+    --line: #313337; --accent: #e07a5f; --accent-ink: #e8917a;
+    --code-bg: #27282b; --code-ink: #dcdcda; --ok: #74b98c;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); line-height: 1.6; font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 16px 96px; }
+  header.hero {
+    padding: 56px 0 28px; border-bottom: 1px solid var(--line);
+  }
+  .eyebrow {
+    font-family: var(--mono); font-size: 13px; letter-spacing: .02em;
+    color: var(--accent-ink); margin: 0 0 10px;
+  }
+  h1 { font-size: 34px; line-height: 1.15; margin: 0 0 12px; letter-spacing: -0.01em; }
+  .lead { font-size: 18px; color: var(--muted); margin: 0 0 20px; max-width: 62ch; }
+  .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .pill {
+    font-family: var(--mono); font-size: 12px; padding: 5px 10px;
+    border: 1px solid var(--line); border-radius: 999px; color: var(--muted);
+    background: var(--panel);
+  }
+  nav.toc {
+    display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 18px 0;
+    border-bottom: 1px solid var(--line); margin-bottom: 8px;
+    font-size: 14px;
+  }
+  nav.toc a { color: var(--muted); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent-ink); }
+  section { padding-top: 40px; }
+  h2 {
+    font-size: 24px; margin: 0 0 6px; letter-spacing: -0.01em;
+    scroll-margin-top: 20px;
+  }
+  h2 .num { color: var(--accent); font-family: var(--mono); font-size: 18px; margin-right: 8px; }
+  h3 { font-size: 17px; margin: 26px 0 6px; }
+  p { margin: 10px 0; }
+  a { color: var(--accent-ink); }
+  code {
+    font-family: var(--mono); font-size: 0.86em; background: var(--code-bg);
+    color: var(--code-ink); padding: 1px 5px; border-radius: 5px;
+  }
+  pre {
+    background: var(--code-bg); color: var(--code-ink); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 16px; overflow-x: auto; font-size: 13.5px;
+    line-height: 1.55; margin: 14px 0;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+  .note {
+    border-left: 3px solid var(--accent); background: var(--panel);
+    padding: 12px 16px; border-radius: 0 var(--radius) var(--radius) 0;
+    margin: 16px 0; color: var(--muted); font-size: 14.5px;
+  }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; }
+  td code { white-space: nowrap; }
+  .flow {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 18px 0;
+    font-family: var(--mono); font-size: 13px;
+  }
+  .state {
+    padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--panel); white-space: nowrap;
+  }
+  .state.active { border-color: var(--accent); color: var(--accent-ink); }
+  .arrow { color: var(--muted); }
+  .arrow small { display: block; font-size: 10px; line-height: 1; }
+  .endpoints td:first-child code { color: var(--accent-ink); }
+  .method { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--muted); }
+  footer {
+    margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 14px;
+  }
+  footer a { margin-right: 18px; }
+  @media (max-width: 620px) {
+    h1 { font-size: 28px; }
+    header.hero { padding: 40px 0 24px; }
+    .flow { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <p class="eyebrow">controlink/laravel-templates</p>
+    <h1>Integration guide</h1>
+    <p class="lead">A stateless toolkit for versioned, reproducible print templates in Laravel: an embedded GrapesJS editor, a pure compose&nbsp;→&nbsp;render&nbsp;→&nbsp;validate&nbsp;→&nbsp;hash pipeline, and a type catalogue. The host owns its own data, routes and lifecycle — this page is how to wire them.</p>
+    <div class="pills">
+      <span class="pill">PHP 8.1+</span>
+      <span class="pill">Laravel 10–13</span>
+      <span class="pill">Gotenberg · Twig sandbox</span>
+      <span class="pill">stateless</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#start">Quick start</a>
+    <a href="#models">Models</a>
+    <a href="#lifecycle">Lifecycle</a>
+    <a href="#endpoints">Endpoints</a>
+    <a href="#errors">Errors</a>
+    <a href="#auth">Authorization</a>
+    <a href="#tenancy">Tenancy</a>
+    <a href="#repro">Reproducibility</a>
+  </nav>
+
+  <section id="start">
+    <h2><span class="num">0</span>Quick start</h2>
+    <p>One command scaffolds everything the host owns into the host's own paths — nothing is left inside the package:</p>
+    <pre><code>composer require controlink/laravel-templates
+php artisan templates:install</code></pre>
+    <table>
+      <thead><tr><th>Generated file</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td><code>app/Models/Template.php</code><br><code>app/Models/TemplateVersion.php</code></td><td>the two Eloquent models</td></tr>
+        <tr><td><code>database/migrations/…_create_templates_table.php</code></td><td>the reference migration</td></tr>
+        <tr><td><code>app/Http/Controllers/TemplateEditorController.php</code></td><td>the seven endpoints, implemented</td></tr>
+        <tr><td><code>routes/templates.php</code></td><td>the routes, plus the <code>urls</code> prop example</td></tr>
+        <tr><td><code>app/Policies/TemplatePolicy.php</code></td><td>the policy (denies everything until wired)</td></tr>
+      </tbody>
+    </table>
+    <p>It also publishes the editor bundle (<code>--tag=templates-assets</code>) and config. It never overwrites an existing file — pass <code>--force</code> to replace — so re-running it is safe. Then:</p>
+    <pre><code>// routes/web.php
+require __DIR__.'/templates.php';</code></pre>
+    <ol>
+      <li>Grant abilities in <code>TemplatePolicy</code> (it denies everything by default).</li>
+      <li>Declare a type in <code>config/templates.php</code>.</li>
+      <li><code>php artisan migrate</code>.</li>
+    </ol>
+    <div class="note">The generated code is the <strong>reference implementation</strong>, not a black box — it is yours to adapt. Everything below is the contract behind each file.</div>
+  </section>
+
+  <section id="models">
+    <h2><span class="num">1</span>Models</h2>
+    <p>The editor component takes <em>any</em> two Eloquent models. It never names a concrete class; it reads a fixed shape off them.</p>
+
+    <h3>Template</h3>
+    <pre><code>use Controlink\Templates\Templates;
+use Controlink\Templates\Types\TemplateType;
+
+class Template extends Model
+{
+    protected $fillable = ['type_code', 'name'];
+
+    public function type(): TemplateType
+    {
+        return Templates::type($this->type_code);
+    }
+
+    public function versions() { return $this->hasMany(TemplateVersion::class)->orderBy('number'); }
+}</code></pre>
+
+    <h3>TemplateVersion</h3>
+    <pre><code>use Controlink\Templates\Models\Concerns\GuardsIssuableVersion;
+use Controlink\Templates\Versions\VersionState;
+
+class TemplateVersion extends Model
+{
+    use GuardsIssuableVersion; // freezes an active/archived version's layout
+
+    protected $casts = [
+        'state'        =&gt; VersionState::class,
+        'project_data' =&gt; 'array',
+        'geometry'     =&gt; 'array',
+        'activated_at' =&gt; 'datetime',
+    ];
+
+    public function isEditable(): bool { return $this-&gt;state-&gt;isEditable(); }
+}</code></pre>
+    <div class="note"><code>GuardsIssuableVersion</code> throws <code>ImmutableVersionException</code> if an active/archived version's layout (<code>project_data</code>, <code>html</code>, <code>css</code>, <code>hash</code>, <code>number</code>, <code>template_id</code>) is changed. The state and activation metadata stay writable, so activation and archiving still work.</div>
+  </section>
+
+  <section id="lifecycle">
+    <h2><span class="num">2</span>Version lifecycle</h2>
+    <div class="flow">
+      <span class="state">draft</span>
+      <span class="arrow">→<small>save · static ✓</small></span>
+      <span class="state">validated</span>
+      <span class="arrow">→<small>activate · render ✓</small></span>
+      <span class="state active">active</span>
+      <span class="arrow">→<small>another activates</small></span>
+      <span class="state">archived</span>
+    </div>
+    <p>Only one version per template is <code>active</code>. <code>active</code> and <code>archived</code> are <strong>issuable</strong> — an issued document points at the exact version that produced it — and therefore immutable. Editing an issuable version means cloning a new <code>draft</code> from it, never mutating it.</p>
+  </section>
+
+  <section id="endpoints">
+    <h2><span class="num">3</span>HTTP endpoints</h2>
+    <p>The component registers no routes. The host defines them and passes their URLs through the <code>urls</code> prop. The editor sends on every request: <code>X-CSRF-TOKEN</code>, <code>X-Requested-With</code>, <code>Accept: application/json</code>, and — when configured — a tenant header from <code>TenantResolver::currentId()</code>.</p>
+    <table class="endpoints">
+      <thead><tr><th>Endpoint</th><th>Verb</th><th>Does</th></tr></thead>
+      <tbody>
+        <tr><td><code>load</code></td><td class="method">GET</td><td>returns <code>{ data: { project_data, html, css } }</code></td></tr>
+        <tr><td><code>save</code></td><td class="method">PUT</td><td>layer-1 (static) validation, then store as <code>validated</code></td></tr>
+        <tr><td><code>preview</code></td><td class="method">POST</td><td>render the fixture, stream the PDF bytes (no state change)</td></tr>
+        <tr><td><code>activate</code></td><td class="method">POST</td><td>layer-2 (render) validation, then promote to <code>active</code></td></tr>
+        <tr><td><code>catalogue</code></td><td class="method">GET</td><td>the editor's block/field catalogue for a type</td></tr>
+        <tr><td><code>stylesheet</code></td><td class="method">GET</td><td>the print stylesheet, raw (canvas and PDF read identical bytes)</td></tr>
+        <tr><td><code>font</code></td><td class="method">GET</td><td>one font file, by <code>{family}</code>/<code>{weight}</code></td></tr>
+      </tbody>
+    </table>
+
+    <h3>Routes</h3>
+    <pre><code>Route::middleware(['web', 'auth'])-&gt;prefix('templates')-&gt;name('templates.')-&gt;group(function () {
+    Route::get('{template}/versions/{version}/edit', [C::class, 'load'])-&gt;name('load')-&gt;scopeBindings();
+    Route::put('{template}/versions/{version}', [C::class, 'save'])-&gt;name('save')-&gt;scopeBindings();
+    Route::post('{template}/versions/{version}/preview', [C::class, 'preview'])-&gt;name('preview')-&gt;scopeBindings();
+    Route::post('{template}/versions/{version}/activate', [C::class, 'activate'])-&gt;name('activate')-&gt;scopeBindings();
+
+    Route::get('catalogue/{type}', [C::class, 'catalogue'])-&gt;name('catalogue');
+    Route::get('stylesheet', [C::class, 'stylesheet'])-&gt;name('stylesheet');
+    Route::get('fonts/{family}/{weight}', [C::class, 'font'])-&gt;name('font')-&gt;whereNumber('weight');
+});</code></pre>
+
+    <h3>Passing the URLs to the component</h3>
+    <p>The <code>font</code> URL must keep its literal <code>{family}</code>/<code>{weight}</code> placeholders — the component substitutes them per face — so it is built with marker tokens and swapped back, because <code>route()</code> URL-encodes real braces.</p>
+    <pre><code>$urls = [
+    'load'       =&gt; route('templates.load', [$template, $version]),
+    'save'       =&gt; route('templates.save', [$template, $version]),
+    'preview'    =&gt; route('templates.preview', [$template, $version]),
+    'activate'   =&gt; route('templates.activate', [$template, $version]),
+    'catalogue'  =&gt; route('templates.catalogue', $template-&gt;type_code),
+    'stylesheet' =&gt; route('templates.stylesheet'),
+    'font'       =&gt; str_replace(
+        ['FAMILY_PLACEHOLDER', 'WEIGHT_PLACEHOLDER'], ['{family}', '{weight}'],
+        route('templates.font', ['family' =&gt; 'FAMILY_PLACEHOLDER', 'weight' =&gt; 'WEIGHT_PLACEHOLDER']),
+    ),
+];</code></pre>
+    <pre><code>&lt;x-templates::editor :template="$template" :version="$version" :urls="$urls" /&gt;</code></pre>
+    <div class="note">Geometry handed to the pipeline must carry the zone bands: the toolkit reads header/footer heights off <code>geometry['zones']</code>, and those live in the type's initial layout, not its <code>pdf</code> block. The generated controller folds them in for you.</div>
+  </section>
+
+  <section id="errors">
+    <h2><span class="num">3.1</span>Error contract</h2>
+    <p>Any non-2xx response is a failure; the editor reads JSON:</p>
+    <pre><code>{ "message": "human-readable reason", "problems": [ /* optional */ ] }</code></pre>
+    <p>Problem entries differ by layer, exactly as the toolkit returns them — pass them straight through:</p>
+    <table>
+      <thead><tr><th>Layer</th><th>Shape</th></tr></thead>
+      <tbody>
+        <tr><td>static (layer-1)</td><td><code>{ code: "V-10", component_id, message }</code></td></tr>
+        <tr><td>render (layer-2)</td><td><code>{ code: "R-07", page, message }</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="auth">
+    <h2><span class="num">4</span>Authorization</h2>
+    <p>Every endpoint authorizes through <code>Gate::authorize()</code>. Laravel auto-discovers the policy for the model (<code>App\Models\Template</code> → <code>App\Policies\TemplatePolicy</code>) — on Laravel 11+ there is no <code>AuthServiceProvider</code> to register. The generated controller extends <code>Illuminate\Routing\Controller</code>, since the app's base controller no longer carries the authorization trait on Laravel 10–13.</p>
+    <table>
+      <thead><tr><th>Ability</th><th>Endpoint</th></tr></thead>
+      <tbody>
+        <tr><td><code>view</code></td><td><code>load</code>, <code>preview</code></td></tr>
+        <tr><td><code>update</code></td><td><code>save</code></td></tr>
+        <tr><td><code>activate</code></td><td><code>activate</code> — its own ability</td></tr>
+        <tr><td><code>viewAny</code></td><td><code>catalogue</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="tenancy">
+    <h2><span class="num">5</span>Tenancy</h2>
+    <p>The package owns no database and no tenancy mode. A multi-tenant host scopes its own models the way it scopes everything else. The one touch-point is the editor's optional tenant header — bind a <code>TenantResolver</code> and set <code>templates.editor.tenant_header</code>; the toolkit calls only <code>currentId()</code>.</p>
+  </section>
+
+  <section id="repro">
+    <h2><span class="num">6</span>Reproducibility conformance-kit</h2>
+    <p>Mount <code>Controlink\Templates\Testing\AssertsReproducibility</code> in the host's test suite to prove the host's persistence kept the discipline the toolkit relies on: a stable input hash, an immutable issuable version, and a reproducible re-render.</p>
+  </section>
+
+  <footer>
+    <a href="../README.md">README</a>
+    <a href="INTEGRATION.md">INTEGRATION.md (full contract)</a>
+    <p style="margin-top:14px">This page mirrors <code>docs/INTEGRATION.md</code>, which is the authoritative, versioned source.</p>
+  </footer>
+
+</div>
+</body>
+</html>

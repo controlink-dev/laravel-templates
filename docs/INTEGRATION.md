@@ -11,6 +11,42 @@ the `VersionState` enum, and the `GuardsIssuableVersion` trait.
 
 ---
 
+## 0. Quick start
+
+```bash
+php artisan templates:install
+```
+
+The command scaffolds all of this into the host's own paths — nothing is left in the
+package:
+
+| File | What it is |
+|---|---|
+| `app/Models/Template.php`, `app/Models/TemplateVersion.php` | the two models (section 1) |
+| `database/migrations/*_create_templates_table.php` | the reference migration (section 1) |
+| `app/Http/Controllers/TemplateEditorController.php` | the seven endpoints, implemented (section 3) |
+| `routes/templates.php` | the routes, plus the `urls` prop example (section 3) |
+| `app/Policies/TemplatePolicy.php` | the policy, denying everything until wired (section 4) |
+
+It also publishes the editor bundle (`--tag=templates-assets`), which the component
+needs. It does **not** publish the config: the package's merged defaults already apply,
+and the shipped default font path is resolved relative to the package's own config file —
+a copy in the host's `config/` would break that path. It never overwrites a file that
+already exists — pass `--force` to replace, and re-running it is safe. Then:
+
+1. `require __DIR__.'/templates.php';` from `routes/web.php`.
+2. Grant abilities in `TemplatePolicy` (it denies everything by default).
+3. Declare a type in `config/templates.php` — a partial config is merged over the package
+   defaults, so you only write the keys you set (README, "Declaring a type"). If you
+   publish the full config with `--tag=templates-config`, fix `fonts.*.weights.*.path` to
+   point at a font the host can read.
+4. `php artisan migrate`.
+
+The rest of this document is the contract behind each generated file, for when the host
+adapts them — the generated code is the reference implementation, not a black box.
+
+---
+
 ## 1. Models
 
 The editor component takes any two Eloquent models. It never names a concrete class — it
@@ -71,12 +107,13 @@ class TemplateVersion extends Model
 {
     use GuardsIssuableVersion; // model-level immutability guard for active/archived versions
 
-    protected $fillable = ['template_id', 'number', 'state', 'project_data', 'html', 'css', 'hash', 'geometry'];
+    protected $fillable = ['template_id', 'number', 'state', 'project_data', 'html', 'css', 'hash', 'geometry', 'activated_at', 'activated_by'];
 
     protected $casts = [
         'state'        => VersionState::class,
         'project_data' => 'array',
         'geometry'     => 'array',
+        'activated_at' => 'datetime',
     ];
 
     public function isEditable(): bool
@@ -115,11 +152,15 @@ Schema::create('template_versions', function (Blueprint $t) {
     $t->unsignedInteger('number')->default(1);
     $t->string('state')->default('draft'); // draft | validated | active | archived
     $t->json('project_data')->nullable();
-    $t->text('html')->nullable();
-    $t->text('css')->nullable();
-    $t->string('hash')->nullable();
+    $t->longText('html')->nullable();
+    $t->longText('css')->nullable();
+    $t->string('hash')->nullable();        // canonical input hash (reproducibility anchor)
     $t->json('geometry')->nullable();
+    $t->timestamp('activated_at')->nullable();
+    $t->string('activated_by')->nullable();
     $t->timestamps();
+
+    $t->unique(['template_id', 'number']);
 });
 ```
 
@@ -199,7 +240,10 @@ $type      = $template->type();
 
 $layout   = ['project_data' => $request->input('project_data'), 'html' => $request->input('html'), 'css' => $request->input('css')];
 $fields   = $type->bindings;          // the type's declared bindings
-$geometry = $request->input('geometry') ?: $type->pdf;
+// Geometry must carry the zone bands: the toolkit reads header/footer heights off
+// `geometry['zones']`, and they live in the type's initial layout, not its `pdf` block.
+$geometry = ($request->input('geometry') ?: $type->pdf);
+$geometry['zones'] = $geometry['zones'] ?? ($type->initialLayout['zones'] ?? []);
 
 $problems = $documents->validateLayout($layout, $fields, $geometry);
 
@@ -213,7 +257,10 @@ $version->update([
     'html'         => $layout['html'],
     'css'          => $layout['css'],
     'geometry'     => $geometry,
-    'state'        => \Controlink\Templates\Versions\VersionState::Validated,
+    // The reproducibility anchor: the canonical hash of the inputs. Written here, at
+    // save time, and frozen once the version is issuable — never the rendered-PDF hash.
+    'hash'  => $documents->inputHash($layout['project_data'], $geometry),
+    'state' => \Controlink\Templates\Versions\VersionState::Validated,
 ]);
 
 return response()->json(['ok' => true]);
@@ -225,10 +272,13 @@ No body. Returns the rendered PDF **bytes** (`Content-Type: application/pdf`) on
 the editor opens them as a blob. On failure, the JSON error contract.
 
 ```php
+$geometry = ($version->geometry ?: $type->pdf);
+$geometry['zones'] = $geometry['zones'] ?? ($type->initialLayout['zones'] ?? []);
+
 $pdf = $documents->render(
     ['project_data' => $version->project_data, 'html' => $version->html, 'css' => $version->css],
     $type->fixture,            // preview renders against the type's sample data
-    $version->geometry ?: $type->pdf,
+    $geometry,
     '',
     $type->bindings,
 );
@@ -242,12 +292,15 @@ No body. Renders, runs render validation, and — only if it passes — flips th
 `active` (archiving the previous active one) and records the hash.
 
 ```php
+abort_unless($version->state === \Controlink\Templates\Versions\VersionState::Validated, 409);
+
 $layout = ['project_data' => $version->project_data, 'html' => $version->html, 'css' => $version->css];
 $fields = $type->bindings;
-$geo    = $version->geometry ?: $type->pdf;
+$geo    = ($version->geometry ?: $type->pdf);
+$geo['zones'] = $geo['zones'] ?? ($type->initialLayout['zones'] ?? []);
 $data   = $type->fixture;
 
-['pdf' => $pdf, 'hash' => $hash, 'seconds' => $seconds] = $documents->renderForActivation($layout, $data, $geo, '', $fields);
+['pdf' => $pdf, 'hash' => $pdfHash, 'seconds' => $seconds] = $documents->renderForActivation($layout, $data, $geo, '', $fields);
 
 $boxes    = $documents->codeSlotBoxes($layout, $fields, $geo);
 $problems = $documents->validateRender($pdf, $fields, $data, $geo, $seconds, $boxes);
@@ -256,9 +309,20 @@ if ($problems !== []) {
     return response()->json(['message' => __('…'), 'problems' => $problems], 422);
 }
 
-DB::transaction(function () use ($template, $version, $hash) {
-    $template->versions()->where('state', 'active')->update(['state' => 'archived']);
-    $version->update(['state' => 'active', 'hash' => $hash]);
+DB::transaction(function () use ($template, $version) {
+    // Archive the one this replaces, promote this one. The version's `hash` (the
+    // canonical input hash set at save) is NOT touched — it is frozen and stays the
+    // reproducibility anchor. Record `$pdfHash` in your own audit trail if you keep one.
+    $template->versions()
+        ->where('state', 'active')
+        ->whereKeyNot($version->getKey())
+        ->update(['state' => 'archived']);
+
+    $version->update([
+        'state'        => \Controlink\Templates\Versions\VersionState::Active,
+        'activated_at' => now(),
+        'activated_by' => (string) auth()->id(),
+    ]);
 });
 
 return response()->json(['ok' => true]);
@@ -304,20 +368,75 @@ package's default font lives inside `vendor/`, outside the host's public directo
 $face = config("templates.fonts.{$family}.weights.{$weight}");
 abort_unless($face, 404);
 
-return response()->file($face['path'], ['Content-Type' => $face['mime']]);
+// Absolute path (the package's own font) as-is; a relative one from public/.
+$path = preg_match('/^([a-zA-Z]:[\\\\\/]|\/)/', $face['path']) === 1 ? $face['path'] : public_path($face['path']);
+
+return response()->file($path, ['Content-Type' => $face['mime']]);
+```
+
+### Routes
+
+The generated `routes/templates.php`. The per-version routes use `scopeBindings()` so a
+`{version}` only resolves within its `{template}`; the shared ones are per-type. The
+editor never names these — the host hands it their URLs through the `urls` prop.
+
+```php
+use App\Http\Controllers\TemplateEditorController;
+use Illuminate\Support\Facades\Route;
+
+Route::middleware(['web', 'auth'])
+    ->prefix('templates')
+    ->name('templates.')
+    ->group(function () {
+        Route::get('{template}/versions/{version}/edit', [TemplateEditorController::class, 'load'])->name('load')->scopeBindings();
+        Route::put('{template}/versions/{version}', [TemplateEditorController::class, 'save'])->name('save')->scopeBindings();
+        Route::post('{template}/versions/{version}/preview', [TemplateEditorController::class, 'preview'])->name('preview')->scopeBindings();
+        Route::post('{template}/versions/{version}/activate', [TemplateEditorController::class, 'activate'])->name('activate')->scopeBindings();
+
+        Route::get('catalogue/{type}', [TemplateEditorController::class, 'catalogue'])->name('catalogue');
+        Route::get('stylesheet', [TemplateEditorController::class, 'stylesheet'])->name('stylesheet');
+        Route::get('fonts/{family}/{weight}', [TemplateEditorController::class, 'font'])->name('font')->whereNumber('weight');
+    });
+```
+
+### Passing the URLs to the component
+
+On the page that embeds the editor, build the `urls` prop from the named routes. The
+`font` URL keeps the literal `{family}`/`{weight}` placeholders — the component
+substitutes them per face — so it is built with marker tokens and swapped back, because
+`route()` would URL-encode real braces.
+
+```php
+$urls = [
+    'load'       => route('templates.load', [$template, $version]),
+    'save'       => route('templates.save', [$template, $version]),
+    'preview'    => route('templates.preview', [$template, $version]),
+    'activate'   => route('templates.activate', [$template, $version]),
+    'catalogue'  => route('templates.catalogue', $template->type_code),
+    'stylesheet' => route('templates.stylesheet'),
+    'font'       => str_replace(
+        ['FAMILY_PLACEHOLDER', 'WEIGHT_PLACEHOLDER'],
+        ['{family}', '{weight}'],
+        route('templates.font', ['family' => 'FAMILY_PLACEHOLDER', 'weight' => 'WEIGHT_PLACEHOLDER']),
+    ),
+];
+```
+
+```blade
+<x-templates::editor :template="$template" :version="$version" :urls="$urls" />
 ```
 
 ---
 
 ## 4. Authorization
 
-The component renders the activate button only inside `@can('activate', $template)`. The
-host registers an ordinary Laravel policy for its own `Template` model:
-
-```php
-// AuthServiceProvider
-protected $policies = [\App\Models\Template::class => \App\Policies\TemplatePolicy::class];
-```
+The component renders the activate button only inside `@can('activate', $template)`, and
+every endpoint authorizes through `Gate::authorize()` (see the generated controller).
+Laravel auto-discovers the policy for the `Template` model
+(`App\Models\Template` → `App\Policies\TemplatePolicy`) — on Laravel 11+ there is no
+`AuthServiceProvider` and nothing to register. The controller extends
+`Illuminate\Routing\Controller` rather than the host's base controller, because that base
+no longer carries the authorization trait on Laravel 10–13.
 
 The editor's own endpoints should authorize too — a typical set mirrors Laravel's resource
 conventions, with `activate` as its own ability (drawing a layout and putting issued

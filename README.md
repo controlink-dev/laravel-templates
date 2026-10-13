@@ -68,10 +68,26 @@ instead:
 }
 ```
 
-Then publish what the host needs:
+Then scaffold the host side:
 
 ```bash
-# optional — the host can also just read/override config('templates.*') directly
+php artisan templates:install
+```
+
+This generates the host's models, migration, editor controller (the seven endpoints),
+routes and policy, and publishes the editor bundle (the config is left merged from the
+package — see the note under `templates-config` below). It never overwrites an existing
+file (pass `--force` to replace), so it is safe to re-run. See `docs/INTEGRATION.md`,
+"Quick start", for what it writes and the next steps. Everything it generates is the
+host's own code — the package ships none of it.
+
+Prefer to wire it by hand, or publish only part of it? The individual publish tags are
+still there:
+
+```bash
+# optional — the host can also just read/override config('templates.*') directly.
+# NOTE: the shipped default font path is relative to the package's own config file, so a
+# published copy in the host's config/ breaks it — fix fonts.*.weights.*.path if you publish.
 php artisan vendor:publish --tag=templates-config
 
 # required for the editor component to render with styling and behaviour

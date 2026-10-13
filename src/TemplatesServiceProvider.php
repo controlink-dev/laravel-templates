@@ -6,6 +6,7 @@ use Controlink\Templates\Contracts\BindingResolver;
 use Controlink\Templates\Contracts\MoneyFormatter;
 use Controlink\Templates\Contracts\PdfEngine;
 use Controlink\Templates\Contracts\TenantResolver;
+use Controlink\Templates\Console\InstallCommand;
 use Controlink\Templates\Rendering\FilterRegistry;
 use Controlink\Templates\Support\IntlMoneyFormatter;
 use Controlink\Templates\Support\NullBindingResolver;
@@ -47,6 +48,10 @@ class TemplatesServiceProvider extends ServiceProvider
         $this->publishes([__DIR__.'/../config/templates.php' => config_path('templates.php')], 'templates-config');
         $this->publishes([__DIR__.'/../dist' => public_path('vendor/templates')], 'templates-assets');
         $this->publishes([__DIR__.'/../resources/lang' => $this->app->langPath('vendor/templates')], 'templates-lang');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([InstallCommand::class]);
+        }
 
         // Structural validation only: no database access here (see spec, section 5).
         $this->app->make(TypeCatalogue::class)->validate();
