@@ -1052,6 +1052,29 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         applyViews();
     };
 
+    /*
+     * The canvas body size and geometry style, applied to whatever frame is current.
+     *
+     * Also bound to `canvas:frame:load:body`: loadProjectData (a format that has been saved
+     * at least once — the default A4 here) rebuilds the iframe asynchronously, which drops
+     * the inline body size and the managed <style> and would leave a switch back to that
+     * format showing the previous one's canvas. Re-running it on the rebuilt frame is what
+     * makes switching back to A4 take effect. `height: auto` on a roll's .page lets the body
+     * (sized to ROLL_CANVAS_HEIGHT) provide the scroll area while the page flows.
+     */
+    const applyCanvasToFrame = () => {
+        const body = editor.Canvas.getBody?.();
+
+        if (body) {
+            body.style.width = paper.width + 'mm';
+            body.style.height = paper.height + 'mm';
+            body.style.minHeight = paper.height + 'mm';
+        }
+
+        applyCanvasGeometry(config.geometry);
+        applyViews();
+    };
+
     const applyPaper = (geometry) => {
         Object.assign(paper, resolvePaper(geometry, config.paperFormat));
         applyPaperVars(root, paper);
@@ -1060,17 +1083,7 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         rollMode  = geometry?.medium === 'roll';
         labelMode = isLabelGeometry(geometry);
 
-        const body = editor.Canvas.getBody?.();
-
-        if (body) {
-            body.style.width = paper.width + 'mm';
-            // The canvas (GrapesJS iframe) needs a height to render into; the roll's .page
-            // flows to its own content height inside it, and the rest is scroll area.
-            body.style.height = paper.height + 'mm';
-            body.style.minHeight = paper.height + 'mm';
-        }
-
-        applyCanvasGeometry(geometry);
+        applyCanvasToFrame();
         syncModeChrome();
 
         if (userChoseZoom) {
@@ -1296,7 +1309,20 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
                 config.loadUrl     = info.urls.load;
                 config.previewUrl  = info.urls.preview;
                 config.activateUrl = info.urls.activate;
-                config.geometry    = info.geometry ?? config.geometry;
+                // A version may carry no geometry of its own — a legacy default-format version
+                // (the first A4) predates the geometry column and stores [] (or null). Fall
+                // back to the FORMAT's own geometry from the registry, never to the format left
+                // on screen: `?? config.geometry` kept the previous format because [] is truthy
+                // and a missing geometry fell through to the one being switched away from, so
+                // the canvas loaded A4's content but stayed shaped like the talão.
+                const hasGeometry = (value) => Boolean(value)
+                    && (Array.isArray(value) ? value.length > 0 : Object.keys(value).length > 0);
+                const formatEntry = config.pageFormats.find((format) => format.id === info.format);
+                const formatGeometry = formatEntry ? geometryOf(formatEntry) : null;
+
+                config.geometry = hasGeometry(info.geometry)
+                    ? info.geometry
+                    : (formatGeometry ?? config.geometry);
 
                 // Load the format's layout first, then size and restyle the canvas: applyPaper
                 // writes the managed geometry <style> and must run after loadLayout's
@@ -1688,6 +1714,11 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     window.addEventListener('resize', drawRulers);
 
     editor.on('component:update component:add component:remove', drawRulers);
+
+    // loadProjectData (a saved format, e.g. the default A4) rebuilds the canvas iframe
+    // asynchronously; re-apply the body size and geometry style to the new frame, or a
+    // switch back to that format keeps the previous format's canvas.
+    editor.on('canvas:frame:load:body', () => applyCanvasToFrame());
 
     // The tree has to follow the geometry; see `reparentToZone`. A roll has no bands, and
     // flow mode reorders in the tree already, so there is nothing to reparent. A label has
