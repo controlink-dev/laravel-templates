@@ -229,6 +229,14 @@ return [
         'confirm_delete_legal' => '«:field» é um campo obrigatório por lei. Eliminar à mesma? Terá de o voltar a colocar antes de poder gravar.',
     ],
 
+    // Botões dos diálogos de confirmação/aviso do próprio editor (dialog.js), em vez
+    // dos diálogos nativos do browser.
+    'dialog' => [
+        'confirm' => 'Continuar',
+        'cancel'  => 'Cancelar',
+        'close'   => 'OK',
+    ],
+
     // Camada 1 da validação: estática, sobre `project_data` (Output\Pdf\LayoutValidator).
     'validation' => [
         'unknown_binding'   => 'O campo «:binding» não existe no catálogo deste tipo de documento.',

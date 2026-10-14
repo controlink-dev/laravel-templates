@@ -1139,3 +1139,73 @@
 .tpl-notice-close:hover {
     opacity: 1;
 }
+
+/* ---------------------------------------------------------------- dialog ----
+ * The editor's own confirm/alert, in place of the browser's native dialogs
+ * (RF-E03: the bundle cannot use the host's modal). Uses the same tokens as the
+ * rest of the chrome, so it follows the light/dark theme without extra rules.
+ */
+.tpl-dialog {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(15, 23, 42, .45);
+}
+
+.tpl-dialog__box {
+    width: 100%;
+    max-width: 420px;
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 12px;
+    background: var(--tpl-surface-raised, #fff);
+    box-shadow: 0 20px 48px rgba(15, 23, 42, .28);
+    padding: 20px;
+}
+
+.tpl-dialog__message {
+    margin: 0 0 18px;
+    color: var(--tpl-slate-700, #334155);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.tpl-dialog__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.tpl-dialog__btn {
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--tpl-surface-base, #fff);
+    color: var(--tpl-slate-700, #334155);
+}
+
+.tpl-dialog__btn--ghost:hover {
+    background: var(--tpl-surface-muted, #f8fafc);
+}
+
+.tpl-dialog__btn--primary {
+    border-color: var(--tpl-primary, #4f46e5);
+    background: var(--tpl-primary, #4f46e5);
+    color: var(--tpl-on-primary, #fff);
+}
+
+.tpl-dialog__btn--primary:hover {
+    background: var(--tpl-primary-strong, #3730a3);
+    border-color: var(--tpl-primary-strong, #3730a3);
+}
+
+.tpl-dialog__btn:focus-visible {
+    outline: 2px solid var(--tpl-primary, #4f46e5);
+    outline-offset: 2px;
+}

@@ -10,6 +10,7 @@
  * ========================================================================= */
 
 import { icons } from './icons.js';
+import { alertDialog } from './dialog.js';
 
 /** Only these families exist; the catalogue is closed on the server. */
 /*
@@ -610,7 +611,10 @@ function registerFileTrait(editor, config) {
 
                 if (file.size > config.imageMaxBytes) {
                     input.value = '';
-                    window.alert(config.strings['error.image_too_large']);
+                    alertDialog(config.strings['error.image_too_large'], {
+                        root: config.root,
+                        closeLabel: config.strings['dialog.close'],
+                    });
 
                     return;
                 }

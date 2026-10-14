@@ -20,6 +20,8 @@ import {
     restoreMissingLegalFields,
     styleManagerSectors,
 } from './panels.js';
+import { mergeProblems } from './problems.js';
+import { confirmDialog } from './dialog.js';
 
 /*
  * Mounting, and the four things that made a workspace pane hostile.
@@ -310,6 +312,11 @@ async function mountEditor(el) {
      * rules the browser cannot decide — contrast against an effective background,
      * occlusion, structure — and dropping its verdict on the next keystroke would hide
      * the only reason the layout will not save.
+     *
+     * But only for codes the browser does NOT decide itself: `mergeProblems` drops server
+     * copies of the locally-decidable codes (V-10/11/13/16), because the live check is
+     * authoritative for those. Keeping them listed the same problem twice while the field
+     * was bad, and left a phantom entry after the user fixed it.
      */
     let serverProblems = [];
 
@@ -335,7 +342,7 @@ async function mountEditor(el) {
             }
 
             const local = config.editable ? checkLegalFieldsLocally(editor, config) : [];
-            const problems = [...serverProblems, ...local];
+            const problems = mergeProblems(serverProblems, local);
 
             renderProblems(editor, config, problems);
             chromeApi.sync(problems.length);
@@ -1143,7 +1150,7 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         // A single offer is no choice: leave the control out.
         formatSelect.closest('.tpl-tools')?.toggleAttribute('hidden', formats.length < 2);
 
-        formatSelect.addEventListener('change', () => {
+        formatSelect.addEventListener('change', async () => {
             const chosen = formats.find((format) => format.id === formatSelect.value);
 
             if (!chosen) {
@@ -1156,13 +1163,24 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             if (hasLayout && config.editable && !config.locked) {
                 const hasContent = layoutState.pristine === null || snapshot(editor) !== layoutState.pristine;
 
-                if (hasContent && !window.confirm(config.strings.formatSwitchConfirm
-                    || 'Trocar de formato substitui o layout atual. Continuar?')) {
-                    // Declined: keep the layout, change only the geometry.
-                    config.geometry = geometryOf(chosen);
-                    applyPaper(config.geometry);
+                if (hasContent) {
+                    const confirmed = await confirmDialog(
+                        config.strings.formatSwitchConfirm
+                            || 'Trocar de formato substitui o layout atual. Continuar?',
+                        {
+                            root: config.root,
+                            confirmLabel: config.strings['dialog.confirm'],
+                            cancelLabel: config.strings['dialog.cancel'],
+                        },
+                    );
 
-                    return;
+                    if (!confirmed) {
+                        // Declined: keep the layout, change only the geometry.
+                        config.geometry = geometryOf(chosen);
+                        applyPaper(config.geometry);
+
+                        return;
+                    }
                 }
 
                 loadLayout(layout);
@@ -1441,13 +1459,24 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             // guard against an accidental Delete, not the compliance boundary — the problems
             // panel flags a missing legal field live, and the server refuses to save a layout
             // without it (spec 8.1). Declining leaves the block untouched.
-            const confirmed = window.confirm(
+            //
+            // The dialog is async, so the delete cannot run inline: `prevent: true` has
+            // already stopped the native delete, and the command runs only once the user
+            // confirms. Returning here (without deleting) is the "ask first" path.
+            confirmDialog(
                 config.strings['confirm.delete_legal'].replace(':field', legalFieldName(blocked[0])),
-            );
+                {
+                    root: config.root,
+                    confirmLabel: config.strings['dialog.confirm'],
+                    cancelLabel: config.strings['dialog.cancel'],
+                },
+            ).then((confirmed) => {
+                if (confirmed) {
+                    ed.runCommand('core:component-delete');
+                }
+            });
 
-            if (!confirmed) {
-                return;
-            }
+            return;
         }
 
         ed.runCommand('core:component-delete');

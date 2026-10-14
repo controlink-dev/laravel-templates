@@ -219,6 +219,14 @@ return [
         'confirm_delete_legal' => '":field" is a field required by law. Delete it anyway? You will need to place it again before you can save.',
     ],
 
+    // Buttons of the editor's own confirm/alert dialogs (dialog.js), in place of the
+    // browser's native dialogs.
+    'dialog' => [
+        'confirm' => 'Continue',
+        'cancel'  => 'Cancel',
+        'close'   => 'OK',
+    ],
+
     // Layer 1 of the validation: static, over `project_data` (Output\Pdf\LayoutValidator).
     'validation' => [
         'unknown_binding'   => 'The field ":binding" does not exist in this document type catalogue.',

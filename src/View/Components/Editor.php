@@ -282,6 +282,11 @@ class Editor extends Component
             'notice.close'        => __('templates::editor.notices.close'),
 
             'confirm.delete_legal' => __('templates::editor.notices.confirm_delete_legal'),
+
+            // Buttons of the editor's own confirm/alert dialogs (dialog.js).
+            'dialog.confirm' => __('templates::editor.dialog.confirm'),
+            'dialog.cancel'  => __('templates::editor.dialog.cancel'),
+            'dialog.close'   => __('templates::editor.dialog.close'),
         ];
 
         // The format and rule width labels follow the config, so adding one there does
