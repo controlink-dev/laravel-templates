@@ -359,7 +359,13 @@ async function mountEditor(el) {
         savedSnapshot = snapshot(editor);
         dirty = false;
         announce(false);
+        // Server problems belong to the version that produced them. A new clean baseline —
+        // which is only ever a format/version switch (the sole callers of resetSaved) — must
+        // not keep showing the previous format's server-side problems. The local checks re-run
+        // through refreshChecks below, and the next save of this format re-populates the set.
+        serverProblems = [];
         renderStatus('', root);
+        refreshChecks();
     };
 
     layoutState.save = () => saveVersion(editor, config);
@@ -803,10 +809,13 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     const root = config.root;
 
     // A roll flows: no sheet rulers, no header/body/footer bands, no fixed page height.
-    const rollMode = config.geometry?.medium === 'roll';
+    // Reassigned by applyPaper: the format tabs switch medium in place (A4↔Talão), so the
+    // canvas mode is not frozen at mount — the chrome, the rulers and drawRulers all read
+    // whatever the current format is.
+    let rollMode = config.geometry?.medium === 'roll';
 
     // A label is a fixed sheet with rulers but no zones — it is too small for bands.
-    const labelMode = isLabelGeometry(config.geometry);
+    let labelMode = isLabelGeometry(config.geometry);
 
     const views = { legal: false, zones: !rollMode && !labelMode, rulers: !rollMode, clean: false };
 
@@ -981,9 +990,75 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
      * the mount's size and the rulers. The one path both the initial mount and a
      * format change take.
      */
+    /*
+     * The geometry-dependent canvas rules, re-applied on every format change.
+     *
+     * `canvasDecorations()` bakes `.page` and the drag mode at mount, from the format the
+     * editor opened on. The format tabs switch medium in place (A4→Talão), so those baked
+     * values are wrong after a cross-medium switch: a roll kept the A4 `.page` (210mm,
+     * overflow:hidden, no padding) clipped into the narrow body — the "A4 cut in half" the
+     * talão showed. These rules are the single source for the live canvas, written into a
+     * managed <style> in the canvas document (so they never reach the saved layout CSS) and
+     * given one extra specificity step (`html .page`) so they beat print.css and the baked
+     * decorations whatever the injection order.
+     */
+    const applyCanvasGeometry = (geometry) => {
+        const roll = geometry?.medium === 'roll';
+
+        // Absolute placement for a sheet; the native sorter (flow) for a roll.
+        editor.setDragMode?.(roll ? '' : 'absolute');
+
+        const doc = editor.Canvas.getDocument?.();
+
+        if (! doc?.head) {
+            return;
+        }
+
+        let style = doc.getElementById('tpl-geom');
+
+        if (! style) {
+            style = doc.createElement('style');
+            style.id = 'tpl-geom';
+            doc.head.appendChild(style);
+        }
+
+        const m = geometry?.margins ?? {};
+        const mm = (value) => (Number(value) || 0) + 'mm';
+
+        style.textContent = 'html .page{width:' + paper.width + 'mm;box-sizing:border-box;'
+            + (roll
+                ? 'height:auto;min-height:0;overflow:visible;padding:'
+                    + mm(m.top) + ' ' + mm(m.right) + ' ' + mm(m.bottom) + ' ' + mm(m.left) + ';}'
+                : 'height:' + paper.height + 'mm;overflow:hidden;padding:0;}');
+    };
+
+    /*
+     * The chrome that depends on the medium: a roll has no rulers and no zone bands, a
+     * label has rulers but no zones. Re-evaluated on every switch so the tabs cannot leave
+     * a roll wearing the sheet's rulers.
+     */
+    const syncModeChrome = () => {
+        views.zones  = ! rollMode && ! labelMode && views.zones;
+        views.rulers = ! rollMode;
+
+        const setToggleHidden = (name, hidden) => {
+            chrome.toolbar?.querySelectorAll('[data-tpl-toggle="' + name + '"]')
+                .forEach((button) => { (button.closest('.tpl-tool') ?? button).hidden = hidden; });
+        };
+
+        setToggleHidden('rulers', rollMode);
+        setToggleHidden('zones', rollMode || labelMode);
+
+        applyViews();
+    };
+
     const applyPaper = (geometry) => {
         Object.assign(paper, resolvePaper(geometry, config.paperFormat));
         applyPaperVars(root, paper);
+
+        // The canvas mode follows the format: the tabs change medium in place.
+        rollMode  = geometry?.medium === 'roll';
+        labelMode = isLabelGeometry(geometry);
 
         const body = editor.Canvas.getBody?.();
 
@@ -994,6 +1069,9 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             body.style.height = paper.height + 'mm';
             body.style.minHeight = paper.height + 'mm';
         }
+
+        applyCanvasGeometry(geometry);
+        syncModeChrome();
 
         if (userChoseZoom) {
             setZoom(editor.Canvas.getZoom() || 100);
@@ -1220,8 +1298,11 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
                 config.activateUrl = info.urls.activate;
                 config.geometry    = info.geometry ?? config.geometry;
 
-                applyPaper(config.geometry);
+                // Load the format's layout first, then size and restyle the canvas: applyPaper
+                // writes the managed geometry <style> and must run after loadLayout's
+                // setComponents/setStyle, and fitZoom then measures the sheet with content in it.
                 renderSwitched(info);
+                applyPaper(config.geometry);
                 currentFormat = info.format;
                 markActiveTab(info.format);
                 updateCustomControl();
@@ -1611,9 +1692,15 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     // The tree has to follow the geometry; see `reparentToZone`. A roll has no bands, and
     // flow mode reorders in the tree already, so there is nothing to reparent. A label has
     // no bands either — a header plus footer would exceed its height and scatter blocks.
-    if (!rollMode && !isLabelGeometry(config.geometry)) {
-        editor.on('component:drag:end', ({ target }) => reparentToZone(editor, config, target));
-    }
+    // The mode is checked when the drag ends, not when the handler is registered: a format
+    // tab can turn the sheet into a roll (and back) after mount.
+    editor.on('component:drag:end', ({ target }) => {
+        if (rollMode || labelMode) {
+            return;
+        }
+
+        reparentToZone(editor, config, target);
+    });
 
     return { sync, drawRulers, fitZoom, attach };
 }
@@ -1650,15 +1737,30 @@ function escapeHtml(value) {
 function renderProblems(editor, config, problems) {
     const panel = (config.root ?? document).querySelector('[data-tpl-problems]');
 
-    // Only clear a marker that is actually set: writing the same value back is still
-    // a component change, and the editor would never settle.
-    editor.getWrapper().find('[data-tpl-problem]').forEach((component) => {
-        if (component.getAttributes()['data-tpl-problem'] !== undefined) {
-            component.addAttributes({ 'data-tpl-problem': null });
-        }
-    });
+    // The component ids that should carry the problem outline after this pass. The markers
+    // are reconciled against this set at every exit below, and never blanket-cleared up
+    // front: clearing a still-problematic component and then re-adding its marker are two
+    // `component:update` events, and the update listener re-runs this function — an infinite
+    // re-render loop that calls panel.replaceChildren() (resetting the problems list's scroll
+    // to the top) dozens of times a second. It only bites once a problem points at a live
+    // component — e.g. after a save adds server-side problems — which is why an
+    // all-missing-fields layout never showed it.
+    const wanted = new Set();
+
+    // Remove the marker only from components that are no longer a problem; a component that
+    // stays a problem keeps its '1' untouched, so no attribute changes => no component:update
+    // => the checks settle after one pass.
+    const reconcileMarkers = () => {
+        editor.getWrapper().find('[data-tpl-problem]').forEach((component) => {
+            if (!wanted.has(component.getId()) && component.getAttributes()['data-tpl-problem'] !== undefined) {
+                component.addAttributes({ 'data-tpl-problem': null });
+            }
+        });
+    };
 
     if (!panel) {
+        reconcileMarkers();
+
         return;
     }
 
@@ -1666,6 +1768,8 @@ function renderProblems(editor, config, problems) {
     panel.hidden = problems.length === 0;
 
     if (problems.length === 0) {
+        reconcileMarkers();
+
         return;
     }
 
@@ -1724,6 +1828,8 @@ function renderProblems(editor, config, problems) {
                 : undefined;
 
             if (component) {
+                wanted.add(component.getId());
+
                 if (component.getAttributes()['data-tpl-problem'] !== '1') {
                     component.addAttributes({ 'data-tpl-problem': '1' });
                 }
@@ -1742,6 +1848,8 @@ function renderProblems(editor, config, problems) {
 
         panel.append(list);
     });
+
+    reconcileMarkers();
 }
 
 /** @returns {object} everything the editor needs, read once from the container. */

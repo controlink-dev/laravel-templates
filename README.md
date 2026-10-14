@@ -401,6 +401,10 @@ moved back to the host:
 - **New:** `Toolkit\Documents` (the stateless facade), `BindingResolver`,
   `GuardsIssuableVersion` (a mountable trait), and `AssertsReproducibility` (the
   conformance-kit).
+- **New in 1.1:** the editor accepts `:format-selector="false"` and a `urls['format_switch']`
+  endpoint, so a host that gives each page format its own version lineage can drive format
+  switching from its own tabs (`[data-tpl-format-tab]`) instead of the built-in selector.
+  See `docs/INTEGRATION.md`.
 
 A host integrating this version implements the models, the table/migrations, the routes,
 the policy and the version lifecycle itself. `docs/INTEGRATION.md` is the step-by-step.

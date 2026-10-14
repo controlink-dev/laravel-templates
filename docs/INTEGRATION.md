@@ -426,6 +426,51 @@ $urls = [
 <x-templates::editor :template="$template" :version="$version" :urls="$urls" />
 ```
 
+#### Driving format switching from the host's own chrome (optional)
+
+By default the editor renders a page-format `<select>` in its toolbar and switches the
+layout's geometry in place. A host that instead treats each page format as its own version
+lineage — format tabs on the surrounding page, one draft per format — supplies a
+`format_switch` URL and turns the built-in selector off. The host's own route — nothing in
+the package defines it:
+
+```php
+$urls['format_switch'] = route('templates.format', ['template' => $template, 'format' => '__FORMAT__']);
+```
+
+```blade
+<x-templates::editor :template="$template" :version="$version" :urls="$urls" :format-selector="false">
+    {{-- The tabs live inside the component's root (its default slot / heading), because
+         the editor queries `[data-tpl-format-tab]` within its own root, not the page. --}}
+    <nav>
+        @foreach ($formats as $format)
+            <button data-tpl-format-tab="{{ $format['id'] }}"
+                    @if ($format['id'] === $current) aria-current="page" @endif>{{ $format['label'] }}</button>
+        @endforeach
+    </nav>
+</x-templates::editor>
+```
+
+The editor wires those `[data-tpl-format-tab]` buttons to the `format_switch` URL,
+substituting `Editor::FORMAT_PLACEHOLDER` (`__FORMAT__`) with the clicked format id and
+fetching that format's own version. `__FORMAT__` needs no placeholder dance — unlike the
+font braces, `route()` leaves it intact.
+
+**The response contract.** The `format_switch` endpoint returns the target format's
+editable version as JSON. The bundle reads:
+
+| key | meaning |
+| --- | --- |
+| `format` | the format id now shown; marks its tab current |
+| `geometry` | the version's geometry (an object), or null to keep the current one |
+| `urls.save` / `urls.load` / `urls.preview` / `urls.activate` | the lifecycle URLs, repointed to the fetched version |
+| `urls.edit` | optional; the full-page editor URL, used only to update the address bar on the full-page screen |
+| `project_data` | a format edited before — loaded as the canvas document |
+| `html` / `css` | a fresh format draft with no project data yet — the starting layout, loaded instead |
+
+Save the current format's work before serving the switch is unnecessary on the server: the
+editor saves the outgoing format to its own version first, then fetches.
+
 ---
 
 ## 4. Authorization

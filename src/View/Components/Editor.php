@@ -36,10 +36,18 @@ use RuntimeException;
 class Editor extends Component
 {
     /**
+     * The token a host leaves in `urls['format_switch']` for the chosen format id. The
+     * editor bundle substitutes it on an in-place format switch (`editor.js`), so the
+     * host builds the URL once and never has to know the format ahead of time.
+     */
+    public const FORMAT_PLACEHOLDER = '__FORMAT__';
+
+    /**
      * @param  string  $height  any CSS length; the component fills its container's width
      * @param  bool  $actions  render the save/preview/activate bar, or leave it to the host page
      * @param  string  $mode  phase 1 supports only `print`
-     * @param  array<string, string>  $urls  the host's own endpoints (the package registers no routes): load, save, preview, activate, catalogue, stylesheet, font (with {family}/{weight})
+     * @param  array<string, string>  $urls  the host's own endpoints (the package registers no routes): load, save, preview, activate, catalogue, stylesheet, font (with {family}/{weight}), format_switch (with the literal {@see self::FORMAT_PLACEHOLDER})
+     * @param  bool  $formatSelector  render the in-toolbar page-format `<select>`. A host that drives format switching from its own page chrome (format tabs that hit `urls['format_switch']`) turns this off so the two controls do not both show.
      */
     public function __construct(
         public Model $template,
@@ -48,6 +56,7 @@ class Editor extends Component
         public bool $actions = true,
         public string $mode = 'print',
         public array $urls = [],
+        public bool $formatSelector = true,
     ) {
         if ($this->mode !== 'print') {
             throw new \InvalidArgumentException("Unsupported editor mode [{$this->mode}]; phase 1 supports only 'print'.");

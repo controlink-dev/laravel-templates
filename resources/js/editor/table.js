@@ -373,6 +373,19 @@ function registerCodeSlot(editor, config) {
 
             init() {
                 /*
+                 * A slot that carries a binding is dynamic by definition — a fixed-text slot
+                 * never has one (its content is typed, not pulled from the dataset). The type's
+                 * default attributes seed a blank slot as `fixed`, and GrapesJS merges that
+                 * default onto a slot parsed from HTML that declares a binding but no explicit
+                 * source — exactly the catalogue's legal `document.qr` slot. Left fixed, it has
+                 * no content type and renders as the R-01 "content type that does not exist".
+                 * Correct it here, before applyLegalMarking and everything downstream reads it.
+                 */
+                if (this.binding() !== '' && this.getAttributes()['data-tpl-code-source'] !== 'dynamic') {
+                    this.addAttributes({ 'data-tpl-code-source': 'dynamic' });
+                }
+
+                /*
                  * A slot saved before the origin existed carries only `data-tpl-binding`
                  * — the node is recovered from it so the dynamic select opens on the
                  * right value instead of the graph's first one.

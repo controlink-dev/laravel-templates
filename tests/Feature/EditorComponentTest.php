@@ -233,6 +233,42 @@ class EditorComponentTest extends TestCase
         $this->assertStringContainsString('data-tenant="L1"', $html);
     }
 
+    /**
+     * The in-toolbar format `<select>` renders by default, but a host that drives format
+     * switching from its own page chrome turns it off so the two controls never both show.
+     */
+    public function test_the_format_selector_renders_by_default_and_can_be_turned_off(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $this->assertStringContainsString('tpl-tool--format', $this->render($template, $version));
+
+        $off = Blade::render(
+            '<x-templates::editor :template="$template" :version="$version" :format-selector="false" />',
+            ['template' => $template, 'version' => $version],
+        );
+
+        $this->assertStringNotContainsString('tpl-tool--format', $off);
+    }
+
+    /**
+     * A host that owns the format lineage hands the editor a `format_switch` URL with the
+     * `__FORMAT__` token; the editor substitutes the chosen format id and fetches that
+     * format's own version in place.
+     */
+    public function test_the_format_switch_url_reaches_the_bundle_as_data(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $html = Blade::render(
+            '<x-templates::editor :template="$template" :version="$version" :urls="$urls" />',
+            ['template' => $template, 'version' => $version, 'urls' => ['format_switch' => '/forms/tpl-1/format/__FORMAT__']],
+        );
+
+        $this->assertStringContainsString('data-format-switch-url="/forms/tpl-1/format/__FORMAT__"', $html);
+        $this->assertSame(Editor::FORMAT_PLACEHOLDER, '__FORMAT__');
+    }
+
     private function render(EditorTemplate $template, GuardedVersion $version): string
     {
         return Blade::render(

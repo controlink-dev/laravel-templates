@@ -92,11 +92,15 @@
         </div>
 
         {{-- The page format, filled by the editor script from `data-formats` and
-             `data-geometry`. --}}
-        <div class="tpl-tools">
-            <select class="tpl-tool tpl-tool--format" data-tpl-format
-                    aria-label="{{ __('templates::editor.chrome.page_format') }}"></select>
-        </div>
+             `data-geometry`. A host that switches format from its own page chrome (format
+             tabs hitting `urls['format_switch']`) passes `:format-selector="false"` so the
+             two controls never both show. --}}
+        @if($formatSelector)
+            <div class="tpl-tools">
+                <select class="tpl-tool tpl-tool--format" data-tpl-format
+                        aria-label="{{ __('templates::editor.chrome.page_format') }}"></select>
+            </div>
+        @endif
 
         {{-- Three ways of looking at the same sheet. Each is a class on the root, so
              none of it can reach the PDF. --}}
@@ -181,6 +185,11 @@
         data-preview-url="{{ $urls['preview'] ?? '' }}"
         data-activate-url="{{ $urls['activate'] ?? '' }}"
         data-catalogue-url="{{ $urls['catalogue'] ?? '' }}"
+        {{-- In-place format switch: the editor replaces `__FORMAT__` with the chosen
+             format id, fetches that format's own version and rewires itself, never
+             navigating. Empty unless the host drives format switching from its own
+             chrome; the editor leaves the feature off when it is. --}}
+        data-format-switch-url="{{ $urls['format_switch'] ?? '' }}"
 
         {{-- Served raw, not through the bundle, so the canvas and the PDF engine read
              the same bytes of the same stylesheet. --}}

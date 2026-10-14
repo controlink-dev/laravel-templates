@@ -133,22 +133,40 @@ export function styleManagerSectors(strings) {
  * @returns {number} how many blocks were inserted
  */
 export function restoreMissingLegalFields(editor, config) {
-    const present = new Set(
-        editor.getWrapper()
-            .find('[data-tpl-type="data-field"]')
+    const wrapper = editor.getWrapper();
+
+    // Legal TEXT fields already on the sheet, by binding.
+    const presentFields = new Set(
+        wrapper.find('[data-tpl-type="data-field"]')
             .map((component) => component.getAttributes()['data-tpl-binding']),
     );
 
-    const missing = config.bindings.filter(
-        (binding) => binding.legal && binding.type !== 'qr' && binding.type !== 'barcode'
-            && !present.has(binding.key),
+    // A legal qr/barcode is a code-slot, not a data field. The server's `checkLegalCode`
+    // matches it by `data-tpl-binding === key` (V-10), so a slot already bound to the legal
+    // key is what counts as present — a fixed, unbound slot never satisfies it.
+    const presentCodes = new Set(
+        wrapper.find('[data-tpl-type="code-slot"]')
+            .map((component) => component.getAttributes()['data-tpl-binding'])
+            .filter(Boolean),
     );
 
-    missing.forEach((binding, index) => {
-        // `every_page` fields have to live in a repeating zone, or they cannot
-        // appear on every page (spec 6.3). The rest land in the body.
-        const zoneClass = binding.scope === 'every_page' ? 'zone--header' : 'zone--body';
-        const zone = editor.getWrapper().find('.' + zoneClass)[0];
+    const missingFields = config.bindings.filter(
+        (binding) => binding.legal && binding.type !== 'qr' && binding.type !== 'barcode'
+            && !presentFields.has(binding.key),
+    );
+
+    const missingCodes = config.bindings.filter(
+        (binding) => binding.legal && (binding.type === 'qr' || binding.type === 'barcode')
+            && !presentCodes.has(binding.key),
+    );
+
+    // `every_page` fields have to live in a repeating zone, or they cannot appear on every
+    // page (spec 6.3). The rest land in the body.
+    const zoneFor = (scope) =>
+        wrapper.find('.' + (scope === 'every_page' ? 'zone--header' : 'zone--body'))[0];
+
+    missingFields.forEach((binding, index) => {
+        const zone = zoneFor(binding.scope);
 
         if (!zone) {
             return;
@@ -172,7 +190,42 @@ export function restoreMissingLegalFields(editor, config) {
         });
     });
 
-    return missing.length;
+    // Each restored code slot is born bound to its legal key (dynamic) and sized at the legal
+    // minimum, so it satisfies V-10 (present) and V-17 (big enough) the moment it lands; the
+    // user then drags it where it belongs. Stacked below the text column, same left edge, so a
+    // fresh restore never overflows a narrow page (A5, roll) or overlaps the text fields.
+    const codeSide = Number(config.visibilityLimits?.qr_size_min_mm ?? 30);
+    const codesTop = 10 + missingFields.length * 6 + 4;
+
+    missingCodes.forEach((binding, index) => {
+        const zone = zoneFor(binding.scope);
+
+        if (!zone) {
+            return;
+        }
+
+        const lastDot = binding.key.lastIndexOf('.');
+
+        zone.append({
+            type: 'code-slot',
+            attributes: {
+                class: 'block block--code',
+                'data-tpl-type': 'code-slot',
+                'data-tpl-code-source': 'dynamic',
+                'data-tpl-node': lastDot === -1 ? binding.key : binding.key.slice(0, lastDot),
+                'data-tpl-binding': binding.key,
+            },
+            style: {
+                position: 'absolute',
+                left: '10mm',
+                top: codesTop + index * (codeSide + 4) + 'mm',
+                width: codeSide + 'mm',
+                height: codeSide + 'mm',
+            },
+        });
+    });
+
+    return missingFields.length + missingCodes.length;
 }
 
 /**
