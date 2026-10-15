@@ -259,7 +259,7 @@ class LayoutValidator
                 continue;
             }
 
-            if ($this->exceeds($box, ['left' => 0.0, 'top' => 0.0, 'width' => $zoneBox['width'], 'height' => $zoneBox['height']])) {
+            if ($this->exceeds($box, ['left' => 0.0, 'top' => 0.0, 'width' => $zoneBox['width'], 'height' => $zoneBox['height']], PageGeometry::fromType($type->pdf)->medium !== 'roll')) {
                 $problems[] = $this->problem('V-04', $block, 'outside_zone', ['zone' => __('templates::editor.zones.'.$block['zone'])]);
             }
         }
@@ -423,7 +423,7 @@ class LayoutValidator
                 'height' => $box['height'],
             ];
 
-            if ($this->exceeds($absolute, $printable)) {
+            if ($this->exceeds($absolute, $printable, PageGeometry::fromType($type->pdf)->medium !== 'roll')) {
                 $problems[] = $this->problem('V-14', $field, 'outside_printable', $label);
             }
 
@@ -515,7 +515,7 @@ class LayoutValidator
                     'height' => $box['height'],
                 ];
 
-                if ($this->exceeds($absolute, $printable)) {
+                if ($this->exceeds($absolute, $printable, PageGeometry::fromType($type->pdf)->medium !== 'roll')) {
                     $problems[] = $this->problem('V-14', $slot, 'outside_printable', ['field' => $binding['label']]);
                 }
             }
@@ -612,10 +612,15 @@ class LayoutValidator
      * without it, a block deliberately flush with the margin fails on rounding rather
      * than on placement.
      *
+     * `$horizontalBounds` is false on a roll, whose content flows and keeps no fixed right
+     * edge: a block's `left` is reflowed there, so an origin past the paper width is not a
+     * placement fault and must not be refused (A4 positions are tolerated when a layout is
+     * saved as a roll). A sheet positions absolutely, so there the right edge is real.
+     *
      * @param  array{left: float|null, top: float|null, width: float|null, height: float|null}  $box
      * @param  array{left: float, top: float, width: float, height: float}  $container
      */
-    private function exceeds(array $box, array $container): bool
+    private function exceeds(array $box, array $container, bool $horizontalBounds = true): bool
     {
         $tolerance = (float) config('templates.geometry_tolerance_mm', 0.5);
 
@@ -624,6 +629,22 @@ class LayoutValidator
         }
 
         if ($box['top'] !== null && $box['top'] < $container['top'] - $tolerance) {
+            return true;
+        }
+
+        // The origin alone can land past the far edge — a `left` beyond the right side, a
+        // `top` below the bottom — and then the box is outside whatever its size, even with
+        // none stated. Without this an auto-width field dragged off the sheet passes every
+        // check (its right edge is unknown), and the layout is then rendered to a page metres
+        // wide: measured, rasterising and cropping that page ran the activation past its time
+        // limit (`RenderedPdf::crop`) rather than failing on the placement. On a roll there is
+        // no fixed right edge, so the left origin is not bounded (`top` stays INF-safe anyway).
+        if ($horizontalBounds && $box['left'] !== null
+            && $box['left'] > $container['left'] + $container['width'] + $tolerance) {
+            return true;
+        }
+
+        if ($box['top'] !== null && $box['top'] > $container['top'] + $container['height'] + $tolerance) {
             return true;
         }
 

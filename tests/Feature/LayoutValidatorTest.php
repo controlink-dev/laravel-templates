@@ -255,6 +255,27 @@ class LayoutValidatorTest extends TestCase
         $this->assertSame([], $this->problems($layout));
     }
 
+    /**
+     * A field whose left is itself past the printable right edge is outside it even
+     * with no stated width: the origin alone decides it. Missed, the field survives
+     * validation and the layout renders to a page metres wide, whose rasterising and
+     * cropping ran activation past its time limit — the layout has to be refused here.
+     */
+    public function test_v14_rejects_a_field_whose_origin_is_past_the_printable_edge(): void
+    {
+        $layout = $this->layoutWith(
+            'emitente.nif',
+            function (array $block): array {
+                unset($block['style']['width'], $block['style']['height']);
+                $block['style']['left'] = '300mm';
+
+                return $block;
+            },
+        );
+
+        $this->assertHasProblem('V-14', $layout);
+    }
+
     public function test_v15_rejects_a_field_covered_by_an_opaque_block(): void
     {
         $this->assertHasProblem('V-15', $this->layoutWithRectangleOverTheIssuerVatNumber('#000000'));
