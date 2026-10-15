@@ -831,6 +831,28 @@ function canvasDecorations(paper, rollMode = false) {
             outline: 0;
             background: transparent;
         }
+
+        /* A line table with no columns yet (e.g. dropped on a label, which has no line
+           collection) would be an empty <table> of zero size — it looks like it vanished.
+           This placeholder gives it a visible, sized box to select, configure or remove. */
+        .block--lines__empty {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40mm;
+            min-height: 12mm;
+            padding: 2mm;
+            border: 1px dashed #94a3b8;
+            background: color-mix(in srgb, #e2e8f0 60%, transparent);
+            font-size: 0.6rem;
+            color: #64748b;
+            text-align: center;
+        }
+
+        body.tpl-view-clean .block--lines__empty {
+            border: 0;
+            background: transparent;
+        }
     `;
 }
 

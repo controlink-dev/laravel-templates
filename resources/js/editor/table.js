@@ -145,6 +145,19 @@ function registerLineTable(editor, config) {
                     this.components().reset();
                 }
 
+                // No columns yet (a collection that declares none, or a document with no
+                // line collection at all — a label): an empty <table> collapses to 0×0 and
+                // reads as "the table vanished on drop". Show a sized placeholder instead, so
+                // the block is visible and can be configured or removed. Canvas-only (never
+                // printed); dropped in the clean view.
+                if (columns.length === 0) {
+                    this.set('content',
+                        `<div class="block--lines__empty">`
+                        + `${escapeText(config.strings['block.line_table'] ?? 'Tabela')}</div>`);
+
+                    return;
+                }
+
                 this.set('content',
                     `<table class="lines"><thead><tr>${head}</tr></thead>`
                     + `<tbody><tr>${row}</tr></tbody></table>`,
