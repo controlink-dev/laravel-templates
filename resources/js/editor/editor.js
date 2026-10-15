@@ -815,6 +815,22 @@ function canvasDecorations(paper, rollMode = false) {
             border: 0;
             background: transparent;
         }
+
+        /* An image before a file is chosen is a transparent pixel: give the empty box an
+           outline so it can be seen and resized. Once a real image is set it fills the box;
+           the outline stays in the editor (it never prints — canvasCss, not print.css) and
+           is dropped in the clean view. */
+        .block--image {
+            outline: 1px dashed #94a3b8;
+            outline-offset: -1px;
+            background: color-mix(in srgb, #e2e8f0 60%, transparent);
+            object-fit: contain;
+        }
+
+        body.tpl-view-clean .block--image {
+            outline: 0;
+            background: transparent;
+        }
     `;
 }
 
@@ -838,11 +854,13 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     const views = { legal: false, zones: !rollMode && !labelMode, rulers: !rollMode, clean: false };
 
     // The ruler and zone toggles are sheet-only; a roll has neither, a label keeps rulers.
+    // A label also has no legal fields (a price tag is not a certified document), so its
+    // legal toggle is hidden too — a roll (a receipt) keeps it, it can carry legal fields.
     if (rollMode) {
         chrome.toolbar?.querySelectorAll('[data-tpl-toggle="rulers"],[data-tpl-toggle="zones"]')
             .forEach((button) => { (button.closest('.tpl-tool') ?? button).hidden = true; });
     } else if (labelMode) {
-        chrome.toolbar?.querySelectorAll('[data-tpl-toggle="zones"]')
+        chrome.toolbar?.querySelectorAll('[data-tpl-toggle="zones"],[data-tpl-toggle="legal"]')
             .forEach((button) => { (button.closest('.tpl-tool') ?? button).hidden = true; });
     }
 
@@ -1083,6 +1101,7 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
      */
     const syncModeChrome = () => {
         views.zones  = ! rollMode && ! labelMode && views.zones;
+        views.legal  = ! labelMode && views.legal;
         views.rulers = ! rollMode;
 
         const setToggleHidden = (name, hidden) => {
@@ -1092,6 +1111,7 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
 
         setToggleHidden('rulers', rollMode);
         setToggleHidden('zones', rollMode || labelMode);
+        setToggleHidden('legal', labelMode);
 
         applyViews();
     };

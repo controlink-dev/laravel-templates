@@ -596,6 +596,11 @@ function registerImage(editor, config) {
                         ],
                     },
                 ],
+                // A visible default size: an image dropped empty is a 1px transparent
+                // pixel otherwise, invisible on the sheet — and on a small label at a high
+                // zoom that reads as "nothing happened". The placeholder style (canvasCss)
+                // outlines the empty box so there is something to see and resize.
+                style: { width: '25mm', height: '25mm' },
                 stylable: ['width', 'height', 'opacity'],
             },
         },
@@ -688,6 +693,11 @@ function registerRule(editor, config) {
                 ],
                 'tpl-width': widthOptions[0]?.id,
                 'tpl-filled': false,
+                // A default width so the rule is a visible line the moment it is dropped:
+                // its thickness is its height, but with no width a bare `div` is 0 wide and
+                // nothing shows — which read as "the line cannot be placed", worst of all on
+                // a small label.
+                style: { width: '40mm' },
                 stylable: ['width', 'height', 'background-color', 'border-color'],
             },
 
