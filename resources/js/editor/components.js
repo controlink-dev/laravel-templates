@@ -601,7 +601,7 @@ function registerImage(editor, config) {
                 // zoom that reads as "nothing happened". The placeholder style (canvasCss)
                 // outlines the empty box so there is something to see and resize.
                 style: { width: '25mm', height: '25mm' },
-                stylable: ['width', 'height', 'opacity'],
+                stylable: ['left', 'top', 'width', 'height', 'opacity'],
             },
         },
     });
@@ -717,7 +717,7 @@ function registerRule(editor, config) {
                 // nothing shows — which read as "the line cannot be placed", worst of all on
                 // a small label.
                 style: { width: '40mm' },
-                stylable: ['width', 'height', 'background-color', 'border-color'],
+                stylable: ['left', 'top', 'width', 'height', 'background-color', 'border-color'],
             },
 
             init() {
@@ -752,6 +752,11 @@ function registerRule(editor, config) {
 
 /** Style properties a text block may change. Deliberately short (spec 6.6). */
 const TEXT_STYLES = [
+    // Position first: an absolute block is placed by dragging, but a drag over a zoomed
+    // canvas is imprecise, so `left`/`top` are also editable as exact millimetres in the
+    // Position sector of the style panel (the sector's strings already existed).
+    'left',
+    'top',
     'font-size',
     'font-weight',
     'font-style',

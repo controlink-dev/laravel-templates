@@ -85,6 +85,18 @@ export function styleManagerSectors(strings) {
             ],
         },
         {
+            // Exact placement by number: dragging an absolute block over a zoomed canvas is
+            // imprecise, so left/top are editable here in millimetres. The strings for this
+            // sector already existed; only the sector was missing.
+            id: 'tpl-position',
+            name: strings['sector.position'],
+            open: false,
+            properties: [
+                number('left', 'left', ['mm'], { default: '0mm' }),
+                number('top', 'top', ['mm'], { default: '0mm' }),
+            ],
+        },
+        {
             id: 'tpl-box',
             name: strings['sector.box'],
             open: false,
