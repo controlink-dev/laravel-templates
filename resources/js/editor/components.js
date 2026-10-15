@@ -195,14 +195,17 @@ function registerStaticText(editor, config) {
                 name: config.strings['block.static_text'],
                 tagName: 'div',
                 attributes: { class: 'block block--text', 'data-tpl-type': 'static-text' },
-                // Editable as text, but never as HTML: `textable` off and the content
-                // is written through `content`, so no markup can be pasted in.
+                // Editable as text, but never as HTML: the content is written as a
+                // single textnode, so no markup can be pasted in.
                 editable: true,
                 components: [{ type: 'textnode', content: config.strings['block.static_text_default'] }],
                 traits: [
                     {
                         type: 'text',
-                        name: 'content',
+                        // NOT `content`: that is a reserved GrapesJS component property, and
+                        // a changeProp trait sharing the name fought GrapesJS's own content
+                        // handling and left the block empty when edited.
+                        name: 'text',
                         label: config.strings['trait.content'],
                         changeProp: true,
                     },
@@ -211,15 +214,30 @@ function registerStaticText(editor, config) {
             },
 
             init() {
-                this.on('change:content', this.syncContent);
+                // Seed the trait from the block's current text so the Field panel shows it,
+                // silently so merely opening a saved version is not marked as a change.
+                this.set(
+                    'text',
+                    this.components().map((child) => child.get('content') || '').join(''),
+                    { silent: true },
+                );
+
+                this.on('change:text', this.syncContent);
             },
 
-            /** The trait writes plain text, so nothing typed there can become markup. */
+            /*
+             * Write the typed text as ONE textnode.
+             *
+             * Not `components(string)`: GrapesJS parses that string as HTML, and a plain,
+             * tagless value parsed to nothing — so editing the content emptied the block,
+             * which then collapsed to 0×0 and looked like it had vanished. A textnode's
+             * content is rendered as text, so nothing typed can become markup either.
+             */
             syncContent() {
-                const value = this.get('content');
+                const value = this.get('text');
 
                 if (typeof value === 'string') {
-                    this.components(escapeText(value));
+                    this.components([{ type: 'textnode', content: value }]);
                 }
             },
         },

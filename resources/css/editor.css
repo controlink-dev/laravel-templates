@@ -463,32 +463,35 @@
 .tpl-canvas {
     flex: 1 1 auto;
     min-width: 0;
-    /* The scroll lives here: the drawing area inside grows with the sheet, so a sheet
-       bigger than the box is reachable rather than clipped. */
-    overflow: auto;
+    /* A fixed viewport, not a scroll container. GrapesJS owns the canvas: it sizes its
+       frame from the device, scales it with `setZoom` (a transform about the centre) and
+       pans it with `setCoords`. The sheet is kept inside this box by that transform, so a
+       second, CSS scroll here would only fight it. `Canvas.fitViewport()` is how the whole
+       sheet is brought back into view. */
+    overflow: hidden;
     background: var(--tpl-surface-sunken, #edf1f6);
 }
 
 /*
- * Two corrections to GrapesJS's canvas, both consequences of removing its shell.
+ * One correction to GrapesJS's canvas, a consequence of removing its shell.
  *
  * `top: 40px` and `width: 85%` are the strip and the column it reserves for the panels
  * that no longer exist — 40px of grey above every editor, and the sheet centred inside
- * 85% of the width, which put it 134px left of where it belongs. And the frame gets the
- * device's width but not its height: it came out as tall as the canvas, so the A4 body
- * inside it overflowed and the foot of the sheet was cut off. All three are measured
- * numbers, not guesses.
+ * 85% of the width, which put it 134px left of where it belongs. Making the canvas fill
+ * its box turns it into the fixed viewport the native model wants, measured against by
+ * `fitViewport`.
+ *
+ * The frame is no longer sized here. It used to be forced to `--tpl-paper-*`, which fought
+ * GrapesJS's own model: the frame's size is the device's size, and `setZoom` scales it from
+ * there. Pinning it in CSS double-scaled everything (paper × zoom as a width, then × zoom as
+ * the transform) and pulled the selection, toolbar and drag maths off the block. The page
+ * editor now carries a device with explicit width/height (see `deviceManager` in editor.js),
+ * and that device sizes the frame.
  */
 .tpl-editor-root .gjs-cv-canvas {
     top: 0;
     width: 100%;
     height: 100%;
-}
-
-.tpl-editor-root .gjs-frame-wrapper,
-.tpl-editor-root .gjs-frame {
-    width: var(--tpl-paper-width, 210mm);
-    height: var(--tpl-paper-height, 297mm);
 }
 
 /*
@@ -508,37 +511,41 @@
     width: 100%;
 }
 
-/* No auto margin: the container is the paper's width, so there is nothing to centre
-   inside it. The grid centres the whole thing instead. */
-.tpl-editor-root .gjs-cv-canvas .gjs-frame-wrapper {
-    margin: 0;
-}
-
 /*
- * The scale starts at the sheet's own corner.
+ * The frame's own centring is left to GrapesJS. `fitViewport` pans vertically with
+ * `setCoords` but relies on `margin: auto` to centre the frame horizontally when it is
+ * narrower than the canvas (it writes no x-coord in that case). The old `margin: 0` broke
+ * that, which only mattered once the canvas stopped being the exact size of the paper. The
+ * email guard above keeps its own `margin: 0 auto`.
  *
- * GrapesJS scales this container about its centre while the frame inside it is
- * unscaled and anchored top left, which leaves a gap above proportional to the zoom.
- * With the canvas exactly the size of the scaled paper, scaling from the top left makes
- * the two coincide: no gap, no offset, and nothing for a drag calculation to miss.
+ * The native frames layer keeps GrapesJS's default `transform-origin` (the centre), which
+ * is what `fitViewport`'s centring maths assume; an override to `top left` threw the sheet
+ * off the viewport.
  */
-.tpl-editor-root .gjs-cv-canvas__frames {
-    transform-origin: top left;
-}
 
 /* Two rulers and the canvas, in one grid, so a tick can never drift from the
    millimetre it names. */
 .tpl-paper {
     display: grid;
-    grid-template-columns: 1.0625rem auto;
-    grid-template-rows: 1.0625rem auto;
-    /* The drawing area is the sheet's own size, so centring the grid is what puts the
-       paper in the middle — outside the editor, where nothing GrapesJS measures can be
-       thrown off by it. */
-    align-content: center;
-    justify-content: center;
-    min-height: 100%;
+    /* The canvas cell fills what the rulers leave. `minmax(0, 1fr)` and not `auto`: an
+       `auto` track can be grown past the viewport by its content, which is the native
+       canvas sized to the frame — exactly the overflow this rewrite removes. */
+    grid-template-columns: 1.0625rem minmax(0, 1fr);
+    grid-template-rows: 1.0625rem minmax(0, 1fr);
+    /* The grid is the viewport now, not a centred sheet: it fills the canvas box exactly,
+       and GrapesJS centres the paper inside the mount cell. */
+    box-sizing: border-box;
+    height: 100%;
     padding: 0.75rem;
+}
+
+/* The mount fills its grid cell and becomes GrapesJS's fixed viewport. `min-*: 0` stops
+   the canvas inside from pushing the cell past the box. */
+.tpl-paper > [data-tpl-editor] {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
 }
 
 .tpl-ruler-corner {
@@ -1060,6 +1067,21 @@
 .tpl-editor-root .gjs-toolbar-item svg {
     width: 0.875rem;
     height: 0.875rem;
+}
+
+/*
+ * The move handle is hidden, and a block is moved by dragging its body instead.
+ *
+ * It is the one toolbar item GrapesJS marks `gjs-no-touch-actions`, because it is the
+ * one that starts a drag — a Sorter drag, a different path from the absolute body drag
+ * the canvas uses. That Sorter maps the pointer through the canvas on its own terms and,
+ * under this editor's zoomed canvas, it does not agree with where the sheet actually is:
+ * grabbing the handle flung the block off the page. Dragging the block's body moves it
+ * correctly (absolute drag mode), so that is the one way offered until the handle's
+ * Sorter can be reconciled with the zoom.
+ */
+.tpl-editor-root .gjs-toolbar-item.gjs-no-touch-actions {
+    display: none;
 }
 
 /* One more step of contrast on GrapesJS's own text: at its defaults, a panel of

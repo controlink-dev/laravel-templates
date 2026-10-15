@@ -94,8 +94,8 @@ async function mountEditor(el) {
      */
     // Every container the chrome offers, resolved once and inside the widget's root.
     const chrome = {
-        // The mount itself: `setZoom` gives it an explicit height so the container
-        // around it can scroll a sheet bigger than the box.
+        // The mount itself: GrapesJS's fixed viewport, filled by CSS and scaled/panned by
+        // the canvas transform (`setZoom`/`fitViewport`), not resized per zoom.
         mount:    el,
         toolbar:  root.querySelector('.tpl-toolbar'),
         canvas:   root.querySelector('.tpl-canvas'),
@@ -182,20 +182,34 @@ async function mountEditor(el) {
         panels: { defaults: [] },
 
         /*
-         * One device, and it carries no width.
+         * One device, sized to the sheet — and `widthMedia: ''` is what makes that safe.
          *
-         * A device with a width is a breakpoint to GrapesJS: every style edited while it
-         * is active is written inside `@media (max-width: …)`. Sizing the frame that way
-         * looked right and quietly broke editing — measured, changing a field's size
-         * wrote `@media (max-width: 210mm){#tpl-emitente-nome{font-size:20pt}}`, which
-         * the layout's own unmediated rule then beat, so nothing appeared to happen. A
-         * template has one page size and must carry no media queries at all.
+         * The frame's size is the device's size: this is how GrapesJS's native zoom model
+         * wants it, and `Canvas.setZoom`/`fitViewport` scale the frame from there. The frame
+         * used to be sized by CSS (`--tpl-paper-*`) instead, which double-scaled it against
+         * the zoom transform and pulled the selection, toolbar and drag maths off the block.
          *
-         * The frame is sized by the stylesheet instead, from `--tpl-paper-*`.
+         * But a device WITH a width is a breakpoint to GrapesJS: every style edited while it
+         * is active is written inside `@media (max-width: …)`. Measured once, changing a
+         * field's size wrote `@media (max-width: 210mm){#tpl-emitente-nome{font-size:20pt}}`,
+         * which the layout's own unmediated rule then beat, so nothing appeared to happen. An
+         * empty `widthMedia` is the escape hatch: the device carries a width that sizes the
+         * frame but writes no media query (measured: `getCss()` carries none). A template has
+         * one page size and must carry no media queries at all.
+         *
+         * Ceil, not round: the body is sized in mm and 30mm is 113.39px; a 113px frame clips
+         * the body by a fraction and brings back a phantom scrollbar. `applyDevice()` keeps
+         * this in step with every format change.
          */
         deviceManager: {
             default: 'tpl-paper',
-            devices: [{ id: 'tpl-paper', name: config.paperFormat ?? 'A4', width: '' }],
+            devices: [{
+                id: 'tpl-paper',
+                name: config.paperFormat ?? 'A4',
+                width: Math.ceil(paper.width * PX_PER_MM) + 'px',
+                height: Math.ceil(paper.height * PX_PER_MM) + 'px',
+                widthMedia: '',
+            }],
         },
         // The editing decorations, delivered to the canvas document itself. See
         // `canvasDecorations()` for why they cannot live in `editor.css`.
@@ -548,9 +562,6 @@ async function mountEditor(el) {
 /** CSS px per millimetre at 100% zoom. */
 const PX_PER_MM = 96 / 25.4;
 
-/** Width of a ruler, matching `--tpl-ruler` in the stylesheet. */
-const RULER = 17;
-
 /**
  * Paper sizes, in millimetres. The catalogue names the format; this maps it.
  *
@@ -871,7 +882,7 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     // theirs to ask for and the pane resizing may not overrule it.
     let userChoseZoom = false;
 
-    /** Air around the sheet, in pixels. Dead space is dead space. */
+    /** Air around the sheet when fitting, in pixels. Dead space is dead space. */
     const AIR = 12;
 
     // The zoom ceiling. It has to clear the fit zoom of the smallest page, not just a
@@ -880,36 +891,45 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     // nearly filled — the asymmetry that read as "one format goes full-screen".
     const MAX_ZOOM = 1000;
 
-    const setZoom = (percent) => {
-        const clamped = Math.min(MAX_ZOOM, Math.max(10, Math.round(percent)));
+    const clampZoom = (percent) => Math.min(MAX_ZOOM, Math.max(10, Math.floor(percent)));
 
-        editor.Canvas.setZoom(clamped);
+    /**
+     * Size the one device to the current paper. The device sizes the frame, so this is
+     * what the frame follows on a format change — and it is re-applied on every frame
+     * rebuild (`applyCanvasToFrame`, bound to `canvas:frame:load:body`). Mutating the
+     * selected device fires `device:update`, which GrapesJS turns into a frame resize
+     * synchronously, so a `fitViewport` right after reads the new size.
+     *
+     * Ceil, not round: 30mm is 113.39px, and a 113px frame clips the mm-sized body by a
+     * fraction and brings a phantom scrollbar back.
+     */
+    const applyDevice = () => {
+        editor.Devices?.get('tpl-paper')?.set({
+            width: Math.ceil(paper.width * PX_PER_MM) + 'px',
+            height: Math.ceil(paper.height * PX_PER_MM) + 'px',
+            widthMedia: '',
+        });
+    };
 
-        /*
-         * The drawing area is the sheet, at the sheet's own size.
-         *
-         * This replaces four separate corrections — a `top` offset on the frame's
-         * container, two probes to measure where that offset landed, a width override
-         * and an auto margin — and it fixes moving blocks, which none of them could.
-         * GrapesJS computes a dragged block's position from measured rects minus a
-         * viewport delta it derives from its own model: a `top` we set in CSS shows up
-         * in the rect and not in the delta, so every drag came out displaced by exactly
-         * the centring offset. With the canvas the same size as the paper there is no
-         * offset left to be invisible.
-         *
-         * The grey around the sheet is then the grid centring this row, outside the
-         * editor entirely.
-         */
-        const scale = clamped / 100;
-
-        chrome.mount.style.width = Math.round(paper.width * PX_PER_MM * scale) + 'px';
-        chrome.mount.style.height = Math.round(paper.height * PX_PER_MM * scale) + 'px';
-
+    /** Reflect the live canvas zoom in the input. Driven by the `canvas:zoom` event, so
+     *  it follows GrapesJS's own zoom changes (`fitViewport`) too, not only our calls. */
+    const showZoom = () => {
         if (chrome.zoom) {
-            chrome.zoom.value = clamped + '%';
+            chrome.zoom.value = Math.round(editor.Canvas.getZoom() || 100) + '%';
         }
+    };
 
-        drawRulers();
+    /*
+     * Zoom is `fitViewport` with an explicit zoom, never a bare `Canvas.setZoom`.
+     *
+     * The native model scales the frame with a transform about the centre and pans it with
+     * `setCoords`, both embedded in one transform. `fitViewport` computes the pan for a given
+     * zoom and centres the sheet; a bare `setZoom` changes the scale but leaves the old pan,
+     * which was pre-multiplied by the old zoom, so the sheet drifts off-centre. Passing a
+     * fixed `zoom` to `fitViewport` re-centres for it. `gap` is the air, in canvas px.
+     */
+    const setZoom = (percent) => {
+        editor.Canvas.fitViewport({ gap: AIR, zoom: clampZoom(percent) });
     };
 
     /*
@@ -941,24 +961,19 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     }
 
     /**
-     * Fit the whole sheet in the visible area.
+     * Fit the whole sheet in the viewport.
      *
-     * Pure arithmetic now: the drawing area is the paper, so there is no margin of
-     * GrapesJS's own to measure around it. The air is the only slack.
+     * GrapesJS does the arithmetic: `fitViewport` measures the canvas box and the frame
+     * (device-sized) and computes zoom AND pan to centre the sheet with `gap` of air around
+     * it. It bypasses our clamp — internally it calls `setZoom` with a raw float — so the
+     * ceiling and floor are reimposed through the zoom callback.
      */
     const fitZoom = () => {
-        const outer = chrome.canvas;
-
-        if (!outer || outer.clientHeight < 40) {
+        if (!chrome.canvas || chrome.canvas.clientHeight < 40) {
             return;
         }
 
-        const paperPx = { width: paper.width * PX_PER_MM, height: paper.height * PX_PER_MM };
-
-        setZoom(Math.floor(Math.min(
-            (outer.clientWidth - RULER - AIR * 2) / paperPx.width,
-            (outer.clientHeight - RULER - AIR * 2) / paperPx.height,
-        ) * 100));
+        editor.Canvas.fitViewport({ gap: AIR, zoom: (z) => clampZoom(z) });
     };
 
     const commands = {
@@ -1029,10 +1044,32 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             doc.head.appendChild(style);
         }
 
-        const m = geometry?.margins ?? {};
+        // A sheet carries its margins on the type (config.margins); a roll and a label carry
+        // their own in the geometry. Prefer the geometry's, exactly like pageVariables().
+        const m = geometry?.margins ?? config.margins ?? {};
         const mm = (value) => (Number(value) || 0) + 'mm';
 
+        /*
+         * The page variables print.css reads to size the zones (`--margin-*`,
+         * `--header-height`, `--footer-height`). They must be delivered HERE, in this
+         * managed <style>, and not through `editor.Css.addRules(pageVariables())`: a rule
+         * whose declarations are all CSS custom properties is dropped by GrapesJS's CSS
+         * parser, so it never reaches the canvas. A sheet survives that because a saved
+         * version carries the variables in its own project_data; a fresh draft does not, and
+         * on a label — the only geometry with header_height/footer_height of 0 — the body
+         * zone then resolved to `calc(var(--margin-top) + var(--header-height))` with the
+         * variables undefined, collapsing to 0×0. With no body zone there is nowhere to drop
+         * a block, so adding a field or text silently did nothing. Emitting the variables on
+         * the frame's own <style> (re-applied on every frame load) fixes it for every draft,
+         * fresh or saved, without depending on what the saved CSS happens to contain.
+         */
+        const vars = '--margin-top:' + mm(m.top) + ';--margin-right:' + mm(m.right)
+            + ';--margin-bottom:' + mm(m.bottom) + ';--margin-left:' + mm(m.left)
+            + ';--header-height:' + (Number(config.zones?.header_height ?? 35)) + 'mm'
+            + ';--footer-height:' + (Number(config.zones?.footer_height ?? 20)) + 'mm;';
+
         style.textContent = 'html .page{width:' + paper.width + 'mm;box-sizing:border-box;'
+            + vars
             + (roll
                 ? 'height:auto;min-height:0;overflow:visible;padding:'
                     + mm(m.top) + ' ' + mm(m.right) + ' ' + mm(m.bottom) + ' ' + mm(m.left) + ';}'
@@ -1079,6 +1116,9 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         }
 
         applyCanvasGeometry(config.geometry);
+        // Size the device (and so the frame) to the current paper. On a frame rebuild this
+        // restores the size the new frame opened without.
+        applyDevice();
         applyViews();
     };
 
@@ -1715,6 +1755,9 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         renderSelection();
         refreshLayers();
         fitZoom();
+        // The `canvas:zoom` event drives the input, but the first fit can land on the zoom
+        // the canvas already had (no change, no event): seed the label once.
+        showZoom();
 
         const canvasEl = editor.Canvas.getElement?.();
 
@@ -1744,6 +1787,16 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
 
     editor.on('component:update component:add component:remove', drawRulers);
 
+    // The one place the zoom input and the rulers follow the canvas transform. Both the
+    // user's zoom calls and GrapesJS's own (`fitViewport` sets the zoom AND pans the sheet)
+    // reach here through these events, so nothing has to remember to redraw after a fit.
+    editor.on('canvas:zoom', () => {
+        showZoom();
+        drawRulers();
+    });
+
+    editor.on('canvas:coords', drawRulers);
+
     // loadProjectData (a saved format, e.g. the default A4) rebuilds the canvas iframe
     // asynchronously; re-apply the body size and geometry style to the new frame, or a
     // switch back to that format keeps the previous format's canvas.
@@ -1760,6 +1813,65 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         }
 
         reparentToZone(editor, config, target);
+    });
+
+    /*
+     * A block dropped from the palette can land off the sheet, and then it looks like
+     * nothing was added at all.
+     *
+     * GrapesJS places a dropped block at an absolute coordinate it derives from the
+     * pointer and the canvas zoom. A small label is edited at several hundred percent,
+     * and at that zoom the coordinate comes out far outside the tiny page: the field IS
+     * added (the count goes up) but sits beyond the sheet, invisible, and dragging in
+     * another only pushes the page's scroll out further. A roll flows and has no absolute
+     * coordinate to correct. For a sheet or a label, a block that ended up OUTSIDE the
+     * page is moved into the body zone at a predictable spot the user can then drag; a
+     * block that landed on the sheet is left exactly where it was dropped, so normal
+     * placement on an A4 is untouched.
+     */
+    let rescueCascade = 0;
+
+    editor.on('block:drag:stop', (component) => {
+        if (!component || rollMode) {
+            return;
+        }
+
+        const el = component.getEl?.();
+        const page = editor.Canvas.getBody?.()?.querySelector('.page');
+
+        if (!el || !page) {
+            return;
+        }
+
+        const pageBox = page.getBoundingClientRect();
+        const box = el.getBoundingClientRect();
+
+        // Its top-left, with a pixel of tolerance, has to sit on the sheet.
+        const onSheet = box.left >= pageBox.left - 1 && box.left <= pageBox.right
+            && box.top >= pageBox.top - 1 && box.top <= pageBox.bottom;
+
+        if (onSheet) {
+            return;
+        }
+
+        // A sheet drops into its body band; a label has no bands (too small for them), so
+        // it falls back to the page itself — otherwise a table dropped on a label, displaced
+        // off the tiny sheet by the zoom, had nowhere to be rescued to and stayed invisible.
+        const target = editor.getWrapper()?.find('[data-tpl-zone="body"]')?.[0]
+            ?? editor.getWrapper()?.find('.page')?.[0];
+
+        if (!target) {
+            return;
+        }
+
+        if (component.parent?.() !== target) {
+            target.append(component);
+        }
+
+        // A small cascade, so several rescued blocks do not stack on one exact spot.
+        const step = (rescueCascade++ % 6) * 4;
+
+        component.addStyle({ left: round(2 + step) + 'mm', top: round(2 + step) + 'mm' });
     });
 
     return { sync, drawRulers, fitZoom, attach };
@@ -2226,23 +2338,15 @@ async function mountEmailEditor(el, config, chrome) {
 
     config.geometry = config.geometry ?? { medium: 'email' };
 
-    // The page editor gives the mount an explicit pixel size through its zoom; the email
-    // editor has no zoom, so the mount would collapse to 0×0 (a grid item with no intrinsic
-    // size) and GrapesJS's canvas with it. Size the mount to the canvas pane and keep it in
-    // step, so the MJML frame has somewhere to render.
-    const sizeToCanvas = () => {
-        if (!chrome.canvas) {
-            return;
-        }
+    // The mount fills its grid cell through CSS (`.tpl-paper > [data-tpl-editor]`), so it no
+    // longer collapses to 0×0 and needs no pixel size of its own — sizing it to the whole
+    // canvas would only overflow the cell now that the canvas is `overflow: hidden`. All
+    // that is left is to let GrapesJS re-measure when the pane resizes.
+    const refreshCanvas = () => editor.refresh?.();
 
-        el.style.width = chrome.canvas.clientWidth + 'px';
-        el.style.height = chrome.canvas.clientHeight + 'px';
-        editor.refresh?.();
-    };
+    refreshCanvas();
 
-    sizeToCanvas();
-
-    const canvasObserver = new ResizeObserver(sizeToCanvas);
+    const canvasObserver = new ResizeObserver(refreshCanvas);
 
     if (chrome.canvas) {
         canvasObserver.observe(chrome.canvas);
