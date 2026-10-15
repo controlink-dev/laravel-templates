@@ -619,13 +619,32 @@ function registerImage(editor, config) {
  */
 function registerFileTrait(editor, config) {
     editor.TraitManager.addType('tpl-file', {
-        createInput({ trait }) {
+        // The trait is bound to the image's `src`, so GrapesJS reflects every `src` change
+        // back into the input by `input.value = src`. On a file input the browser forbids
+        // that (only '' is allowed), and it threw `InvalidStateError`, which rolled the
+        // whole update back — the embedded data URI never stuck. A file input shows no value
+        // anyway, so reflecting into it is pointless: make it a no-op.
+        setInputValue() {},
+
+        // `component`, not `this.model`: inside a trait's `createInput` the view's `this.model`
+        // is the TRAIT, so `this.model.setAttributes` wrote the data URI onto the trait and
+        // never reached the image. The file input's native change, meanwhile, set the image's
+        // `src` to the browser's fake path (`C:\fakepath\…`), which is not a `data:` URI — so a
+        // perfectly good upload failed validation V-05 ("the image has no file"). Writing the
+        // data URI to the component, after the reader loads, is what actually embeds the image.
+        createInput({ trait, component }) {
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'image/png,image/jpeg,image/svg+xml';
             input.className = 'gjs-field';
 
-            input.addEventListener('change', () => {
+            input.addEventListener('change', (event) => {
+                // Stop GrapesJS's own trait `change` handler (delegated on the view) from
+                // reading the file input's value — which the browser reports as the fake path
+                // `C:\fakepath\…`, not a data URI — and writing that to the image's `src`. We
+                // own `src` entirely here, embedding the file as a data URI below.
+                event.stopPropagation();
+
                 const file = input.files?.[0];
 
                 if (!file) {
@@ -644,7 +663,7 @@ function registerFileTrait(editor, config) {
 
                 const reader = new FileReader();
                 reader.addEventListener('load', () => {
-                    this.model.setAttributes({ src: String(reader.result) });
+                    component.addAttributes({ src: String(reader.result) });
                 });
                 reader.readAsDataURL(file);
             });
