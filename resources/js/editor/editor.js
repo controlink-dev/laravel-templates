@@ -709,6 +709,31 @@ function canvasDecorations(paper, rollMode = false) {
         }
 
         /*
+         * The line table on the canvas, laid out as the compositor lays it on the sheet
+         * (PageStructure::css adds the same rules to the printed document). Fixed layout is
+         * what makes a column's width take effect; the cell rules are not optional with it:
+         * white-space:nowrap + overflow:hidden force every row to one clipped line, so a
+         * long value can never wrap and grow the row. Without them the table ran to the foot
+         * of the page with overlapping text. A row is at most one line tall, so the table's
+         * height is bounded by its row count, never by its content.
+         */
+        table.lines {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        table.lines th,
+        table.lines td {
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            box-sizing: border-box;
+            padding: 0 1mm;
+            vertical-align: middle;
+        }
+
+        /*
          * The selection, in the licence's colour rather than GrapesJS's blue. These
          * two live inside the canvas document, so they belong here and not in
          * editor.css — the outline is drawn on the block itself.
@@ -1880,6 +1905,20 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     editor.on('block:drag:stop', (component) => {
         if (!component || rollMode) {
             return;
+        }
+
+        // A dropped line table has no width of its own, and an absolutely-positioned block
+        // whose only child is a 100%-wide table stretches to the sheet's right edge,
+        // pinning it to the right margin where it cannot be narrowed or moved. Give it a
+        // definite size the first time it lands: the full printable width at the left
+        // margin, the usual shape of a line list, which the user can then resize or move.
+        if (component.getAttributes?.()['data-tpl-type'] === 'line-table'
+            && !component.getStyle?.().width) {
+            const margins = config.margins ?? {};
+            const left = Number(margins.left ?? 15);
+            const printable = Number(config.paper?.width ?? 210) - left - Number(margins.right ?? 15);
+
+            component.addStyle({ left: left + 'mm', width: printable + 'mm' });
         }
 
         const el = component.getEl?.();

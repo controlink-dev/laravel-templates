@@ -150,7 +150,7 @@ function registerLineTable(editor, config) {
              * row and ignores any real lines — what a saved version must carry.
              */
             previewContent(example = false) {
-                const columns = this.columns();
+                const columns = this.columns().filter((column) => !column.hidden);
                 const key = this.collectionKey();
                 const sample = config.fixture?.[key] ?? [];
                 const rows = example
@@ -158,7 +158,7 @@ function registerLineTable(editor, config) {
                     : previewRows(config, key);
 
                 const head = columns
-                    .map((column) => `<th style="text-align:${column.align || 'left'}"${widthStyle(column)}>`
+                    .map((column) => `<th style="${thStyle(column)}">`
                         + `${escapeText(column.label)}</th>`)
                     .join('');
 
@@ -191,12 +191,12 @@ function registerLineTable(editor, config) {
              * compositor uses for the document's own header band.
              */
             toHTML() {
-                const columns = this.columns();
+                const columns = this.columns().filter((column) => !column.hidden);
                 const collection = this.collectionKey();
                 const item = 'linha';
 
                 const head = columns
-                    .map((column) => `<th style="text-align:${column.align || 'left'}"${widthStyle(column)}>`
+                    .map((column) => `<th style="${thStyle(column)}">`
                         + `${escapeText(column.label)}</th>`)
                     .join('');
 
@@ -240,12 +240,37 @@ function registerColumnsTrait(editor, config) {
             const wrapper = document.createElement('div');
             wrapper.className = 'tpl-columns';
 
+            // The column being dragged by its grip; a drop moves it before the card it
+            // lands on. Reordering here IS reordering the printed columns, so it goes
+            // through `setColumns` like any other edit.
+            let dragFrom = null;
+
             const redraw = () => {
                 wrapper.replaceChildren();
 
                 component.columns().forEach((column, index) => {
-                    wrapper.append(columnRow(component, column, index, config, redraw));
+                    wrapper.append(columnCard(component, column, index, config, redraw, reorder));
                 });
+            };
+
+            const reorder = {
+                start(index) { dragFrom = index; },
+                allow(event) { if (dragFrom !== null) event.preventDefault(); },
+                drop(index) {
+                    if (dragFrom === null || dragFrom === index) {
+                        dragFrom = null;
+
+                        return;
+                    }
+
+                    const columns = component.columns();
+                    const [moved] = columns.splice(dragFrom, 1);
+                    columns.splice(index, 0, moved);
+                    dragFrom = null;
+                    component.setColumns(columns);
+                    redraw();
+                },
+                end() { dragFrom = null; },
             };
 
             redraw();
@@ -256,14 +281,21 @@ function registerColumnsTrait(editor, config) {
     });
 }
 
-function columnRow(component, column, index, config, redraw) {
-    const row = document.createElement('div');
-    row.className = 'tpl-columns__row';
+/**
+ * One column, as a card: a header with the source key, a drag grip and a remove button,
+ * then the label, the width (in millimetres) and alignment side by side, and the format.
+ * The card gives each control room the old single-row layout could not, in a trait panel
+ * too narrow for four fields abreast.
+ */
+function columnCard(component, column, index, config, redraw, reorder) {
+    const card = document.createElement('div');
+    card.className = 'tpl-col';
 
-    const title = document.createElement('span');
-    title.className = 'tpl-columns__key';
-    title.textContent = column.key;
-    row.append(title);
+    const isHidden = column.hidden === true;
+
+    if (isHidden) {
+        card.classList.add('tpl-col--hidden');
+    }
 
     const update = (patch) => {
         const columns = component.columns();
@@ -271,62 +303,178 @@ function columnRow(component, column, index, config, redraw) {
         component.setColumns(columns);
     };
 
+    // The card is a drop target; the grip is what the user actually drags, so dragging a
+    // card never fights the text selection inside its inputs.
+    card.addEventListener('dragover', (event) => reorder.allow(event));
+    card.addEventListener('drop', (event) => { event.preventDefault(); event.stopPropagation(); reorder.drop(index); });
+
+    const head = document.createElement('div');
+    head.className = 'tpl-col__head';
+
+    const grip = document.createElement('span');
+    grip.className = 'tpl-col__grip';
+    grip.setAttribute('draggable', 'true');
+    grip.title = config.strings['trait.column_reorder'];
+    grip.setAttribute('aria-label', config.strings['trait.column_reorder']);
+    grip.innerHTML = gripIcon();
+    grip.addEventListener('dragstart', (event) => {
+        reorder.start(index);
+
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            // A private MIME, never `text/plain`: a grip released over the canvas must not
+            // let the editor's external-drop handler read the index as text and insert it
+            // as a block.
+            event.dataTransfer.setData('application/x-tpl-column', String(index));
+            event.dataTransfer.setDragImage(card, 12, 12);
+        }
+    });
+    grip.addEventListener('dragend', () => reorder.end());
+
+    const key = document.createElement('span');
+    key.className = 'tpl-col__key';
+    key.textContent = column.key;
+    key.title = column.key;
+
+    // A visibility toggle, not a delete: the columns come from the catalogue, so a removed
+    // one can only be brought back by resetting the whole list. Hiding keeps the column and
+    // its settings, drops it from the printed table, and is undone with the same click.
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'tpl-col__toggle';
+    toggle.title = config.strings[isHidden ? 'trait.column_show' : 'trait.column_hide'];
+    toggle.setAttribute('aria-label', toggle.title);
+    toggle.setAttribute('aria-pressed', String(!isHidden));
+    toggle.innerHTML = isHidden ? eyeOffIcon() : eyeIcon();
+    toggle.addEventListener('click', () => {
+        update({ hidden: !isHidden });
+        redraw();
+    });
+
+    head.append(grip, key, toggle);
+
+    const labelField = columnField(config.strings['trait.column_label']);
     const label = document.createElement('input');
     label.type = 'text';
     label.className = 'gjs-field';
     label.value = column.label ?? '';
-    label.placeholder = config.strings['trait.column_label'];
     label.addEventListener('change', () => update({ label: label.value }));
-    row.append(label);
+    labelField.append(label);
 
+    const two = document.createElement('div');
+    two.className = 'tpl-col__two';
+
+    const widthField = columnField(config.strings['trait.column_width']);
+    const widthWrap = document.createElement('div');
+    widthWrap.className = 'tpl-col__wunit';
     const width = document.createElement('input');
-    width.type = 'text';
-    width.className = 'gjs-field tpl-columns__width';
+    width.type = 'number';
+    width.min = '0';
+    width.step = '1';
+    width.inputMode = 'decimal';
+    width.className = 'gjs-field';
     width.value = column.width ?? '';
-    width.placeholder = config.strings['trait.column_width'];
+    width.placeholder = 'auto';
     width.addEventListener('change', () => update({ width: width.value.trim() }));
-    row.append(width);
+    const unit = document.createElement('span');
+    unit.className = 'tpl-col__unit';
+    unit.textContent = 'mm';
+    widthWrap.append(width, unit);
+    widthField.append(widthWrap);
 
-    const align = document.createElement('select');
-    align.className = 'gjs-field';
-    [['left', 'align.left'], ['center', 'align.center'], ['right', 'align.right']]
-        .forEach(([value, key]) => {
-            const option = document.createElement('option');
-            option.value = value;
-            option.textContent = config.strings[key];
-            option.selected = (column.align ?? 'left') === value;
-            align.append(option);
+    const alignField = columnField(config.strings['trait.column_align']);
+    const seg = document.createElement('div');
+    seg.className = 'tpl-col__seg';
+    [['left', alignIcon('left')], ['center', alignIcon('center')], ['right', alignIcon('right')]]
+        .forEach(([value, svg]) => {
+            const option = document.createElement('button');
+            option.type = 'button';
+            option.innerHTML = svg;
+            option.title = config.strings['align.' + value];
+            option.setAttribute('aria-label', config.strings['align.' + value]);
+
+            const on = (column.align ?? 'left') === value;
+            option.setAttribute('aria-pressed', String(on));
+            option.classList.toggle('is-on', on);
+
+            option.addEventListener('click', () => {
+                seg.querySelectorAll('button').forEach((other) => {
+                    other.classList.remove('is-on');
+                    other.setAttribute('aria-pressed', 'false');
+                });
+                option.classList.add('is-on');
+                option.setAttribute('aria-pressed', 'true');
+                update({ align: value });
+            });
+
+            seg.append(option);
         });
-    align.addEventListener('change', () => update({ align: align.value }));
-    row.append(align);
+    alignField.append(seg);
 
+    two.append(widthField, alignField);
+
+    const formatField = columnField(config.strings['trait.format']);
     const format = document.createElement('select');
     format.className = 'gjs-field';
     [['', 'format.none'], ...config.formats.map((name) => [name, 'format.' + name])]
-        .forEach(([value, key]) => {
+        .forEach(([value, key2]) => {
             const option = document.createElement('option');
             option.value = value;
-            option.textContent = config.strings[key];
+            option.textContent = config.strings[key2];
             option.selected = (column.format ?? '') === value;
             format.append(option);
         });
     format.addEventListener('change', () => update({ format: format.value }));
-    row.append(format);
+    formatField.append(format);
 
-    const visible = document.createElement('button');
-    visible.type = 'button';
-    visible.className = 'tpl-columns__drop';
-    visible.textContent = '×';
-    visible.title = config.strings['trait.column_remove'];
-    visible.addEventListener('click', () => {
-        const columns = component.columns();
-        columns.splice(index, 1);
-        component.setColumns(columns);
-        redraw();
-    });
-    row.append(visible);
+    card.append(head, labelField, two, formatField);
 
-    return row;
+    return card;
+}
+
+/** A labelled field slot: the uppercase caption above, the control appended by the caller. */
+function columnField(labelText) {
+    const field = document.createElement('div');
+    field.className = 'tpl-col__field';
+
+    const caption = document.createElement('label');
+    caption.className = 'tpl-col__label';
+    caption.textContent = labelText;
+    field.append(caption);
+
+    return field;
+}
+
+function gripIcon() {
+    return '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true">'
+        + '<circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>'
+        + '<circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>'
+        + '<circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
+}
+
+function eyeIcon() {
+    return '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"'
+        + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+}
+
+function eyeOffIcon() {
+    return '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"'
+        + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a13.3 13.3 0 0 1-2.16 2.92M6.1 6.1A13.3 13.3 0 0 0 2 11s3.5 7 10 7a9 9 0 0 0 4.9-1.4M1 1l22 22"/>'
+        + '<path d="M9.5 9.54a3 3 0 0 0 4.24 4.24"/></svg>';
+}
+
+function alignIcon(direction) {
+    const lines = {
+        left: 'M4 6h16M4 12h10M4 18h13',
+        center: 'M4 6h16M7 12h10M6 18h12',
+        right: 'M4 6h16M10 12h10M7 18h13',
+    };
+
+    return '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"'
+        + ' stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="'
+        + lines[direction] + '"/></svg>';
 }
 
 /* ---------------------------------------------------------------------------
@@ -783,8 +931,36 @@ function textField(value, onChange) {
 /* ---------------------------------------------------------------------------
  * Shared
  * ------------------------------------------------------------------------ */
-function widthStyle(column) {
-    return column.width ? ` width="${escapeAttribute(column.width)}"` : '';
+/**
+ * The header cell's inline style: text alignment, and the column width WHEN the user set
+ * one. The width is emitted as CSS `width`, never the legacy `width=""` attribute — that
+ * attribute only accepts pixels or a percentage, so `width="24mm"` is silently dropped by
+ * the browser, and the whole layout is in millimetres. With `table-layout:fixed` the
+ * header row's CSS widths drive every column, so this is where a width takes effect.
+ */
+function thStyle(column) {
+    const align = column.align || 'left';
+    const width = normalizeWidth(column.width);
+
+    return `text-align:${align}` + (width ? `;width:${width}` : '');
+}
+
+/**
+ * A width the user typed, as a safe CSS length. The layout's unit is the millimetre, so a
+ * bare number is read as `mm`; a value that already carries a unit keeps it. Anything that
+ * is not a length is dropped rather than written into the style, which also keeps the
+ * value from breaking out of the attribute.
+ */
+function normalizeWidth(value) {
+    const raw = String(value ?? '').trim().toLowerCase();
+
+    if (raw === '') {
+        return '';
+    }
+
+    const match = raw.match(/^(\d*\.?\d+)(mm|cm|in|px|pt|%)?$/);
+
+    return match ? match[1] + (match[2] || 'mm') : '';
 }
 
 function attributesToHTML(component) {

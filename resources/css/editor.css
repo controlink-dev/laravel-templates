@@ -173,63 +173,172 @@
     max-width: none;
 }
 
-.tpl-columns__row {
-    display: grid;
-    grid-template-columns: 1fr 3.25rem 3.75rem 4.75rem;
-    grid-template-areas:
-        "key   key   key   drop"
-        "label width align format";
-    gap: 0.25rem;
-    row-gap: 0.15rem;
+/* One card per column. The header carries the source key, a drag grip and the remove
+ * button; below it the label, then the width and alignment side by side, then the format.
+ * Stacking over the full panel width is what frees each control from the old four-abreast
+ * squeeze. */
+.tpl-col {
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 0.5rem;
+    background: var(--tpl-surface-base, #fff);
+    padding: 0.5rem 0.5rem 0.55rem;
+    margin-bottom: 0.5rem;
+}
+
+.tpl-col__head {
+    display: flex;
     align-items: center;
-    margin-bottom: 0.55rem;
+    gap: 0.375rem;
+    margin-bottom: 0.45rem;
 }
 
-.tpl-columns__row > * {
+.tpl-col__grip {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    color: var(--tpl-slate-500, #64748b);
+    opacity: 0.65;
+    cursor: grab;
+}
+
+.tpl-col__grip:active {
+    cursor: grabbing;
+}
+
+.tpl-col__key {
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, monospace;
+    font-size: 0.6875rem;
+    color: var(--tpl-slate-500, #64748b);
+    background: var(--tpl-surface-sunken, #e5e7eb);
+    padding: 0.125rem 0.4rem;
+    border-radius: 0.3rem;
 }
 
-.tpl-columns__row input,
-.tpl-columns__row select {
+.tpl-col__toggle {
+    margin-left: auto;
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 1.625rem;
+    height: 1.625rem;
+    padding: 0;
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 0.375rem;
+    background: var(--tpl-surface-base, #fff);
+    color: var(--tpl-slate-500, #64748b);
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.tpl-col__toggle:hover {
+    background: var(--tpl-surface-muted, #f8fafc);
+    border-color: var(--tpl-primary, #4f46e5);
+    color: var(--tpl-primary, #4f46e5);
+}
+
+/* A hidden column stays in the list so it can be shown again. Its controls are dimmed to
+ * read as inactive; the key and the eye keep full strength so the row stays legible and
+ * the toggle inviting. */
+.tpl-col--hidden {
+    background: var(--tpl-surface-muted, #f8fafc);
+}
+
+.tpl-col--hidden .tpl-col__field {
+    opacity: 0.4;
+}
+
+.tpl-col--hidden .tpl-col__toggle {
+    color: var(--tpl-primary, #4f46e5);
+    border-color: var(--tpl-primary, #4f46e5);
+}
+
+.tpl-col__field {
+    margin-top: 0.4rem;
+}
+
+.tpl-col__label {
+    display: block;
+    margin-bottom: 0.2rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+.tpl-col__field input,
+.tpl-col__field select {
     width: 100%;
     box-sizing: border-box;
 }
 
-.tpl-columns__key {
-    grid-area: key;
-    overflow: hidden;
+.tpl-col__two {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+.tpl-col__two .tpl-col__field {
+    margin-top: 0;
+}
+
+.tpl-col__wunit {
+    position: relative;
+}
+
+.tpl-col__wunit input {
+    padding-right: 1.85rem;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+/* The millimetre suffix stands in for the stepper, so the native number spinner is
+ * hidden rather than crowding it. */
+.tpl-col__wunit input::-webkit-outer-spin-button,
+.tpl-col__wunit input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.tpl-col__unit {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
     font-size: 0.6875rem;
-    font-family: ui-monospace, monospace;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    color: var(--tpl-slate-500, #64748b);
+    pointer-events: none;
 }
 
-/* Order-based, matching the DOM `columnRow()` builds: label, width, align, format. */
-.tpl-columns__row > input:nth-of-type(1) {
-    grid-area: label;
+.tpl-col__seg {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.125rem;
+    padding: 0.125rem;
+    background: var(--tpl-surface-sunken, #e5e7eb);
+    border-radius: 0.4rem;
 }
 
-.tpl-columns__width {
-    grid-area: width;
-}
-
-.tpl-columns__row > select:nth-of-type(1) {
-    grid-area: align;
-}
-
-.tpl-columns__row > select:nth-of-type(2) {
-    grid-area: format;
-}
-
-.tpl-columns__drop {
-    grid-area: drop;
-    justify-self: end;
+.tpl-col__seg button {
+    display: grid;
+    place-items: center;
+    padding: 0.3rem 0;
     border: 0;
+    border-radius: 0.3rem;
     background: none;
-    color: #dc2626;
-    font-size: 0.875rem;
-    line-height: 1;
+    color: var(--tpl-slate-500, #64748b);
     cursor: pointer;
+}
+
+.tpl-col__seg button.is-on {
+    background: var(--tpl-surface-base, #fff);
+    color: var(--tpl-primary, #4f46e5);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 
 /*
