@@ -18,6 +18,7 @@ import { mountPreviewPanel, plainProjectData } from './preview-filter.js';
 import { icons } from './icons.js';
 import {
     checkLegalFieldsLocally,
+    checkOffSheetLocally,
     restoreMissingLegalFields,
     styleManagerSectors,
 } from './panels.js';
@@ -361,7 +362,9 @@ async function mountEditor(el) {
                 return;
             }
 
-            const local = config.editable ? checkLegalFieldsLocally(editor, config) : [];
+            const local = config.editable
+                ? [...checkLegalFieldsLocally(editor, config), ...checkOffSheetLocally(editor, config)]
+                : [];
             const problems = mergeProblems(serverProblems, local);
 
             renderProblems(editor, config, problems);

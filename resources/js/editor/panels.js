@@ -349,6 +349,119 @@ function isInRepeatingZone(component) {
 }
 
 /**
+ * Live "off the sheet" check (CGE-25 Peça 2).
+ *
+ * The server validates geometry only in the absolute zones (header/footer) at save;
+ * the body is measured at render (spec §2). So a block dragged off the sheet in the
+ * body gets no immediate warning. This fills that gap in the browser, comparing each
+ * positioned block's box against the sheet box on the canvas — compared in rendered
+ * pixels, so it holds whatever unit a drag leaves behind. Header/footer keep the
+ * server's save-time V-04/V-14, so this skips them.
+ *
+ * It emits a DEDICATED code `L-OUT` (not V-04/V-14): see problems.js — reusing those
+ * in LOCAL_CHECK_CODES would drop the server copies the browser cannot fully decide.
+ *
+ * @returns {Array<{code: string, componentId: string, message: string}>}
+ */
+export function checkOffSheetLocally(editor, config) {
+    const metrics = pageMetrics(editor);
+
+    if (!metrics) {
+        return [];
+    }
+
+    const isRoll = config.geometry?.medium === 'roll';
+    const problems = [];
+
+    editor.getWrapper().find('[data-tpl-type]').forEach((component) => {
+        // Header/footer are absolute zones the server already guards at save; the body
+        // is where the server is silent, so that is what the live check covers.
+        if (isInRepeatingZone(component)) {
+            return;
+        }
+
+        const el = component.getEl();
+
+        if (!el) {
+            return;
+        }
+
+        const { dx, dy } = sheetOverflow(el.getBoundingClientRect(), metrics.pageRect, isRoll, metrics.tolPx);
+
+        if (dx === 0 && dy === 0) {
+            return;
+        }
+
+        problems.push({
+            code: 'L-OUT',
+            componentId: component.getId(),
+            message: format(config.strings['check.off_sheet'], { field: blockLabel(component, config) }),
+        });
+    });
+
+    return problems;
+}
+
+/**
+ * The sheet element on the canvas, its rect, and the pixel tolerance for the test.
+ * Returns null while the canvas is not rendered yet (the check then stays silent).
+ */
+function pageMetrics(editor) {
+    const page = editor.getWrapper().find('.page')[0];
+    const el = page?.getEl();
+
+    if (!el) {
+        return null;
+    }
+
+    const pageRect = el.getBoundingClientRect();
+
+    if (!(pageRect.width > 0)) {
+        return null;
+    }
+
+    return { pageEl: el, pageRect, tolPx: 2 };
+}
+
+/**
+ * How far a block's box sits outside the sheet, in canvas pixels.
+ *
+ * `dx`/`dy` are the shift to apply to bring the block inside (0 when inside). On a roll
+ * the height is free (overflow:visible), so only the horizontal axis is measured.
+ *
+ * @returns {{dx: number, dy: number}}
+ */
+function sheetOverflow(block, page, isRoll, tol) {
+    let dx = 0;
+    let dy = 0;
+
+    if (block.left < page.left - tol) {
+        dx = page.left - block.left;
+    } else if (block.right > page.right + tol) {
+        dx = page.right - block.right;
+    }
+
+    if (!isRoll) {
+        if (block.top < page.top - tol) {
+            dy = page.top - block.top;
+        } else if (block.bottom > page.bottom + tol) {
+            dy = page.bottom - block.bottom;
+        }
+    }
+
+    return { dx, dy };
+}
+
+/** A readable name for a block in a problem message: its binding label, else its own name. */
+function blockLabel(component, config) {
+    const binding = config.bindings?.find((item) => item.key === component.getAttributes()['data-tpl-binding']);
+
+    return binding?.label
+        || component.get('custom-name')
+        || component.getName();
+}
+
+/**
  * Font size in points.
  *
  * Only `pt` and `mm` are accepted, because those are the units the reduced style

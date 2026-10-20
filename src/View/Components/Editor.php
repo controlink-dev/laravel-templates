@@ -269,6 +269,7 @@ class Editor extends Component
             'check.opacity'         => __('templates::editor.checks.opacity'),
             'check.hidden'          => __('templates::editor.checks.hidden'),
             'check.scope'           => __('templates::editor.checks.scope'),
+            'check.off_sheet'       => __('templates::editor.checks.off_sheet'),
             'check.code_incomplete' => __('templates::editor.checks.code_incomplete'),
 
             'error.image_too_large'  => __('templates::editor.errors.image_too_large'),

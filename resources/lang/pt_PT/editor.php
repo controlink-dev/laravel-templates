@@ -211,6 +211,7 @@ return [
         'opacity'   => '«:field» está transparente.',
         'hidden'    => '«:field» está escondido.',
         'scope'     => '«:field» tem de aparecer em todas as páginas, logo só pode estar no cabeçalho ou no rodapé.',
+        'off_sheet' => 'O campo «:field» está fora da folha.',
 
         'code_incomplete' => 'Este código fixo tem campos obrigatórios em branco. Sem eles, o código é válido mas não aponta para nada.',
     ],
