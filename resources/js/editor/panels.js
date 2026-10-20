@@ -6,6 +6,8 @@
  * it is a guarantee: the decisive validation is the server's (spec 3.2, last bullet).
  * ========================================================================= */
 
+import { resolvePaper } from './editor.js';
+
 /**
  * The Style Manager the user gets: typography, colour, box and position, and nothing
  * else. No flex, no grid, no transitions — properties that mean nothing on paper and
@@ -459,6 +461,75 @@ function blockLabel(component, config) {
     return binding?.label
         || component.get('custom-name')
         || component.getName();
+}
+
+/**
+ * "Bring onto the sheet" (CGE-25 Peça 3): clamp the selected block back into the sheet.
+ *
+ * Builds on the same canvas-pixel overflow the live check uses: it shifts the block's
+ * own `left`/`top` by the overflow (converted to mm, the unit a saved layout keeps), so
+ * it works whatever positioning context the block sits in. On a roll the height is free,
+ * so only the horizontal axis is clamped and the width is capped at the paper width.
+ *
+ * @returns {number} 1 if it moved the block, 0 if nothing was selected or it was inside.
+ */
+export function snapIntoSheet(editor, config) {
+    const component = editor.getSelected();
+    const el = component?.getEl();
+    const metrics = pageMetrics(editor);
+
+    if (!el || !metrics) {
+        return 0;
+    }
+
+    const isRoll = config.geometry?.medium === 'roll';
+    const paper = resolvePaper(config.geometry);
+    const pxPerMm = metrics.pageRect.width / paper.width;
+    const tolMm = Number(config.geometry?.tolerance_mm ?? 0);
+
+    const rect = el.getBoundingClientRect();
+    const { dx, dy } = sheetOverflow(rect, metrics.pageRect, isRoll, metrics.tolPx);
+    const style = component.getStyle();
+    const next = {};
+
+    if (dx !== 0) {
+        const leftMm = parseLenMm(style.left, pxPerMm) ?? 0;
+        next.left = Math.max(leftMm + dx / pxPerMm, 0) + 'mm';
+    }
+
+    if (!isRoll && dy !== 0) {
+        const topMm = parseLenMm(style.top, pxPerMm) ?? 0;
+        next.top = Math.max(topMm + dy / pxPerMm, 0) + 'mm';
+    }
+
+    if (isRoll && rect.width / pxPerMm > paper.width + tolMm) {
+        next.width = paper.width + 'mm';
+    }
+
+    if (Object.keys(next).length === 0) {
+        return 0;
+    }
+
+    component.addStyle(next);
+
+    return 1;
+}
+
+/** A CSS length in mm. Accepts `mm` and `px` (px converted with `pxPerMm`); else null. */
+function parseLenMm(value, pxPerMm) {
+    if (typeof value !== 'string') {
+        return null;
+    }
+
+    const match = value.match(/^(-?[\d.]+)(mm|px)?$/);
+
+    if (!match || !Number.isFinite(parseFloat(match[1]))) {
+        return null;
+    }
+
+    const number = parseFloat(match[1]);
+
+    return match[2] === 'px' ? number / pxPerMm : number;
 }
 
 /**

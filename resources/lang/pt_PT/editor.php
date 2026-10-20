@@ -126,6 +126,9 @@ return [
         'restore_legal'      => 'Repor campos legais em falta',
         'restore_legal_none' => 'Não falta nenhum campo legal.',
         'restore_legal_done' => ':count campo(s) legal(is) reposto(s).',
+        'snap_to_sheet'      => 'Repor na folha',
+        'snap_to_sheet_done' => 'O campo foi reposto na folha.',
+        'snap_to_sheet_none' => 'Nada a repor: o campo já está na folha.',
     ],
 
     'formats' => [

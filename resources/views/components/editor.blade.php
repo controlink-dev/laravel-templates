@@ -131,6 +131,10 @@
                 <button type="button" class="tpl-tool" data-tpl-command="restore-legal">
                     {!! $icons['shield-exclamation'] !!} {{ __('templates::editor.actions.restore_legal') }}
                 </button>
+                <button type="button" class="tpl-tool" data-tpl-command="snap-to-sheet"
+                        title="{{ __('templates::editor.actions.snap_to_sheet') }}">
+                    {!! $icons['arrows-to-dot'] !!} {{ __('templates::editor.actions.snap_to_sheet') }}
+                </button>
             </div>
         @endunless
 

@@ -20,6 +20,7 @@ import {
     checkLegalFieldsLocally,
     checkOffSheetLocally,
     restoreMissingLegalFields,
+    snapIntoSheet,
     styleManagerSectors,
 } from './panels.js';
 import { mergeProblems } from './problems.js';
@@ -598,7 +599,7 @@ const ROLL_CANVAS_HEIGHT = 297;
 const DEFAULT_PAGE_FORMATS = [{ id: 'A4', label: 'A4', medium: 'sheet', paper_format: 'A4' }];
 
 /** @returns {{width: number, height: number}} the canvas paper a geometry stands for. */
-function resolvePaper(geometry, fallbackFormat) {
+export function resolvePaper(geometry, fallbackFormat) {
     if (geometry?.medium === 'roll' && Number(geometry.width_mm) > 0) {
         return { width: Number(geometry.width_mm), height: ROLL_CANVAS_HEIGHT };
     }
@@ -1071,6 +1072,14 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
                 message: inserted === 0
                     ? config.strings['action.restore_legal_none']
                     : config.strings['action.restore_legal_done'].replace(':count', String(inserted)),
+            });
+        },
+        'snap-to-sheet': () => {
+            const moved = snapIntoSheet(editor, config);
+
+            notify(root, config, {
+                level: 'success',
+                message: config.strings[moved ? 'action.snap_to_sheet_done' : 'action.snap_to_sheet_none'],
             });
         },
     };

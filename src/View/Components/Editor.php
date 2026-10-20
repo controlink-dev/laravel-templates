@@ -240,6 +240,9 @@ class Editor extends Component
             'action.restore_legal'      => __('templates::editor.actions.restore_legal'),
             'action.restore_legal_none' => __('templates::editor.actions.restore_legal_none'),
             'action.restore_legal_done' => __('templates::editor.actions.restore_legal_done'),
+            'action.snap_to_sheet'      => __('templates::editor.actions.snap_to_sheet'),
+            'action.snap_to_sheet_done' => __('templates::editor.actions.snap_to_sheet_done'),
+            'action.snap_to_sheet_none' => __('templates::editor.actions.snap_to_sheet_none'),
 
             /*
              * Chrome strings the JavaScript builds at runtime: the counts in the
