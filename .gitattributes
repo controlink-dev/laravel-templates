@@ -1,1 +1,4 @@
 * text=auto eol=lf
+
+# Byte-exact golden snapshots (PHP serialize); never line-ending-normalised.
+tests/Fixtures/golden/*.ser -text

@@ -197,21 +197,30 @@ class LayoutValidator
             $problems[] = $this->missing('V-02', 'missing_mandatory', $binding);
         }
 
-        // V-03: exactly one line table per collection the document type requires. Two
-        // tables over the same collection would print the lines twice, and the
-        // compositor paginates against one table.
-        foreach ($bindings as $key => $binding) {
-            if ($binding['type'] !== 'collection' || ! ($binding['mandatory'] ?? false)) {
+        // V-03: at most one line table per collection. Two tables over the same
+        // collection would print its lines twice, and the compositor paginates each
+        // collection against one table. Tables over different collections are the
+        // multi-table case and are fine; unbound tables (no collection) are skipped.
+        $seen = [];
+        foreach ($document->blocksOfType('line-table') as $table) {
+            $key = (string) ($table['attributes']['data-tpl-collection'] ?? '');
+
+            if ($key === '') {
                 continue;
             }
 
-            $tables = array_values(array_filter(
-                $document->blocksOfType('line-table'),
-                fn (array $block): bool => ($block['attributes']['data-tpl-collection'] ?? '') === $key,
-            ));
+            if (! isset($seen[$key])) {
+                $seen[$key] = true;
 
-            if (count($tables) > 1) {
-                $problems[] = $this->problem('V-03', $tables[1], 'duplicate_table', ['field' => $binding['label']]);
+                continue;
+            }
+
+            if ($seen[$key] === true) {
+                $seen[$key] = false; // report once, on the second table
+
+                $label = $bindings[$key]['label'] ?? $key;
+
+                $problems[] = $this->problem('V-03', $table, 'duplicate_table', ['field' => $label]);
             }
         }
 

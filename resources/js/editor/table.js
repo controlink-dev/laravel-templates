@@ -8,6 +8,7 @@
 
 import { TRANSPARENT_PIXEL, nodeOptionsOf, fieldsOfNode, nodeOfBinding } from './components.js';
 import { icons } from './icons.js';
+import { previewRows } from './preview-filter.js';
 
 /**
  * @param {object} editor  GrapesJS instance
@@ -117,23 +118,12 @@ function registerLineTable(editor, config) {
             },
 
             /**
-             * The canvas shows the header row and one sample row, because a table whose
-             * body only exists at render time is impossible to lay out by eye.
+             * The canvas shows the header row and one sample row — or, when real lines are
+             * being previewed, up to a handful of them — because a table whose body only
+             * exists at render time is impossible to lay out by eye.
              */
             renderPreview() {
-                const columns = this.columns();
-                const sample = config.fixture?.[this.collectionKey()] ?? [];
-                const first = Array.isArray(sample) ? (sample[0] ?? {}) : {};
-
-                const head = columns
-                    .map((column) => `<th style="text-align:${column.align || 'left'}"${widthStyle(column)}>`
-                        + `${escapeText(column.label)}</th>`)
-                    .join('');
-
-                const row = columns
-                    .map((column) => `<td style="text-align:${column.align || 'left'}">`
-                        + `${escapeText(String(first[column.key] ?? column.label))}</td>`)
-                    .join('');
+                const content = this.previewContent();
 
                 /*
                  * `content` and not `components()`: the preview table is furniture the
@@ -145,23 +135,52 @@ function registerLineTable(editor, config) {
                     this.components().reset();
                 }
 
+                if (this.get('content') !== content) {
+                    this.set('content', content);
+                }
+            },
+
+            /** Redraw from the current preview state (real lines picked or cleared). */
+            syncPreview() {
+                this.renderPreview();
+            },
+
+            /**
+             * The markup the canvas shows. `example` forces the catalogue's single sample
+             * row and ignores any real lines — what a saved version must carry.
+             */
+            previewContent(example = false) {
+                const columns = this.columns();
+                const key = this.collectionKey();
+                const sample = config.fixture?.[key] ?? [];
+                const rows = example
+                    ? [Array.isArray(sample) ? (sample[0] ?? {}) : {}]
+                    : previewRows(config, key);
+
+                const head = columns
+                    .map((column) => `<th style="text-align:${column.align || 'left'}"${widthStyle(column)}>`
+                        + `${escapeText(column.label)}</th>`)
+                    .join('');
+
                 // No columns yet (a collection that declares none, or a document with no
                 // line collection at all — a label): an empty <table> collapses to 0×0 and
                 // reads as "the table vanished on drop". Show a sized placeholder instead, so
                 // the block is visible and can be configured or removed. Canvas-only (never
                 // printed); dropped in the clean view.
                 if (columns.length === 0) {
-                    this.set('content',
-                        `<div class="block--lines__empty">`
-                        + `${escapeText(config.strings['block.line_table'] ?? 'Tabela')}</div>`);
-
-                    return;
+                    return `<div class="block--lines__empty">`
+                        + `${escapeText(config.strings['block.line_table'] ?? 'Tabela')}</div>`;
                 }
 
-                this.set('content',
-                    `<table class="lines"><thead><tr>${head}</tr></thead>`
-                    + `<tbody><tr>${row}</tr></tbody></table>`,
-                );
+                const body = (rows.length > 0 ? rows : [{}])
+                    .map((first) => '<tr>' + columns
+                        .map((column) => `<td style="text-align:${column.align || 'left'}">`
+                            + `${escapeText(String(first[column.key] ?? column.label))}</td>`)
+                        .join('') + '</tr>')
+                    .join('');
+
+                return `<table class="lines"><thead><tr>${head}</tr></thead>`
+                    + `<tbody>${body}</tbody></table>`;
             },
 
             /**

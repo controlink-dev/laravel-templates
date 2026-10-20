@@ -327,4 +327,29 @@ return [
         'password' => 'Password',
     ],
 
+    // The sample-data panel: previewing the layout with real records (never saved).
+    'preview' => [
+        'tab' => 'Sample',
+        'intro' => 'Preview the layout with real records. This only changes what you see here: it is never saved.',
+        'none' => 'There is nothing to preview for this document type.',
+        'unbound' => 'Bind a field or a table to preview it with real data',
+        'example' => 'Example',
+        'add_filter' => 'Add filter',
+        'field_placeholder' => 'Field',
+        'value_placeholder' => 'Value',
+        'op_contains' => 'contains',
+        'op_eq' => 'equals',
+        'remove_filter' => 'Remove filter',
+        'loading' => 'Loading…',
+        'show_more' => 'Show more',
+        'use_example' => 'Click to go back to the example',
+        'no_results' => 'No records match. The example is shown.',
+        'collection_hint' => 'Add a filter to preview real lines.',
+        'rows_shown' => 'Showing :count of :total',
+        'lines_badge' => ':count lines',
+        'operator' => 'Operator',
+        'showing' => 'Showing :shown of :total',
+        'error' => 'The records could not be loaded.',
+    ],
+
 ];

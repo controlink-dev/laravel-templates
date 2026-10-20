@@ -1231,3 +1231,396 @@
     outline: 2px solid var(--tpl-primary, #4f46e5);
     outline-offset: 2px;
 }
+
+/* ---------------------------------------------------------------------------
+ * Sample data panel (CGE-29): preview the layout with real records.
+ *
+ * It is useful with nothing selected, unlike the other panels, so the "nothing
+ * chosen" rule that hides them must not hide this one.
+ * ------------------------------------------------------------------------ */
+
+.tpl-editor-root.tpl-no-selection .tpl-panel-scroll.tpl-pf:not([hidden]) {
+    display: block;
+}
+
+.tpl-pf {
+    padding: 0.75rem;
+    font-size: 0.71875rem;
+    line-height: 1.4;
+    color: var(--tpl-slate-700, #334155);
+}
+
+.tpl-pf button,
+.tpl-pf select,
+.tpl-pf input {
+    font-family: inherit;
+}
+
+.tpl-pf-intro,
+.tpl-pf-empty,
+.tpl-pf-note {
+    margin: 0 0 0.625rem;
+    color: var(--tpl-slate-600, #475569);
+}
+
+.tpl-pf-note {
+    margin: 0.25rem 0;
+    font-size: 0.6875rem;
+}
+
+.tpl-pf-note.is-error {
+    color: var(--tpl-danger, #b91c1c);
+}
+
+/* One block per node: a bordered card with a collapsible header. */
+.tpl-pf-target {
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--tpl-edge-subtle, #e6ebf2);
+    border-radius: 0.625rem;
+    background: var(--tpl-surface-raised, #fff);
+    overflow: hidden;
+}
+
+.tpl-pf-target[hidden] {
+    display: none;
+}
+
+.tpl-pf-headbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.tpl-pf-headbar:hover {
+    background: var(--tpl-surface-muted, #f8fafc);
+}
+
+.tpl-pf-head {
+    display: flex;
+    flex: 1 1 100%;
+    min-width: 0;
+    min-height: 2.25rem;
+    align-items: center;
+    gap: 0.5rem;
+    border: 0;
+    background: transparent;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.71875rem;
+    font-weight: 600;
+    text-align: left;
+    color: var(--tpl-slate-900, #0f172a);
+    cursor: pointer;
+}
+
+.tpl-pf-head::before {
+    content: "";
+    flex: none;
+    width: 0.375rem;
+    height: 0.375rem;
+    border-right: 1.5px solid var(--tpl-slate-500, #64748b);
+    border-bottom: 1.5px solid var(--tpl-slate-500, #64748b);
+    transform: rotate(-45deg);
+    transition: transform 0.12s ease;
+}
+
+.tpl-pf-target.is-open .tpl-pf-head::before {
+    transform: rotate(45deg);
+}
+
+.tpl-pf-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* The state tag: calm grey "example", primary tint once real data is on the canvas. */
+.tpl-pf-badge {
+    flex: none;
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border: 1px solid var(--tpl-edge-subtle, #e6ebf2);
+    border-radius: 999px;
+    background: var(--tpl-surface-muted, #f8fafc);
+    padding: 0.0625rem 0.5rem;
+    font-size: 0.625rem;
+    font-weight: 500;
+    color: var(--tpl-slate-600, #475569);
+}
+
+.tpl-pf-badge.is-real {
+    border-color: color-mix(in srgb, var(--tpl-primary, #4f46e5) 28%, var(--tpl-surface-raised, #fff));
+    background: color-mix(in srgb, var(--tpl-primary, #4f46e5) 10%, var(--tpl-surface-raised, #fff));
+    font-weight: 600;
+    color: var(--tpl-primary-strong, #3730a3);
+}
+
+.tpl-pf-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+    border-top: 1px solid var(--tpl-edge-subtle, #e6ebf2);
+    padding: 0.625rem;
+}
+
+.tpl-pf-body[hidden] {
+    display: none;
+}
+
+.tpl-pf-filters,
+.tpl-pf-results {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.tpl-pf-filters:empty {
+    display: none;
+}
+
+/* Proposal A: one aligned row. Line 1: field | comparator | remove; line 2: the value,
+   full width. One control height (2rem) and one border + radius throughout. */
+.tpl-pf-filter {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 5rem 2rem;
+    grid-template-areas:
+        "field op remove"
+        "value value value";
+    align-items: center;
+    gap: 0.4375rem;
+}
+
+.tpl-pf-filter > select:first-child { grid-area: field; }
+.tpl-pf-filter > .tpl-pf-opsel { grid-area: op; }
+.tpl-pf-filter > input { grid-area: value; }
+.tpl-pf-filter > .tpl-pf-remove { grid-area: remove; }
+
+/* A single operator is shown, not offered: no chevron, no pointer. */
+select.tpl-pf-opsel:disabled {
+    background-image: none;
+    padding-right: 0.5rem;
+    cursor: default;
+    color: var(--tpl-slate-600, #475569);
+    background-color: var(--tpl-surface-muted, #f8fafc);
+}
+
+.tpl-pf-input {
+    width: 100%;
+    min-width: 0;
+    height: 2rem;
+    border: 1px solid var(--tpl-edge, #ccd5e0);
+    border-radius: 0.5rem;
+    background-color: var(--tpl-surface-raised, #fff);
+    padding: 0 0.5rem;
+    font-size: 0.71875rem;
+    color: var(--tpl-slate-900, #0f172a);
+}
+
+.tpl-pf-input::placeholder {
+    color: var(--tpl-slate-500, #64748b);
+}
+
+select.tpl-pf-input {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 1.5rem;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2364748b' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='M4 6.5 8 10.5l4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.4rem center;
+    background-size: 0.75rem;
+    cursor: pointer;
+}
+
+.tpl-pf-input:focus,
+.tpl-pf-input:focus-visible {
+    outline: none;
+    border-color: var(--tpl-primary, #4f46e5);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--tpl-primary, #4f46e5) 18%, transparent);
+}
+
+.tpl-pf-remove {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid var(--tpl-edge, #ccd5e0);
+    border-radius: 0.5rem;
+    background-color: var(--tpl-surface-raised, #fff);
+    font-size: 0.8125rem;
+    line-height: 1;
+    color: var(--tpl-slate-500, #64748b);
+    cursor: pointer;
+}
+
+.tpl-pf-remove:hover {
+    border-color: #b91c1c;
+    color: #b91c1c;
+}
+
+/* The panel's buttons are the editor's own `.tpl-btn`, only a size smaller. */
+.tpl-btn--sm {
+    padding: 0.25rem 0.625rem;
+    font-size: 0.71875rem;
+    min-height: 1.75rem;
+}
+
+.tpl-btn:focus-visible {
+    outline: 2px solid var(--tpl-primary, #4f46e5);
+    outline-offset: 1px;
+}
+
+.tpl-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.tpl-pf-add-icon {
+    font-size: 1rem;
+    line-height: 1;
+}
+
+/* "Showing 15 of 42" and the load-more action. */
+.tpl-pf-foot {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.tpl-pf-add {
+    width: 100%;
+    justify-content: center;
+}
+
+.tpl-pf-count {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.65625rem;
+    color: var(--tpl-slate-600, #475569);
+}
+
+/* Text actions: show more. */
+.tpl-pf-link {
+    min-height: 1.75rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: transparent;
+    padding: 0.125rem 0.25rem;
+    margin-left: -0.25rem;
+    font-size: 0.71875rem;
+    font-weight: 600;
+    color: var(--tpl-primary-strong, #3730a3);
+    cursor: pointer;
+}
+
+.tpl-pf-link:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--tpl-primary, #4f46e5) 8%, var(--tpl-surface-raised, #fff));
+}
+
+.tpl-pf-link:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.tpl-pf-head:focus-visible,
+.tpl-pf-remove:focus-visible,
+.tpl-pf-item:focus-visible {
+    outline: 2px solid var(--tpl-primary, #4f46e5);
+    outline-offset: -2px;
+}
+
+.tpl-pf-link:focus-visible {
+    outline: 2px solid var(--tpl-primary, #4f46e5);
+    outline-offset: 1px;
+}
+
+/* Candidate picker: a radio list, label first and its meta underneath. */
+.tpl-pf-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tpl-pf-item {
+    display: grid;
+    grid-template-columns: 0.75rem minmax(0, 1fr);
+    column-gap: 0.5rem;
+    align-items: start;
+    width: 100%;
+    min-height: 2rem;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: transparent;
+    padding: 0.375rem 0.5rem;
+    text-align: left;
+    font-size: 0.71875rem;
+    color: var(--tpl-slate-700, #334155);
+    cursor: pointer;
+}
+
+.tpl-pf-item::before {
+    content: "";
+    grid-row: 1 / span 2;
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-top: 0.125rem;
+    box-sizing: border-box;
+    border: 1.5px solid var(--tpl-slate-500, #64748b);
+    border-radius: 50%;
+    background: var(--tpl-surface-raised, #fff);
+}
+
+.tpl-pf-item:hover {
+    background: var(--tpl-surface-muted, #f8fafc);
+}
+
+.tpl-pf-item.is-chosen {
+    border-color: color-mix(in srgb, var(--tpl-primary, #4f46e5) 30%, var(--tpl-surface-raised, #fff));
+    background: color-mix(in srgb, var(--tpl-primary, #4f46e5) 9%, var(--tpl-surface-raised, #fff));
+    color: var(--tpl-slate-900, #0f172a);
+}
+
+.tpl-pf-item.is-chosen::before {
+    border-color: var(--tpl-primary, #4f46e5);
+    background: radial-gradient(circle, var(--tpl-primary, #4f46e5) 0 36%, var(--tpl-surface-raised, #fff) 42%);
+}
+
+.tpl-pf-item-label {
+    grid-column: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.tpl-pf-item-meta {
+    grid-column: 2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.625rem;
+    color: var(--tpl-slate-600, #475569);
+}
+
+/* Collection rows: a compact read-only list. */
+.tpl-pf-row {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--tpl-edge-subtle, #e6ebf2);
+    padding: 0.3125rem 0.125rem;
+    font-size: 0.6875rem;
+}
+
+.tpl-pf-row:last-child {
+    border-bottom: 0;
+}

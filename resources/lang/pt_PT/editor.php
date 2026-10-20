@@ -337,4 +337,29 @@ return [
         'password' => 'Senha',
     ],
 
+    // The sample-data panel: previewing the layout with real records (never saved).
+    'preview' => [
+        'tab' => 'Amostra',
+        'intro' => 'Pré-visualize o layout com registos reais. Só altera o que vê aqui: nunca é guardado.',
+        'none' => 'Não há nada para pré-visualizar neste tipo de documento.',
+        'unbound' => 'Liga um campo ou uma tabela para pré-visualizar com dados reais',
+        'example' => 'Exemplo',
+        'add_filter' => 'Adicionar filtro',
+        'field_placeholder' => 'Campo',
+        'value_placeholder' => 'Valor',
+        'op_contains' => 'contém',
+        'op_eq' => 'igual a',
+        'remove_filter' => 'Remover filtro',
+        'loading' => 'A carregar…',
+        'show_more' => 'Mostrar mais',
+        'use_example' => 'Clicar para voltar ao exemplo',
+        'no_results' => 'Nenhum registo corresponde. É mostrado o exemplo.',
+        'collection_hint' => 'Adicione um filtro para pré-visualizar linhas reais.',
+        'rows_shown' => 'A mostrar :count de :total',
+        'lines_badge' => ':count linhas',
+        'operator' => 'Operador',
+        'showing' => 'A mostrar :shown de :total',
+        'error' => 'Não foi possível carregar os registos.',
+    ],
+
 ];

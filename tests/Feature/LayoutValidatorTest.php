@@ -314,6 +314,54 @@ class LayoutValidatorTest extends TestCase
         $this->assertHasProblem('V-03', $layout);
     }
 
+    /** Tables over different collections are the multi-table case, not a duplicate. */
+    public function test_v03_accepts_tables_over_different_collections(): void
+    {
+        $layout = $this->layoutPlus($this->extraTable('tpl-other', 'outra'));
+
+        $this->assertNotContains('V-03', array_column($this->problems($layout), 'code'));
+    }
+
+    /** One table per collection is the normal case. */
+    public function test_v03_accepts_a_single_table(): void
+    {
+        $this->assertNotContains('V-03', array_column($this->problems($this->layout($this->defaultBlocks('invoice'))), 'code'));
+    }
+
+    /** A duplicate is an error for any collection, declared or not, and falls back to the key as label. */
+    public function test_v03_rejects_a_second_table_over_an_undeclared_collection(): void
+    {
+        $layout = $this->layout(array_merge($this->defaultBlocks('invoice'), [
+            $this->extraTable('tpl-a', 'outra'),
+            $this->extraTable('tpl-b', 'outra'),
+        ]));
+
+        $this->assertHasProblem('V-03', $layout);
+    }
+
+    /** Unbound tables are skipped by the multi-table flow, so two of them are not a V-03. */
+    public function test_v03_ignores_unbound_tables(): void
+    {
+        $layout = $this->layout(array_merge($this->defaultBlocks('invoice'), [
+            $this->extraTable('tpl-u1', ''),
+            $this->extraTable('tpl-u2', ''),
+        ]));
+
+        $this->assertNotContains('V-03', array_column($this->problems($layout), 'code'));
+    }
+
+    /** @return array<string, mixed> */
+    private function extraTable(string $id, string $collection): array
+    {
+        return [
+            'type'       => 'line-table',
+            'zone'       => 'body',
+            'id'         => $id,
+            'attributes' => ['data-tpl-collection' => $collection, 'data-tpl-columns' => '[]'],
+            'style'      => ['position' => 'absolute', 'left' => '0mm', 'top' => '80mm', 'width' => '180mm'],
+        ];
+    }
+
     /** The table paginates, and only the body paginates. */
     public function test_v06_rejects_the_line_table_outside_the_body(): void
     {

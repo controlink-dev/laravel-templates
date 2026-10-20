@@ -52,7 +52,14 @@ class DocumentComposer
          * is short, and padding the body to fix that pushes out blank pages. Both were
          * measured; see PageStructure and NOTAS-FIDELIDADE.
          */
-        $structure = app(PageStructure::class)->build($this->bodyOf($html), $type, $dataset);
+        /*
+         * The version CSS travels with the body. The editor runs GrapesJS with
+         * `avoidInlineStyle: true`, so a block dragged on the canvas has its `top`
+         * written into a `#id{…}` rule in this CSS, not inline — and the compositor
+         * needs that `top` to order the line tables and compute each page's capacity
+         * (spec 3.1). Without it every editor-placed table would resolve to top 0.
+         */
+        $structure = app(PageStructure::class)->build($this->bodyOf($html), $type, $dataset, $css);
 
         $renderer = app(TemplateRenderer::class);
         $codes    = app(CodeImageGenerator::class);

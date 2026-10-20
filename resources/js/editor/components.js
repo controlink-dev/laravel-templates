@@ -11,6 +11,7 @@
 
 import { icons } from './icons.js';
 import { alertDialog } from './dialog.js';
+import { previewValue } from './preview-filter.js';
 
 /** Only these families exist; the catalogue is closed on the server. */
 /*
@@ -497,14 +498,33 @@ function registerDataField(editor, config) {
             },
 
             /**
-             * What the canvas shows: the fixture value when there is one, otherwise the
-             * field's label. Never the template expression — the user is placing a
-             * field, not writing syntax.
+             * The sample text of this field. `example` forces the catalogue's fixture and
+             * ignores any real record being previewed — what a saved version must carry.
+             */
+            previewText(example = false) {
+                const key = this.binding();
+                const sample = example ? config.fixture?.[key] : previewValue(config, key);
+
+                return String(sample ?? findBinding(config, key)?.label ?? key);
+            },
+
+            /** The `content` this block shows (escaped), for the save/dirty read-back. */
+            previewContent(example = false) {
+                return escapeText(this.previewText(example));
+            },
+
+            /** Redraw from the current preview state (a record was picked or cleared). */
+            syncPreview() {
+                this.renderPreviewText(config);
+            },
+
+            /**
+             * What the canvas shows: the fixture value when there is one (or the value of
+             * the real record being previewed), otherwise the field's label. Never the
+             * template expression — the user is placing a field, not writing syntax.
              */
             renderPreviewText(config) {
-                const binding = findBinding(config, this.binding());
-                const sample = config.fixture?.[this.binding()];
-                const text = String(sample ?? binding?.label ?? this.binding());
+                const text = this.previewText();
 
                 /*
                  * `content` and not `components()`: the preview text is furniture, and

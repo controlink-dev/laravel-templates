@@ -14,6 +14,7 @@ import grapesjs from 'grapesjs';
 import grapesjsMjml from 'grapesjs-mjml';
 import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
+import { mountPreviewPanel, plainProjectData } from './preview-filter.js';
 import { icons } from './icons.js';
 import {
     checkLegalFieldsLocally,
@@ -238,6 +239,9 @@ async function mountEditor(el) {
     // Declared before the chrome is wired and filled in below: the format selector lives in
     // `wireChrome`, a different scope from the load/dirty tracking.
     const layoutState = { pristine: null, refresh: () => {} };
+
+    // Before the chrome is wired: the tab it adds has to exist when the tab handler is bound.
+    mountPreviewPanel({ editor, config, root, headers: requestHeaders(config) });
 
     const chromeApi = wireChrome(editor, config, chrome, paper, layoutState);
 
@@ -2074,6 +2078,9 @@ function readConfig(el) {
         previewUrl: el.dataset.previewUrl,
         activateUrl: el.dataset.activateUrl,
         catalogueUrl: el.dataset.catalogueUrl,
+        // Optional: the real records a node/collection can be previewed with (CGE-29).
+        // Without it the editor has no sample-data panel and behaves as before.
+        previewRecordsUrl: el.dataset.previewRecordsUrl || '',
         // `__FORMAT__` is replaced with the chosen format id on an in-place format switch.
         formatSwitchUrl: el.dataset.formatSwitchUrl,
         printStylesheet: el.dataset.printStylesheet,
@@ -2542,7 +2549,8 @@ async function saveVersion(editor, config) {
         method: 'PUT',
         headers: { ...requestHeaders(config), 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            project_data: editor.getProjectData(),
+            // The example content, never the real record being previewed.
+            project_data: plainProjectData(editor),
             html: editor.getHtml(),
             css: editor.getCss(),
             // The page format picked in the toolbar; the host persists it.
@@ -2611,7 +2619,8 @@ function requestHeaders(config) {
 
 /** A stable string for the current layout, to tell a real change from a redraw. */
 function snapshot(editor) {
-    return JSON.stringify(editor.getProjectData());
+    // Never the real record being previewed: that is not the user's work (see preview-filter.js).
+    return JSON.stringify(plainProjectData(editor));
 }
 
 /**

@@ -287,6 +287,29 @@ class Editor extends Component
             'dialog.confirm' => __('templates::editor.dialog.confirm'),
             'dialog.cancel'  => __('templates::editor.dialog.cancel'),
             'dialog.close'   => __('templates::editor.dialog.close'),
+
+            // The sample-data panel (real records, never saved).
+            'preview.tab' => __('templates::editor.preview.tab'),
+            'preview.intro' => __('templates::editor.preview.intro'),
+            'preview.none' => __('templates::editor.preview.none'),
+            'preview.unbound' => __('templates::editor.preview.unbound'),
+            'preview.example' => __('templates::editor.preview.example'),
+            'preview.add_filter' => __('templates::editor.preview.add_filter'),
+            'preview.field_placeholder' => __('templates::editor.preview.field_placeholder'),
+            'preview.value_placeholder' => __('templates::editor.preview.value_placeholder'),
+            'preview.op_contains' => __('templates::editor.preview.op_contains'),
+            'preview.op_eq' => __('templates::editor.preview.op_eq'),
+            'preview.remove_filter' => __('templates::editor.preview.remove_filter'),
+            'preview.loading' => __('templates::editor.preview.loading'),
+            'preview.show_more' => __('templates::editor.preview.show_more'),
+            'preview.use_example' => __('templates::editor.preview.use_example'),
+            'preview.no_results' => __('templates::editor.preview.no_results'),
+            'preview.collection_hint' => __('templates::editor.preview.collection_hint'),
+            'preview.rows_shown' => __('templates::editor.preview.rows_shown'),
+            'preview.lines_badge' => __('templates::editor.preview.lines_badge'),
+            'preview.operator' => __('templates::editor.preview.operator'),
+            'preview.showing' => __('templates::editor.preview.showing'),
+            'preview.error' => __('templates::editor.preview.error'),
         ];
 
         // The format and rule width labels follow the config, so adding one there does
