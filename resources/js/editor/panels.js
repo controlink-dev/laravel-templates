@@ -356,9 +356,9 @@ function isInRepeatingZone(component) {
  * The server validates geometry only in the absolute zones (header/footer) at save;
  * the body is measured at render (spec §2). So a block dragged off the sheet in the
  * body gets no immediate warning. This fills that gap in the browser, comparing each
- * positioned block's box against the sheet box on the canvas — compared in rendered
- * pixels, so it holds whatever unit a drag leaves behind. Header/footer keep the
- * server's save-time V-04/V-14, so this skips them.
+ * block's box against the printable area on the canvas (sheet minus margins, what R-04
+ * measures) — compared in rendered pixels, so it holds whatever unit a drag leaves
+ * behind. Header/footer keep the server's save-time V-04/V-14, so this skips them.
  *
  * It emits a DEDICATED code `L-OUT` (not V-04/V-14): see problems.js — reusing those
  * in LOCAL_CHECK_CODES would drop the server copies the browser cannot fully decide.
@@ -366,7 +366,7 @@ function isInRepeatingZone(component) {
  * @returns {Array<{code: string, componentId: string, message: string}>}
  */
 export function checkOffSheetLocally(editor, config) {
-    const metrics = pageMetrics(editor);
+    const metrics = pageMetrics(editor, config);
 
     if (!metrics) {
         return [];
@@ -388,7 +388,7 @@ export function checkOffSheetLocally(editor, config) {
             return;
         }
 
-        const { dx, dy } = sheetOverflow(el.getBoundingClientRect(), metrics.pageRect, isRoll, metrics.tolPx);
+        const { dx, dy } = sheetOverflow(el.getBoundingClientRect(), metrics.printable, isRoll, metrics.tolPx);
 
         if (dx === 0 && dy === 0) {
             return;
@@ -405,10 +405,14 @@ export function checkOffSheetLocally(editor, config) {
 }
 
 /**
- * The sheet element on the canvas, its rect, and the pixel tolerance for the test.
- * Returns null while the canvas is not rendered yet (the check then stays silent).
+ * The printable area of the sheet on the canvas, plus the mm/px scale and tolerance.
+ *
+ * The bound is the sheet MINUS its margins — the same box the server's R-04 measures
+ * against. Snapping to the sheet edge would leave a block in the margin, which R-04
+ * still rejects, so both the live check and the snap use the printable area, not the
+ * paper edge. Returns null while the canvas is not rendered yet (the check stays silent).
  */
-function pageMetrics(editor) {
+function pageMetrics(editor, config) {
     const page = editor.getWrapper().find('.page')[0];
     const el = page?.getEl();
 
@@ -422,32 +426,50 @@ function pageMetrics(editor) {
         return null;
     }
 
-    return { pageEl: el, pageRect, tolPx: 2 };
+    const paper = resolvePaper(config.geometry);
+    const pxPerMm = pageRect.width / paper.width;
+    const margins = config.geometry?.margins ?? config.margins ?? {};
+    const mm = (side) => Number(margins[side] || 0);
+
+    const printable = {
+        left: pageRect.left + mm('left') * pxPerMm,
+        top: pageRect.top + mm('top') * pxPerMm,
+        right: pageRect.right - mm('right') * pxPerMm,
+        bottom: pageRect.bottom - mm('bottom') * pxPerMm,
+    };
+
+    return {
+        pageEl: el,
+        printable,
+        printableWidthMm: paper.width - mm('left') - mm('right'),
+        pxPerMm,
+        tolPx: 2,
+    };
 }
 
 /**
- * How far a block's box sits outside the sheet, in canvas pixels.
+ * How far a block's box sits outside the printable area, in canvas pixels.
  *
  * `dx`/`dy` are the shift to apply to bring the block inside (0 when inside). On a roll
  * the height is free (overflow:visible), so only the horizontal axis is measured.
  *
  * @returns {{dx: number, dy: number}}
  */
-function sheetOverflow(block, page, isRoll, tol) {
+function sheetOverflow(block, bounds, isRoll, tol) {
     let dx = 0;
     let dy = 0;
 
-    if (block.left < page.left - tol) {
-        dx = page.left - block.left;
-    } else if (block.right > page.right + tol) {
-        dx = page.right - block.right;
+    if (block.left < bounds.left - tol) {
+        dx = bounds.left - block.left;
+    } else if (block.right > bounds.right + tol) {
+        dx = bounds.right - block.right;
     }
 
     if (!isRoll) {
-        if (block.top < page.top - tol) {
-            dy = page.top - block.top;
-        } else if (block.bottom > page.bottom + tol) {
-            dy = page.bottom - block.bottom;
+        if (block.top < bounds.top - tol) {
+            dy = bounds.top - block.top;
+        } else if (block.bottom > bounds.bottom + tol) {
+            dy = bounds.bottom - block.bottom;
         }
     }
 
@@ -466,29 +488,29 @@ function blockLabel(component, config) {
 /**
  * "Bring onto the sheet" (CGE-25 Peça 3): clamp the selected block back into the sheet.
  *
- * Builds on the same canvas-pixel overflow the live check uses: it shifts the block's
+ * Builds on the same printable-area overflow the live check uses: it shifts the block's
  * own `left`/`top` by the overflow (converted to mm, the unit a saved layout keeps), so
- * it works whatever positioning context the block sits in. On a roll the height is free,
- * so only the horizontal axis is clamped and the width is capped at the paper width.
+ * it works whatever positioning context the block sits in, and lands inside the printable
+ * area so the server's R-04 passes too. On a roll the height is free, so only the
+ * horizontal axis is clamped and the width is capped at the printable width.
  *
  * @returns {number} 1 if it moved the block, 0 if nothing was selected or it was inside.
  */
 export function snapIntoSheet(editor, config) {
     const component = editor.getSelected();
     const el = component?.getEl();
-    const metrics = pageMetrics(editor);
+    const metrics = pageMetrics(editor, config);
 
     if (!el || !metrics) {
         return 0;
     }
 
     const isRoll = config.geometry?.medium === 'roll';
-    const paper = resolvePaper(config.geometry);
-    const pxPerMm = metrics.pageRect.width / paper.width;
+    const pxPerMm = metrics.pxPerMm;
     const tolMm = Number(config.geometry?.tolerance_mm ?? 0);
 
     const rect = el.getBoundingClientRect();
-    const { dx, dy } = sheetOverflow(rect, metrics.pageRect, isRoll, metrics.tolPx);
+    const { dx, dy } = sheetOverflow(rect, metrics.printable, isRoll, metrics.tolPx);
     const style = component.getStyle();
     const next = {};
 
@@ -502,8 +524,8 @@ export function snapIntoSheet(editor, config) {
         next.top = Math.max(topMm + dy / pxPerMm, 0) + 'mm';
     }
 
-    if (isRoll && rect.width / pxPerMm > paper.width + tolMm) {
-        next.width = paper.width + 'mm';
+    if (isRoll && rect.width / pxPerMm > metrics.printableWidthMm + tolMm) {
+        next.width = metrics.printableWidthMm + 'mm';
     }
 
     if (Object.keys(next).length === 0) {
