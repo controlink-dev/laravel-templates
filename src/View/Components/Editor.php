@@ -48,6 +48,7 @@ class Editor extends Component
      * @param  string  $mode  phase 1 supports only `print`
      * @param  array<string, string>  $urls  the host's own endpoints (the package registers no routes): load, save, preview, activate, catalogue, stylesheet, font (with {family}/{weight}), format_switch (with the literal {@see self::FORMAT_PLACEHOLDER})
      * @param  bool  $formatSelector  render the in-toolbar page-format `<select>`. A host that drives format switching from its own page chrome (format tabs that hit `urls['format_switch']`) turns this off so the two controls do not both show.
+     * @param  bool  $hostNotices  hand outcome messages (saved, refused, render failed) to the host instead of the editor's own status line. The editor still announces each as a bubbling `templates:message` DOM event ({@see resources/js/editor/editor.js}); turn this on only where the host page actually listens for it, or the message is lost.
      */
     public function __construct(
         public Model $template,
@@ -57,6 +58,7 @@ class Editor extends Component
         public string $mode = 'print',
         public array $urls = [],
         public bool $formatSelector = true,
+        public bool $hostNotices = false,
     ) {
         if ($this->mode !== 'print') {
             throw new \InvalidArgumentException("Unsupported editor mode [{$this->mode}]; phase 1 supports only 'print'.");

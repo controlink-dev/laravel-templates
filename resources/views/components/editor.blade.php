@@ -211,6 +211,12 @@
         data-tenant-header="{{ $tenantHeader() }}"
         data-tenant="{{ $tenantId() }}"
 
+        {{-- When the host page listens for the editor's `templates:message` events and
+             shows the outcome in its own style, it passes `:host-notices="true"` and the
+             editor stops writing those messages into its own status line. Off unless the
+             host opts in, so an embedder with no listener keeps seeing them here. --}}
+        data-host-notices="{{ $hostNotices ? '1' : '' }}"
+
         {{-- Read straight off the container rather than a document-wide
              `meta[name="csrf-token"]` lookup: the bundle loads none of the host's
              JavaScript or layout, so it cannot depend on the host's own page

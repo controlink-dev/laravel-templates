@@ -52,7 +52,9 @@ function mountAll() {
         element.dataset.tplMounted = '1';
 
         mountEditor(element).catch((error) => {
-            renderStatus(error.message, element);
+            // No root and no config yet: dispatch from the container (the event still
+            // bubbles to the host) and fall back to the status line if it is reachable.
+            notify(element, undefined, { level: 'error', message: error.message });
         });
     });
 }
@@ -446,13 +448,13 @@ async function mountEditor(el) {
             serverProblems = [];
             refreshChecks();
 
-            renderStatus(config.strings.saved, root);
+            notify(root, config, { level: 'success', message: config.strings.saved });
             root.dispatchEvent(new CustomEvent('templates:saved', { bubbles: true }));
         } catch (error) {
             serverProblems = error.problems ?? [];
             refreshChecks();
 
-            renderStatus(error.message, root);
+            notify(root, config, { level: 'error', message: error.message, problems: serverProblems });
             root.dispatchEvent(new CustomEvent('templates:validation-failed', {
                 detail: { problems: serverProblems },
                 bubbles: true,
@@ -485,7 +487,7 @@ async function mountEditor(el) {
             renderStatus('', root);
             root.dispatchEvent(new CustomEvent('templates:preview-ready', { detail: { url }, bubbles: true }));
         } catch (error) {
-            renderStatus(error.message, root);
+            notify(root, config, { level: 'error', message: error.message });
         }
     });
 
@@ -510,12 +512,12 @@ async function mountEditor(el) {
 
             serverProblems = [];
             refreshChecks();
-            renderStatus(config.strings.activated, root);
+            notify(root, config, { level: 'success', message: config.strings.activated });
             root.dispatchEvent(new CustomEvent('templates:activated', { bubbles: true }));
         } catch (error) {
             serverProblems = error.problems ?? [];
             refreshChecks();
-            renderStatus(error.message, root);
+            notify(root, config, { level: 'error', message: error.message, problems: serverProblems });
         }
     });
 
@@ -1061,12 +1063,12 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         'restore-legal': () => {
             const inserted = restoreMissingLegalFields(editor, config);
 
-            renderStatus(
-                inserted === 0
+            notify(root, config, {
+                level: 'success',
+                message: inserted === 0
                     ? config.strings['action.restore_legal_none']
                     : config.strings['action.restore_legal_done'].replace(':count', String(inserted)),
-                root,
-            );
+            });
         },
     };
 
@@ -1473,7 +1475,7 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
                 // one we left, no snapshot belonging to the previous format.
                 layoutState.resetSaved?.();
             } catch (error) {
-                renderStatus(error.message, root);
+                notify(root, config, { level: 'error', message: error.message });
             } finally {
                 switching = false;
             }
@@ -2147,6 +2149,10 @@ function readConfig(el) {
         csrfToken: el.dataset.csrfToken || document.querySelector('meta[name="csrf-token"]')?.content || '',
         tenantHeader: el.dataset.tenantHeader || '',
         tenantId: el.dataset.tenant || '',
+        // The embedder listens for `templates:message` and shows outcomes in its own
+        // style; the editor then stops writing them into its own status line (see
+        // `notify`). Off by default, so a host that wires up no listener keeps them.
+        hostNotices: el.dataset.hostNotices === '1' || el.dataset.hostNotices === 'true',
     };
 }
 
@@ -2371,7 +2377,7 @@ async function loadVersion(editor, config) {
     const response = await fetch(config.loadUrl, { headers: requestHeaders(config) });
 
     if (!response.ok) {
-        renderStatus(config.strings.loadFailed, config.root);
+        notify(config.root, config, { level: 'error', message: config.strings.loadFailed });
 
         return false;
     }
@@ -2536,10 +2542,10 @@ async function mountEmailEditor(el, config, chrome) {
 
         try {
             await saveEmail();
-            renderStatus(config.strings.saved, root);
+            notify(root, config, { level: 'success', message: config.strings.saved });
             root.dispatchEvent(new CustomEvent('templates:saved', { bubbles: true }));
         } catch (error) {
-            renderStatus(error.message, root);
+            notify(root, config, { level: 'error', message: error.message, problems: error.problems ?? [] });
             root.dispatchEvent(new CustomEvent('templates:validation-failed', {
                 detail: { problems: error.problems ?? [] }, bubbles: true,
             }));
@@ -2560,7 +2566,7 @@ async function mountEmailEditor(el, config, chrome) {
             window.open(url, '_blank');
             renderStatus('', root);
         } catch (error) {
-            renderStatus(error.message, root);
+            notify(root, config, { level: 'error', message: error.message });
         }
     });
 
@@ -2573,10 +2579,10 @@ async function mountEmailEditor(el, config, chrome) {
             }
 
             await activateVersion(config);
-            renderStatus(config.strings.activated, root);
+            notify(root, config, { level: 'success', message: config.strings.activated });
             root.dispatchEvent(new CustomEvent('templates:activated', { bubbles: true }));
         } catch (error) {
-            renderStatus(error.message, root);
+            notify(root, config, { level: 'error', message: error.message });
         }
     });
 
@@ -2671,6 +2677,49 @@ function renderStatus(message, scope) {
 
     if (target) {
         target.textContent = message || '';
+    }
+}
+
+/**
+ * A user-facing outcome: a save that went through, a refusal, a render that failed.
+ *
+ * Always announced as a `templates:message` DOM event that bubbles to the host, so an
+ * embedding application can present it its own way — a toast, a dialog in its own
+ * style — instead of the editor's small status line. The `message` text is already
+ * translated; `problems` carries the per-field validation detail for an error and is
+ * empty otherwise.
+ *
+ * Unless the host has taken messaging over (`config.hostNotices`, set by the embedder
+ * precisely when it listens for the event), the message is ALSO written into the
+ * editor's own status line, so an integrator that wires up no listener still sees the
+ * outcome. In host mode the status line is cleared instead, so the transient
+ * "A gravar…" it was showing does not linger under the host's own notice.
+ *
+ * Progress ("A gravar…", "A ativar…") stays on the status line in both modes: it is
+ * feedback during an action, not an outcome to hand to the host.
+ *
+ * @param {(ParentNode & { dispatchEvent: Function })} scope  the widget root, or the
+ *   mount container when the root is not yet known (a mount failure)
+ * @param {object} [config]  undefined only during a mount failure, before it is read
+ * @param {{ level: ('success'|'error'), message: string, problems?: Array }} detail
+ */
+function notify(scope, config, { level, message, problems = [] }) {
+    (scope ?? document).dispatchEvent(new CustomEvent('templates:message', {
+        detail: { level, message, problems },
+        bubbles: true,
+    }));
+
+    if (config?.hostNotices) {
+        // The outcome is the host's to show now, so it does not go on the status line.
+        // But clearing it outright would also wipe the "unsaved" cue after a refused
+        // save or a restore that left changes pending — so when the dirty marker is
+        // still showing, leave that cue in place instead of a blank line.
+        const dirtyMarker = (scope ?? document).querySelector?.('[data-templates-dirty]');
+        const stillDirty = Boolean(dirtyMarker) && !dirtyMarker.hidden;
+
+        renderStatus(stillDirty ? (config.strings?.unsaved ?? '') : '', scope);
+    } else {
+        renderStatus(message, scope);
     }
 }
 

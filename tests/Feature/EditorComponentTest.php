@@ -252,6 +252,26 @@ class EditorComponentTest extends TestCase
     }
 
     /**
+     * By default the editor shows its own outcome messages (saved, refused, render failed)
+     * in its status line. A host that listens for the bubbling `templates:message` events
+     * and presents them in its own style passes `:host-notices="true"`; the editor then
+     * stops writing them itself, which it learns from the `data-host-notices` flag.
+     */
+    public function test_host_notices_are_off_by_default_and_can_be_turned_on(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $this->assertStringContainsString('data-host-notices=""', $this->render($template, $version));
+
+        $on = Blade::render(
+            '<x-templates::editor :template="$template" :version="$version" :host-notices="true" />',
+            ['template' => $template, 'version' => $version],
+        );
+
+        $this->assertStringContainsString('data-host-notices="1"', $on);
+    }
+
+    /**
      * A host that owns the format lineage hands the editor a `format_switch` URL with the
      * `__FORMAT__` token; the editor substitutes the chosen format id and fetches that
      * format's own version in place.

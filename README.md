@@ -292,6 +292,16 @@ root element:
 | `templates:validation-failed` | A save was rejected by the static layout rules. |
 | `templates:preview-ready` | A preview render finished (`detail.url`). |
 | `templates:activated` | The version was successfully activated. |
+| `templates:message` | A user-facing outcome to present (`detail.level: 'success' \| 'error'`, `detail.message: string`, `detail.problems: array`). |
+
+`templates:message` carries every outcome the editor would otherwise show in its own
+status line — a save that went through, a layout refused for validation, a render that
+failed — already translated. By default the editor still shows it inline; pass
+`:host-notices="true"` on the component and the editor stops writing these to its status
+line (progress such as "Saving…" stays), leaving the host to present them its own way (a
+toast, a dialog). Turn it on only where the host actually listens, or the message is lost.
+The existing `templates:saved`/`templates:validation-failed`/`templates:activated` events
+still fire alongside it, unchanged.
 
 `templates:refresh`, dispatched *at* `document`, makes every mounted editor pane remount —
 useful after injecting a pane into the DOM once the bundle already evaluated.

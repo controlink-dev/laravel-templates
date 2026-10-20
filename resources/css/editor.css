@@ -540,8 +540,18 @@
 }
 
 .tpl-counts-bad {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
     color: #b91c1c;
     font-weight: 600;
+}
+
+/* The host app's CSS reset can set svg { display: block }, which would stack
+   the warning icon above its label; keep it on the baseline of the count. */
+.tpl-counts-bad svg {
+    display: inline-block;
+    flex: none;
 }
 
 /* -- body: canvas, blocks, panel ----------------------------------------- */
