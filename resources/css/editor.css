@@ -1120,6 +1120,27 @@
     display: none;
 }
 
+/* The Layers panel lists the whole document tree, not fields of the selected
+   element, so the "nothing chosen" rule above must not hide it: on open nothing
+   is selected yet, and that is exactly when the user reaches for Layers. Show it
+   whenever its tab is active (the panel is not hidden), with or without a
+   selection, the same reasoning as the Sample panel exception further down. */
+.tpl-editor-root.tpl-no-selection .tpl-panel-scroll[data-tpl-panel="layers"]:not([hidden]) {
+    display: block;
+}
+
+/* The layer tree is rooted at the sheet (`refreshLayers` -> `Layers.setRoot(page)`),
+   and the sheet is `layerable: false` so it is never shown as a row of its own.
+   GrapesJS marks that non-layerable root with its `gjs-hidden` utility
+   (display: none), but the three zones are rendered nested inside that root, so
+   hiding it hides the whole tree and the panel looks permanently empty. Reveal
+   the root container (its own title stays suppressed by `layerable: false`, so
+   only the zones show). Scoped to the layers panel's direct child, so it never
+   affects a component the user hides with the eye toggle. */
+.tpl-panel-scroll[data-tpl-panel="layers"] > .gjs-layer__t-wrapper.gjs-hidden {
+    display: grid;
+}
+
 .tpl-editor-root.tpl-no-selection .tpl-selected {
     border-bottom: 0;
     background: transparent;
