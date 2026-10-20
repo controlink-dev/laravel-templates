@@ -1079,7 +1079,9 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
 
             notify(root, config, {
                 level: 'success',
-                message: config.strings[moved ? 'action.snap_to_sheet_done' : 'action.snap_to_sheet_none'],
+                message: moved === 0
+                    ? config.strings['action.snap_to_sheet_none']
+                    : config.strings['action.snap_to_sheet_done'].replace(':count', String(moved)),
             });
         },
     };

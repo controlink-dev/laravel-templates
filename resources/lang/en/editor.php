@@ -124,8 +124,8 @@ return [
         'restore_legal_none' => 'No legal field is missing.',
         'restore_legal_done' => ':count legal field(s) restored.',
         'snap_to_sheet'      => 'Bring onto the sheet',
-        'snap_to_sheet_done' => 'The field was brought back onto the sheet.',
-        'snap_to_sheet_none' => 'Nothing to bring back: the field is already on the sheet.',
+        'snap_to_sheet_done' => ':count field(s) brought back onto the sheet.',
+        'snap_to_sheet_none' => 'Nothing to bring back: no field is off the sheet.',
     ],
 
     'formats' => [

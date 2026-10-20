@@ -382,15 +382,7 @@ export function checkOffSheetLocally(editor, config) {
             return;
         }
 
-        const el = component.getEl();
-
-        if (!el) {
-            return;
-        }
-
-        const { dx, dy } = sheetOverflow(el.getBoundingClientRect(), metrics.printable, isRoll, metrics.tolPx);
-
-        if (dx === 0 && dy === 0) {
+        if (!isOffSheet(component, metrics, isRoll)) {
             return;
         }
 
@@ -476,6 +468,19 @@ function sheetOverflow(block, bounds, isRoll, tol) {
     return { dx, dy };
 }
 
+/** Whether a rendered component's box falls outside the printable area. */
+function isOffSheet(component, metrics, isRoll) {
+    const el = component.getEl();
+
+    if (!el) {
+        return false;
+    }
+
+    const { dx, dy } = sheetOverflow(el.getBoundingClientRect(), metrics.printable, isRoll, metrics.tolPx);
+
+    return dx !== 0 || dy !== 0;
+}
+
 /** A readable name for a block in a problem message: its binding label, else its own name. */
 function blockLabel(component, config) {
     const binding = config.bindings?.find((item) => item.key === component.getAttributes()['data-tpl-binding']);
@@ -486,29 +491,54 @@ function blockLabel(component, config) {
 }
 
 /**
- * "Bring onto the sheet" (CGE-25 Peça 3): clamp the selected block back into the sheet.
+ * "Bring onto the sheet" (CGE-25 Peça 3): clamp off-sheet blocks into the printable area.
  *
- * Builds on the same printable-area overflow the live check uses: it shifts the block's
- * own `left`/`top` by the overflow (converted to mm, the unit a saved layout keeps), so
- * it works whatever positioning context the block sits in, and lands inside the printable
- * area so the server's R-04 passes too. On a roll the height is free, so only the
- * horizontal axis is clamped and the width is capped at the printable width.
+ * An off-sheet block sits off the canvas and cannot be clicked to select, so requiring a
+ * selection would strand it. So: if the selected block is itself the off-sheet one, bring
+ * just that one back; otherwise bring back EVERY off-sheet block. Each shift is applied to
+ * the block's own `left`/`top` (in mm, the saved unit), so it works whatever positioning
+ * context the block sits in and lands inside the printable area (the server's R-04 passes
+ * too). On a roll the height is free, so only the horizontal axis is clamped and the width
+ * capped at the printable width.
  *
- * @returns {number} 1 if it moved the block, 0 if nothing was selected or it was inside.
+ * @returns {number} how many blocks were brought back (0 if none were off-sheet).
  */
 export function snapIntoSheet(editor, config) {
-    const component = editor.getSelected();
-    const el = component?.getEl();
     const metrics = pageMetrics(editor, config);
 
-    if (!el || !metrics) {
+    if (!metrics) {
         return 0;
     }
 
     const isRoll = config.geometry?.medium === 'roll';
-    const pxPerMm = metrics.pxPerMm;
     const tolMm = Number(config.geometry?.tolerance_mm ?? 0);
+    const selected = editor.getSelected();
 
+    const targets = (selected && isOffSheet(selected, metrics, isRoll))
+        ? [selected]
+        : editor.getWrapper().find('[data-tpl-type]')
+            .filter((component) => !isInRepeatingZone(component) && isOffSheet(component, metrics, isRoll));
+
+    let moved = 0;
+
+    targets.forEach((component) => {
+        if (snapComponent(component, metrics, isRoll, tolMm)) {
+            moved += 1;
+        }
+    });
+
+    return moved;
+}
+
+/** Clamp one block into the printable area. Returns true if it moved. */
+function snapComponent(component, metrics, isRoll, tolMm) {
+    const el = component.getEl();
+
+    if (!el) {
+        return false;
+    }
+
+    const pxPerMm = metrics.pxPerMm;
     const rect = el.getBoundingClientRect();
     const { dx, dy } = sheetOverflow(rect, metrics.printable, isRoll, metrics.tolPx);
     const style = component.getStyle();
@@ -529,12 +559,12 @@ export function snapIntoSheet(editor, config) {
     }
 
     if (Object.keys(next).length === 0) {
-        return 0;
+        return false;
     }
 
     component.addStyle(next);
 
-    return 1;
+    return true;
 }
 
 /** A CSS length in mm. Accepts `mm` and `px` (px converted with `pxPerMm`); else null. */
