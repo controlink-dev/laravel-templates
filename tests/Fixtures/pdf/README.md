@@ -20,6 +20,7 @@ mal prova que a **regra** funciona, e continua a provar isso depois de o composi
 | `r05-code-wrong.pdf` | Um QR que descodifica para outro conteúdo | R-05 |
 | `r05-code-tiny.pdf` | Um QR de 6 mm — que **descodifica** a 300 dpi. Está aqui para fixar a fronteira: a R-05 prova que o código está correto, é a V-17 que prova que está grande o suficiente | R-05 / V-17 |
 | `r06-too-many-pages.pdf` | 12 páginas | R-06 |
+| `r08-oversized.pdf` | Uma página em branco de ~500×500 mm (1417×1417 pts), muito maior do que qualquer folha. A porta de render recusa-a pelo tamanho, antes de medir o conteúdo | R-08 (porta de render, CGE-25) |
 
 A R-01 (a renderização conclui) e a R-07 (tempo) não têm fixture: uma é uma exceção durante a
 composição e a outra é um número medido, nenhuma delas é uma propriedade de um PDF.
@@ -27,3 +28,7 @@ composição e a outra é um número medido, nenhuma delas é uma propriedade de
 Regenerar com `php tests/Fixtures/pdf/GENERATOR.php` — precisa do Gotenberg acessível
 em `GOTENBERG_URL`. Os caminhos no gerador são absolutos e apontam para o scratchpad onde foi
 escrito; ajustar antes de correr.
+
+O `r08-oversized.pdf` é a exceção: é construído à mão (uma página em branco com um `MediaBox`
+grande), não pelo Gotenberg, porque a porta de render só lê o tamanho da página e não precisa
+de conteúdo. Não sai do `GENERATOR.php`.

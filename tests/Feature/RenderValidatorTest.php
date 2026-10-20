@@ -191,6 +191,27 @@ class RenderValidatorTest extends TestCase
         $this->assertContains('R-06', $this->codes($problems));
     }
 
+    /**
+     * R-08 render gate (CGE-25 Peça 1): a page far larger than the geometry asked for is
+     * reported as a size mismatch and the per-binding checks are NOT run against it.
+     *
+     * Rasterising a metres-long page to read its codes is where the 30s timeout happened,
+     * so the content is never measured once the page size is already wrong. The absence of
+     * R-02 (the mandatory ATCUD this blank page does not carry) proves the early return: a
+     * validator that reached the binding loop would report the value as missing.
+     */
+    public function test_an_oversized_page_is_refused_before_its_content_is_measured(): void
+    {
+        $problems = $this->validate('r08-oversized', $this->type(bindings: [
+            ['key' => 'documento.atcud', 'label' => 'ATCUD', 'type' => 'text', 'mandatory' => true, 'legal' => true, 'scope' => 'any_page'],
+        ]));
+
+        $codes = $this->codes($problems);
+
+        $this->assertContains('R-08', $codes, 'The oversized page should be reported as a size mismatch.');
+        $this->assertNotContains('R-02', $codes, 'An oversized page must not be measured for its values; the render gate returns first.');
+    }
+
     /** R-07: the time budget, checked before the PDF is even opened. */
     public function test_r07_catches_a_render_over_its_budget(): void
     {

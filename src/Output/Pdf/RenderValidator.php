@@ -53,7 +53,19 @@ class RenderValidator
 
         return RenderedPdf::open($pdf, function (RenderedPdf $rendered) use ($type, $dataset, $problems, $codeSlotBoxes): array {
             $problems = array_merge($problems, $this->checkPageCount($rendered, $type));
-            $problems = array_merge($problems, $this->checkPageSize($rendered, PageGeometry::fromType($type->pdf)));
+
+            $sizeProblems = $this->checkPageSize($rendered, PageGeometry::fromType($type->pdf));
+            $problems     = array_merge($problems, $sizeProblems);
+
+            // CGE-25 Peça 1 — never hang: once the page is the wrong size (R-08), the
+            // per-binding checks below would rasterise it to read its codes, and a
+            // metres-wide or metres-long page is where the 30s render timeout happened.
+            // The activation is already refused, so stop before measuring a document that
+            // has already failed. R-08 leaves a roll's height free, so this gates a sheet
+            // on both sides and a roll on its width.
+            if ($sizeProblems !== []) {
+                return array_values($problems);
+            }
 
             foreach ($type->bindings as $binding) {
                 $problems = array_merge(
