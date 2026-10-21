@@ -203,9 +203,9 @@ trait BuildsLayouts
             foreach ($columns as $column) {
                 $head .= '<th>'.htmlspecialchars((string) $column['label'], ENT_QUOTES).'</th>';
 
-                $value = ($column['format'] ?? '') !== ''
+                $value = $column['expression'] ?? (($column['format'] ?? '') !== ''
                     ? '{{ linha.'.$column['key'].'|'.$column['format'].' }}'
-                    : '{{ linha.'.$column['key'].' }}';
+                    : '{{ linha.'.$column['key'].' }}');
 
                 $cells .= '<td>'.$value.'</td>';
             }
@@ -251,13 +251,13 @@ trait BuildsLayouts
                         'data-tpl-binding' => $block['binding'],
                         'data-tpl-format'  => (string) ($block['format'] ?? ''),
                         'data-tpl-legal'   => ($block['legal'] ?? false) ? '1' : null,
-                    ],
+                    ] + ($block['field_attributes'] ?? []),
                     'components' => [['type' => 'textnode', 'content' => 'x']],
                 ];
 
-                $expression = ($block['format'] ?? '') !== ''
+                $expression = $block['expression'] ?? (($block['format'] ?? '') !== ''
                     ? '{{ '.$block['binding'].'|'.$block['format'].' }}'
-                    : '{{ '.$block['binding'].' }}';
+                    : '{{ '.$block['binding'].' }}');
 
                 $markup[$zone] .= '<div id="'.$id.'" class="block block--field" data-tpl-type="data-field">'.$expression.'</div>';
             } else {

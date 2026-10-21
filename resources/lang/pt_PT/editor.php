@@ -251,6 +251,7 @@ return [
     'validation' => [
         'unknown_binding'   => 'O campo «:binding» não existe no catálogo deste tipo de documento.',
         'unknown_format'    => 'O formato «:format» não é permitido.',
+        'format_mismatch'   => 'O formato impresso do campo não corresponde ao formato escolhido. Volte a escolher o formato e grave.',
         'missing_mandatory' => 'O campo obrigatório «:field» não está no documento.',
         'missing_legal'     => 'O campo obrigatório por lei «:field» não está no documento.',
         'image_source'      => 'A imagem não tem ficheiro.',

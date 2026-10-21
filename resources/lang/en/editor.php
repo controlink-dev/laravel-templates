@@ -241,6 +241,7 @@ return [
     'validation' => [
         'unknown_binding'   => 'The field ":binding" does not exist in this document type catalogue.',
         'unknown_format'    => 'The format ":format" is not allowed.',
+        'format_mismatch'   => 'The printed format of the field does not match the format chosen for it. Choose the format again and save.',
         'missing_mandatory' => 'The mandatory field ":field" is not in the document.',
         'missing_legal'     => 'The legally required field ":field" is not in the document.',
         'image_source'      => 'The image has no file.',

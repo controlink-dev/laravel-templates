@@ -65,6 +65,94 @@ class LayoutValidatorTest extends TestCase
         $this->assertHasProblem('V-01', $layout);
     }
 
+    public function test_v01_rejects_unknown_format_argument(): void
+    {
+        $this->assertHasProblem('V-01', $this->layoutWithDate('Y', "{{ %s|date('Y') }}"));
+    }
+
+    public function test_v01_rejects_expression_not_matching_attributes(): void
+    {
+        $this->assertHasProblem('V-01', $this->layoutWithDate('dd/MM/yyyy', "{{ %s|date('yyyy-MM-dd') }}"));
+    }
+
+    public function test_v01_accepts_matching_expression(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutWithDate('dd/MM/yyyy', "{{ %s|date('dd/MM/yyyy') }}")));
+    }
+
+    public function test_v01_rejects_a_column_argument_outside_the_list(): void
+    {
+        $this->assertHasProblem('V-01', $this->layoutWithColumn(['format' => 'money', 'formatArgs' => ['symbol' => 'left']]));
+    }
+
+    public function test_v01_rejects_a_column_expression_not_matching_its_arguments(): void
+    {
+        $this->assertHasProblem('V-01', $this->layoutWithColumn(
+            ['format' => 'money', 'formatArgs' => ['decimals' => 2, 'symbol' => 'code']],
+            "{{ linha.%s|money(3, 'code') }}",
+        ));
+    }
+
+    public function test_v01_accepts_a_column_with_matching_arguments(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutWithColumn(
+            ['format' => 'money', 'formatArgs' => ['decimals' => 2, 'symbol' => 'code']],
+            "{{ linha.%s|money(2, 'code') }}",
+        )));
+    }
+
+    /**
+     * The valid layout with its first date field given a pattern, and the field's
+     * exported expression forced to `$expression` (`%s` is the binding).
+     */
+    private function layoutWithDate(string $pattern, string $expression): array
+    {
+        $blocks = $this->defaultBlocks(self::TYPE_CODE);
+
+        foreach ($blocks as &$block) {
+            if (($block['format'] ?? '') === 'date') {
+                $block['field_attributes'] = ['data-tpl-format-pattern' => $pattern];
+                $block['expression']       = sprintf($expression, $block['binding']);
+
+                break;
+            }
+        }
+
+        unset($block);
+
+        return $this->layout($blocks);
+    }
+
+    /**
+     * The valid layout with its line table's first column changed, and the cell's
+     * expression either derived from the change or forced (`%s` is the column key).
+     *
+     * @param  array<string, mixed>  $change
+     */
+    private function layoutWithColumn(array $change, ?string $expression = null): array
+    {
+        $blocks = $this->defaultBlocks(self::TYPE_CODE);
+
+        foreach ($blocks as &$block) {
+            if (($block['type'] ?? null) !== 'line-table') {
+                continue;
+            }
+
+            $columns    = json_decode($block['attributes']['data-tpl-columns'], true);
+            $columns[0] = array_merge($columns[0], $change);
+
+            if ($expression !== null) {
+                $columns[0]['expression'] = sprintf($expression, $columns[0]['key']);
+            }
+
+            $block['attributes']['data-tpl-columns'] = json_encode($columns);
+        }
+
+        unset($block);
+
+        return $this->layout($blocks);
+    }
+
     public function test_v02_requires_a_mandatory_field_that_is_not_legal(): void
     {
         $layout = $this->layoutWithout('totais.total_iliquido');

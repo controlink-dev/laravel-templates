@@ -4,8 +4,10 @@ namespace Controlink\Templates\Output\Pdf;
 
 use Controlink\Templates\Contracts\BindingResolver;
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
+use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
+use InvalidArgumentException;
 
 /**
  * Layer 1 of the validation: static, over `project_data`, at save time (spec 8.1).
@@ -186,6 +188,7 @@ class LayoutValidator
     ): array {
         $problems = [];
         $placed   = [];
+        $exports  = new ExportedMarkup($html);
 
         foreach ($document->dataFields() as $field) {
             $key = $field['attributes']['data-tpl-binding'] ?? '';
@@ -204,6 +207,59 @@ class LayoutValidator
 
             if ($format !== '' && ! in_array($format, (array) config('templates.formats'), true)) {
                 $problems[] = $this->problem('V-01', $field, 'unknown_format', ['format' => $format]);
+
+                continue;
+            }
+
+            // CGE-49: the arguments come from closed lists, and the exported expression
+            // (what Twig actually renders) has to be the one the attributes describe.
+            try {
+                $spec = FormatSpec::fromAttributes($field['attributes']);
+            } catch (InvalidArgumentException) {
+                $problems[] = $this->problem('V-01', $field, 'unknown_format', ['format' => $format]);
+
+                continue;
+            }
+
+            $exported = $exports->fieldText((string) ($field['attributes']['id'] ?? ''));
+            $expected = $spec?->expression($key) ?? '{{ '.$key.' }}';
+
+            if ($exported !== null && $exported !== $expected) {
+                $problems[] = $this->problem('V-01', $field, 'format_mismatch', ['format' => $format]);
+            }
+        }
+
+        foreach ($document->blocksOfType('line-table') as $table) {
+            $columns = json_decode((string) ($table['attributes']['data-tpl-columns'] ?? '[]'), true);
+            $allowed = [];
+
+            foreach (is_array($columns) ? $columns : [] as $column) {
+                if (! is_array($column) || ($column['hidden'] ?? false)) {
+                    continue;
+                }
+
+                $format = (string) ($column['format'] ?? '');
+
+                try {
+                    if ($format !== '' && ! in_array($format, (array) config('templates.formats'), true)) {
+                        throw new InvalidArgumentException;
+                    }
+
+                    $spec = FormatSpec::fromColumn($column);
+                } catch (InvalidArgumentException) {
+                    $problems[] = $this->problem('V-01', $table, 'unknown_format', ['format' => $format]);
+
+                    continue 2;
+                }
+
+                $subject   = 'linha.'.($column['key'] ?? '');
+                $allowed[] = $spec?->expression($subject) ?? '{{ '.$subject.' }}';
+            }
+
+            $cells = $exports->tableExpressions((string) ($table['attributes']['id'] ?? ''));
+
+            if ($cells !== null && array_diff($cells, $allowed) !== []) {
+                $problems[] = $this->problem('V-01', $table, 'format_mismatch', ['format' => '']);
             }
         }
 
