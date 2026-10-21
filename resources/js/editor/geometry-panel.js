@@ -45,7 +45,11 @@ export function applyGeometryChange(geometry, effective, change, paper) {
     const n = (value) => Number(value) || 0;
     const body = paper.height - n(margins.top) - n(margins.bottom) - n(zones.header_height) - n(zones.footer_height);
 
-    if (body < MIN_BODY_MM) {
+    // The 20 mm floor is about a body squeezed between bands; a sheet without bands (a
+    // label) only needs some body at all.
+    const bands = n(zones.header_height) > 0 || n(zones.footer_height) > 0;
+
+    if (bands ? body < MIN_BODY_MM : body <= 0) {
         return { geometry, error: 'geometry.body_too_small' };
     }
 

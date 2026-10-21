@@ -44,6 +44,15 @@ const base = {
 }
 
 {
+    // A label has no bands: it only needs some body, not 20 mm.
+    const label = { margins: { top: 5, right: 5, bottom: 5, left: 5 }, zones: { header_height: 0, footer_height: 0 } };
+    const paper = { width: 50, height: 25 };
+
+    assert.equal(applyGeometryChange({}, label, { margins: { top: 6 } }, paper).error, null);
+    assert.equal(applyGeometryChange({}, label, { margins: { top: 20 } }, paper).error, 'geometry.body_too_small');
+}
+
+{
     // A negative value is a zero, as on the server.
     const { geometry: next } = applyGeometryChange(geometry, base, { margins: { top: -3 } }, a4);
 

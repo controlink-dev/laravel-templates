@@ -80,6 +80,25 @@ class LayoutValidatorTest extends TestCase
         $this->assertSame([], $this->problems($this->layoutWithDate('dd/MM/yyyy', "{{ %s|date('dd/MM/yyyy') }}")));
     }
 
+    public function test_v01_rejects_a_field_missing_from_the_export(): void
+    {
+        $layout         = $this->layoutWithDate('dd/MM/yyyy', "{{ %s|date('dd/MM/yyyy') }}");
+        $layout['html'] = preg_replace('/id="tpl-test-(\d+)"/', 'id="renamed-$1"', $layout['html']);
+
+        $this->assertHasProblem('V-01', $layout);
+    }
+
+    public function test_v01_compares_every_element_sharing_an_id(): void
+    {
+        $layout = $this->layoutWithDate('dd/MM/yyyy', "{{ %s|date('dd/MM/yyyy') }}");
+
+        // A second element with the same id, printing another pattern.
+        preg_match('/<div id="([^"]+)" class="block block--field" data-tpl-type="data-field">\{\{ (\S+)\|date\(\'dd\/MM\/yyyy\'\) \}\}<\/div>/', $layout['html'], $match);
+        $layout['html'] = str_replace('</body>', '<div id="'.$match[1].'">{{ '.$match[2]."|date('yyyy-MM-dd') }}</div></body>", $layout['html']);
+
+        $this->assertHasProblem('V-01', $layout);
+    }
+
     public function test_v01_rejects_a_column_argument_outside_the_list(): void
     {
         $this->assertHasProblem('V-01', $this->layoutWithColumn(['format' => 'money', 'formatArgs' => ['symbol' => 'left']]));

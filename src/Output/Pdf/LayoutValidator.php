@@ -221,10 +221,15 @@ class LayoutValidator
                 continue;
             }
 
-            $exported = $exports->fieldText((string) ($field['attributes']['id'] ?? ''));
+            // A block with no id yet (dropped, never styled) cannot be found in the export;
+            // the filters still refuse any argument outside its list at render.
+            $fieldId  = (string) ($field['attributes']['id'] ?? '');
+            $exported = $fieldId === '' ? null : $exports->fieldTexts($fieldId);
             $expected = $spec?->expression($key) ?? '{{ '.$key.' }}';
 
-            if ($exported !== null && $exported !== $expected) {
+            // Every element under the id must print the expression, and there must be
+            // one: a renamed or duplicated id is not a way around the comparison.
+            if ($exported !== null && ($exported === [] || array_diff($exported, [$expected]) !== [])) {
                 $problems[] = $this->problem('V-01', $field, 'format_mismatch', ['format' => $format]);
             }
         }
@@ -241,7 +246,13 @@ class LayoutValidator
                     $this->assertKnownFormat(FormatSpec::fromColumn((array) $column));
                 }
 
-                foreach ($exports->tableExpressions((string) ($table['attributes']['id'] ?? '')) ?? [] as $printed) {
+                $tableId = (string) ($table['attributes']['id'] ?? '');
+
+                if ($tableId !== '' && $exports->has($tableId) === false) {
+                    throw new InvalidArgumentException('The table is missing from the export.');
+                }
+
+                foreach ($exports->tableExpressions($tableId) ?? [] as $printed) {
                     $this->assertKnownFormat(FormatSpec::fromExpression($printed));
                 }
             } catch (InvalidArgumentException) {
