@@ -25,6 +25,7 @@ import {
 } from './panels.js';
 import { mergeProblems } from './problems.js';
 import { confirmDialog } from './dialog.js';
+import { placementInZone, round, zoneAt } from './zones.js';
 
 /*
  * Mounting, and the four things that made a workspace pane hostile.
@@ -1921,6 +1922,20 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
      */
     let rescueCascade = 0;
 
+    // Where the pointer last was over the canvas during a palette drag. GrapesJS's own
+    // absolute drop scales the coordinate by the zoom a second time, so a block dropped
+    // on the footer at 62% lands in the middle of the body; the pointer is the truth.
+    // Read in the frame's own coordinates, the same space the blocks are measured in.
+    let dropPoint = null;
+
+    editor.on('block:drag:start', () => {
+        dropPoint = null;
+    });
+
+    editor.on('canvas:dragover', (event) => {
+        dropPoint = { x: event.clientX, y: event.clientY };
+    });
+
     editor.on('block:drag:stop', (component) => {
         if (!component || rollMode) {
             return;
@@ -1947,6 +1962,11 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             return;
         }
 
+        if (dropPoint) {
+            moveToPoint(component, el, dropPoint);
+            dropPoint = null;
+        }
+
         const pageBox = page.getBoundingClientRect();
         const box = el.getBoundingClientRect();
 
@@ -1954,7 +1974,18 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         const onSheet = box.left >= pageBox.left - 1 && box.left <= pageBox.right
             && box.top >= pageBox.top - 1 && box.top <= pageBox.bottom;
 
+        // GrapesJS appends every absolute drop to the wrapper, outside any band, whatever
+        // it was dropped on — so a block that landed on the sheet is put in the band it
+        // shows in, as a move would. A label has only its body.
         if (onSheet) {
+            if (labelMode) {
+                const body = editor.getWrapper()?.find('[data-tpl-zone="body"]')?.[0];
+
+                body && component.parent?.() !== body && settleInto(body, component);
+            } else {
+                reparentToZone(editor, config, component);
+            }
+
             return;
         }
 
@@ -2223,6 +2254,16 @@ function pageVariables(config) {
     return `.page{${declarations}}`;
 }
 
+/** Put a block's top-left corner on a point of the canvas frame, in millimetres. */
+function moveToPoint(component, el, point) {
+    const box = el.getBoundingClientRect();
+    const style = el.ownerDocument.defaultView.getComputedStyle(el);
+    const left = (parseFloat(style.left) || 0) + point.x - box.left;
+    const top = (parseFloat(style.top) || 0) + point.y - box.top;
+
+    component.addStyle({ left: round(left / PX_PER_MM) + 'mm', top: round(top / PX_PER_MM) + 'mm' });
+}
+
 /**
  * Keep the tree agreeing with the geometry after a block is moved.
  *
@@ -2235,8 +2276,10 @@ function pageVariables(config) {
  * That is not cosmetic. The compositor renders the header as a band repeated on every
  * sheet, so a block that looks like it belongs to the body would print on all of them.
  *
- * After a move, the block is put in the zone it now sits in, and its `top` is rewritten
- * to be relative to that band.
+ * After a move, the block is put in the zone it now sits in, and its `top` and `left`
+ * are rewritten to be relative to that band. A block in no band at all — dropped from
+ * the palette, which GrapesJS appends to the wrapper, or saved that way before — is put
+ * in one too.
  */
 function reparentToZone(editor, config, component) {
     const zones = config.zones ?? {};
@@ -2263,28 +2306,34 @@ function reparentToZone(editor, config, component) {
     const box = el.getBoundingClientRect();
     const fromTop = (box.top - pageBox.top) / PX_PER_MM - marginTop;
 
-    const target = fromTop < header
-        ? 'header'
-        : (fromTop < header + bodyHeight ? 'body' : 'footer');
+    const target = zoneAt(fromTop, { header, bodyHeight });
 
-    const current = zoneOf(component);
-
-    if (current === target || !current) {
+    if (zoneOf(component) === target) {
         return;
     }
 
     const destination = editor.getWrapper()
         ?.find(`[data-tpl-zone="${target}"]`)?.[0];
 
-    if (!destination) {
+    if (destination) {
+        settleInto(destination, component);
+    }
+}
+
+/** Make a block a child of a band, keeping it where it is on the sheet. */
+function settleInto(destination, component) {
+    const band = destination.getEl?.();
+    const el = component.getEl?.();
+
+    if (!band || !el) {
         return;
     }
 
-    // The band's own offset, so the block keeps the place it was dropped in.
-    const bandStart = target === 'header' ? 0 : (target === 'body' ? header : header + bodyHeight);
+    // Measured before the move, so the block keeps the place it was dropped in.
+    const place = placementInZone(el.getBoundingClientRect(), band.getBoundingClientRect(), PX_PER_MM);
 
     destination.append(component);
-    component.addStyle({ top: round(fromTop - bandStart) + 'mm' });
+    component.addStyle({ top: place.top + 'mm', left: place.left + 'mm' });
 }
 
 /** The zone a component currently lives in, by walking its ancestors. */
@@ -2304,10 +2353,6 @@ function zoneOf(component) {
     return null;
 }
 
-/** Millimetres, to the half — the unit the rest of the layout is written in. */
-function round(value) {
-    return Math.round(value * 2) / 2;
-}
 
 /**
  * Give the three bands their name and their locks, on the document as loaded.
