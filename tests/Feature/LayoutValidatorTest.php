@@ -85,11 +85,19 @@ class LayoutValidatorTest extends TestCase
         $this->assertHasProblem('V-01', $this->layoutWithColumn(['format' => 'money', 'formatArgs' => ['symbol' => 'left']]));
     }
 
-    public function test_v01_rejects_a_column_expression_not_matching_its_arguments(): void
+    public function test_v01_rejects_a_cell_argument_outside_the_list(): void
     {
         $this->assertHasProblem('V-01', $this->layoutWithColumn(
             ['format' => 'money', 'formatArgs' => ['decimals' => 2, 'symbol' => 'code']],
-            "{{ linha.%s|money(3, 'code') }}",
+            "{{ linha.%s|money(9, 'code') }}",
+        ));
+    }
+
+    public function test_v01_rejects_a_hand_built_cell_expression(): void
+    {
+        $this->assertHasProblem('V-01', $this->layoutWithColumn(
+            ['format' => 'money', 'formatArgs' => ['decimals' => 2, 'symbol' => 'code']],
+            "{{ linha.%s|money(2,'code') }}",
         ));
     }
 

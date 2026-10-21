@@ -27,6 +27,29 @@ class FormatSpecTest extends TestCase
         $this->assertNull(FormatSpec::fromColumn(['format' => '']));
     }
 
+    public function test_expressions_read_back_as_their_spec(): void
+    {
+        $cases = json_decode((string) file_get_contents(__DIR__.'/../Fixtures/format-expressions.json'), true);
+
+        foreach ($cases as $case) {
+            $spec = FormatSpec::fromExpression($case['expression']);
+
+            $this->assertSame($case['expression'], $spec?->expression('x') ?? '{{ x }}');
+        }
+    }
+
+    public function test_a_non_canonical_expression_is_refused(): void
+    {
+        foreach (["{{ x|money(2,'code') }}", "{{ x|date(\"dd/MM/yyyy\") }}", '{{ x|number(1, 2) }}', '{{ x|date(foo) }}'] as $expression) {
+            try {
+                FormatSpec::fromExpression($expression);
+                $this->fail("Accepted {$expression}");
+            } catch (InvalidArgumentException) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
     public function test_rejects_unknown_pattern(): void
     {
         $this->expectException(InvalidArgumentException::class);

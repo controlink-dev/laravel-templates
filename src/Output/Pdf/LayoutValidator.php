@@ -229,36 +229,22 @@ class LayoutValidator
             }
         }
 
+        // A line table: its columns' choices come from the closed lists, and every value it
+        // prints is a canonical format expression with arguments from those lists. The
+        // cells are not matched column by column: a starting layout may compose a cell
+        // by hand (the roll's sub-line of price and VAT), which the editor never does.
         foreach ($document->blocksOfType('line-table') as $table) {
             $columns = json_decode((string) ($table['attributes']['data-tpl-columns'] ?? '[]'), true);
-            $allowed = [];
 
-            foreach (is_array($columns) ? $columns : [] as $column) {
-                if (! is_array($column) || ($column['hidden'] ?? false)) {
-                    continue;
+            try {
+                foreach (is_array($columns) ? $columns : [] as $column) {
+                    $this->assertKnownFormat(FormatSpec::fromColumn((array) $column));
                 }
 
-                $format = (string) ($column['format'] ?? '');
-
-                try {
-                    if ($format !== '' && ! in_array($format, (array) config('templates.formats'), true)) {
-                        throw new InvalidArgumentException;
-                    }
-
-                    $spec = FormatSpec::fromColumn($column);
-                } catch (InvalidArgumentException) {
-                    $problems[] = $this->problem('V-01', $table, 'unknown_format', ['format' => $format]);
-
-                    continue 2;
+                foreach ($exports->tableExpressions((string) ($table['attributes']['id'] ?? '')) ?? [] as $printed) {
+                    $this->assertKnownFormat(FormatSpec::fromExpression($printed));
                 }
-
-                $subject   = 'linha.'.($column['key'] ?? '');
-                $allowed[] = $spec?->expression($subject) ?? '{{ '.$subject.' }}';
-            }
-
-            $cells = $exports->tableExpressions((string) ($table['attributes']['id'] ?? ''));
-
-            if ($cells !== null && array_diff($cells, $allowed) !== []) {
+            } catch (InvalidArgumentException) {
                 $problems[] = $this->problem('V-01', $table, 'format_mismatch', ['format' => '']);
             }
         }
@@ -1028,6 +1014,14 @@ class LayoutValidator
         return str_contains(substr($source, 0, $comma), ';base64')
             ? (int) (strlen($payload) * 3 / 4)
             : strlen(urldecode($payload));
+    }
+
+    /** @throws InvalidArgumentException when the format is not in `templates.formats` */
+    private function assertKnownFormat(?FormatSpec $spec): void
+    {
+        if ($spec !== null && ! in_array($spec->name(), (array) config('templates.formats'), true)) {
+            throw new InvalidArgumentException("Unknown format [{$spec->name()}].");
+        }
     }
 
     /**

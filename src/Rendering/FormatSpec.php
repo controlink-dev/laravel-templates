@@ -120,6 +120,60 @@ final class FormatSpec
         return '{{ '.$subject.'|'.$this->name.'('.implode(', ', $literals).') }}';
     }
 
+    /**
+     * The spec a printed expression stands for, from `{{ subject|name(args) }}`; null for
+     * a plain `{{ subject }}`.
+     *
+     * Strict: the expression must be exactly the canonical one this spec would write, so
+     * a hand-built argument list (other literals, other spacing, extra arguments) fails.
+     *
+     * @throws InvalidArgumentException when it is not a canonical format expression
+     */
+    public static function fromExpression(string $expression): ?self
+    {
+        if (! preg_match('/^\{\{ ([A-Za-z0-9_.]+)(?:\|([a-z]+)(?:\((.*)\))?)? \}\}$/', $expression, $match)) {
+            throw new InvalidArgumentException("Not a field expression [{$expression}].");
+        }
+
+        $subject = $match[1];
+        $name    = $match[2] ?? '';
+
+        if ($name === '') {
+            return null;
+        }
+
+        $arguments = [];
+
+        foreach (($match[3] ?? '') === '' ? [] : explode(', ', $match[3]) as $literal) {
+            $arguments[] = match (true) {
+                $literal === 'null'                          => null,
+                (bool) preg_match('/^\d+$/', $literal)       => (int) $literal,
+                (bool) preg_match("/^'([^']*)'$/", $literal) => substr($literal, 1, -1),
+                default                                      => throw new InvalidArgumentException("Not a format argument [{$literal}]."),
+            };
+        }
+
+        $positions = match ($name) {
+            'date'   => ['pattern'],
+            'number' => ['decimals'],
+            'money'  => ['decimals', 'symbol'],
+            default  => [],
+        };
+
+        if (count($arguments) > count($positions)) {
+            throw new InvalidArgumentException("Too many arguments for [{$name}].");
+        }
+
+        $named = array_combine(array_slice($positions, 0, count($arguments)), $arguments);
+        $spec  = self::make($name, $named['pattern'] ?? null, $named['decimals'] ?? null, $named['symbol'] ?? null);
+
+        if ($spec?->expression($subject) !== $expression) {
+            throw new InvalidArgumentException("Not a canonical format expression [{$expression}].");
+        }
+
+        return $spec;
+    }
+
     /** The Carbon `isoFormat` string for a pattern from the list, or null. */
     public static function isoPattern(?string $pattern): ?string
     {
