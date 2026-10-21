@@ -292,6 +292,7 @@ class Editor extends Component
             'notice.close'        => __('templates::editor.notices.close'),
 
             'confirm.delete_legal' => __('templates::editor.notices.confirm_delete_legal'),
+            'confirm.occlusion'    => __('templates::editor.notices.confirm_occlusion'),
 
             // Buttons of the editor's own confirm/alert dialogs (dialog.js).
             'dialog.confirm' => __('templates::editor.dialog.confirm'),

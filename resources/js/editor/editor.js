@@ -25,6 +25,7 @@ import {
 } from './panels.js';
 import { mergeProblems } from './problems.js';
 import { confirmDialog } from './dialog.js';
+import { saveConfirmingWarnings } from './save.js';
 import { placementInZone, round, zoneAt } from './zones.js';
 
 /*
@@ -456,6 +457,13 @@ async function mountEditor(el) {
             notify(root, config, { level: 'success', message: config.strings.saved });
             root.dispatchEvent(new CustomEvent('templates:saved', { bubbles: true }));
         } catch (error) {
+            // The user declined to save a layout with covered fields: nothing to report.
+            if (error.cancelled) {
+                renderStatus(dirty ? config.strings.unsaved : '', root);
+
+                return;
+            }
+
             serverProblems = error.problems ?? [];
             refreshChecks();
 
@@ -492,6 +500,12 @@ async function mountEditor(el) {
             renderStatus('', root);
             root.dispatchEvent(new CustomEvent('templates:preview-ready', { detail: { url }, bubbles: true }));
         } catch (error) {
+            if (error.cancelled) {
+                renderStatus(config.strings.unsaved, root);
+
+                return;
+            }
+
             notify(root, config, { level: 'error', message: error.message });
         }
     });
@@ -520,6 +534,12 @@ async function mountEditor(el) {
             notify(root, config, { level: 'success', message: config.strings.activated });
             root.dispatchEvent(new CustomEvent('templates:activated', { bubbles: true }));
         } catch (error) {
+            if (error.cancelled) {
+                renderStatus(config.strings.unsaved, root);
+
+                return;
+            }
+
             serverProblems = error.problems ?? [];
             refreshChecks();
             notify(root, config, { level: 'error', message: error.message, problems: serverProblems });
@@ -2651,29 +2671,43 @@ async function mountEmailEditor(el, config, chrome) {
     root.dispatchEvent(new CustomEvent('templates:loaded', { bubbles: true }));
 }
 
+/*
+ * Every save goes through here — the Save button, and the save that Preview and Activate
+ * make first when there are unsaved changes — so the confirmation of covered fields
+ * (CGE-27, save.js) is asked wherever a save happens. A declined confirmation throws an
+ * error marked `cancelled`, which each caller swallows.
+ */
 async function saveVersion(editor, config) {
-    const response = await fetch(config.saveUrl, {
-        method: 'PUT',
-        headers: { ...requestHeaders(config), 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            // The example content, never the real record being previewed.
-            project_data: plainProjectData(editor),
-            html: editor.getHtml(),
-            css: editor.getCss(),
-            // The page format picked in the toolbar; the host persists it.
-            geometry: config.geometry ?? null,
-        }),
-    });
+    // The body is built once: a confirmed re-send is the same layout, acknowledged.
+    const body = {
+        // The example content, never the real record being previewed.
+        project_data: plainProjectData(editor),
+        html: editor.getHtml(),
+        css: editor.getCss(),
+        // The page format picked in the toolbar; the host persists it.
+        geometry: config.geometry ?? null,
+    };
 
-    if (!response.ok) {
-        const payload = await response.json().catch(() => ({}));
-        const error = new Error(payload.message || config.strings.saveFailed);
-        error.problems = payload.problems ?? [];
+    const send = async (acknowledge) => {
+        const response = await fetch(config.saveUrl, {
+            method: 'PUT',
+            headers: { ...requestHeaders(config), 'Content-Type': 'application/json' },
+            body: JSON.stringify(acknowledge ? { ...body, acknowledge_warnings: true } : body),
+        });
 
-        throw error;
-    }
+        return { ok: response.ok, payload: await response.json().catch(() => ({})) };
+    };
 
-    return response.json();
+    const confirm = (warnings) => confirmDialog(
+        [config.strings['confirm.occlusion'], ...warnings.map((warning) => warning.message)].join(' '),
+        {
+            root: config.root,
+            confirmLabel: config.strings['dialog.confirm'],
+            cancelLabel: config.strings['dialog.cancel'],
+        },
+    );
+
+    return saveConfirmingWarnings(send, confirm, config.strings.saveFailed);
 }
 
 /** @returns {Promise<string>} a blob URL for the rendered PDF. */
