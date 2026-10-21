@@ -182,10 +182,24 @@ function registerLineTable(editor, config) {
                         + `${escapeText(config.strings['block.line_table'] ?? 'Tabela')}</div>`;
                 }
 
+                // A cell shows its value in the column's format, as the PDF prints it
+                // (CGE-49); the example a saved version carries stays raw.
+                const cell = (row, column) => {
+                    const value = row[column.key];
+
+                    if (value === null || value === undefined) {
+                        return String(column.label);
+                    }
+
+                    return example || !config.formatPreview
+                        ? String(value)
+                        : config.formatPreview.text(value, specFromColumn(column));
+                };
+
                 const body = (rows.length > 0 ? rows : [{}])
                     .map((first) => '<tr>' + columns
                         .map((column) => `<td style="text-align:${column.align || 'left'}">`
-                            + `${escapeText(String(first[column.key] ?? column.label))}</td>`)
+                            + `${escapeText(cell(first, column))}</td>`)
                         .join('') + '</tr>')
                     .join('');
 

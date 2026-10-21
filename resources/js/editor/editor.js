@@ -14,7 +14,8 @@ import grapesjs from 'grapesjs';
 import grapesjsMjml from 'grapesjs-mjml';
 import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
-import { mountPreviewPanel, plainProjectData } from './preview-filter.js';
+import { mountPreviewPanel, plainProjectData, refreshPreview } from './preview-filter.js';
+import { createFormatPreview } from './format-preview.js';
 import { icons } from './icons.js';
 import {
     checkLegalFieldsLocally,
@@ -240,6 +241,14 @@ async function mountEditor(el) {
      * the behaviour — no preview text, no legal locking, and `toHTML()` never emitting
      * the template expression. Passing `components` to `init()` parses too early.
      */
+    // CGE-49: the canvas formats its sample values through the host, the same filters
+    // the PDF uses. Set before the block types read it; they redraw when it answers.
+    config.formatPreview = createFormatPreview({
+        url: config.formatPreviewUrl,
+        headers: requestHeaders(config),
+        onReady: () => refreshPreview(editor),
+    });
+
     registerComponents(editor, config);
     registerTableAndSlot(editor, config);
 
@@ -2336,6 +2345,8 @@ function readConfig(el) {
         // Optional: the real records a node/collection can be previewed with (CGE-29).
         // Without it the editor has no sample-data panel and behaves as before.
         previewRecordsUrl: el.dataset.previewRecordsUrl || '',
+        // Optional: formats sample values for the canvas exactly as the PDF does (CGE-49).
+        formatPreviewUrl: el.dataset.formatPreviewUrl || '',
         // `__FORMAT__` is replaced with the chosen format id on an in-place format switch.
         formatSwitchUrl: el.dataset.formatSwitchUrl,
         printStylesheet: el.dataset.printStylesheet,

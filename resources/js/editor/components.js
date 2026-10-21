@@ -637,7 +637,15 @@ function registerDataField(editor, config) {
                 const key = this.binding();
                 const sample = example ? config.fixture?.[key] : previewValue(config, key);
 
-                return String(sample ?? findBinding(config, key)?.label ?? key);
+                if (sample === null || sample === undefined) {
+                    return String(findBinding(config, key)?.label ?? key);
+                }
+
+                // The canvas shows the value in this field's format, exactly as the PDF
+                // prints it (CGE-49). The example a saved version carries stays raw.
+                return example || !config.formatPreview
+                    ? String(sample)
+                    : config.formatPreview.text(sample, this.formatSpec());
             },
 
             /** The `content` this block shows (escaped), for the save/dirty read-back. */

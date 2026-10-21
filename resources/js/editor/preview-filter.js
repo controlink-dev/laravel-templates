@@ -113,12 +113,8 @@ export function refreshPreview(editor) {
  * observe the in-between state.
  */
 export function plainProjectData(editor) {
-    const state = states.get(editor);
-
-    if (!state?.isActive()) {
-        return editor.getProjectData();
-    }
-
+    // Always walked, not only while a real record is shown: the canvas text is also in
+    // each field's format now (CGE-49), and that answer arrives after the load snapshot.
     const swapped = [];
 
     walk(editor.getWrapper(), (component) => {
