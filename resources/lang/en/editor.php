@@ -137,6 +137,21 @@ return [
         'upper'  => 'Uppercase',
     ],
 
+    'format_args' => [
+        'pattern'         => 'Date pattern',
+        'decimals'        => 'Decimal places',
+        'symbol'          => 'Symbol',
+        'decimals_money'  => 'From the currency',
+        'decimals_number' => 'Automatic',
+    ],
+
+    'format_symbols' => [
+        'before' => 'Symbol before (€ 1.00)',
+        'after'  => 'Symbol after (1.00 €)',
+        'code'   => 'Code at the end (1.00 EUR)',
+        'none'   => 'No symbol (1.00)',
+    ],
+
     'fits' => [
         'contain' => 'Fit without cropping',
         'cover'   => 'Fill and crop',

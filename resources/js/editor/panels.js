@@ -7,6 +7,7 @@
  * ========================================================================= */
 
 import { resolvePaper } from './editor.js';
+import { defaultSpecFor, specToAttributes } from './formats.js';
 
 /**
  * The Style Manager the user gets: typography, colour, box and position, and nothing
@@ -192,7 +193,7 @@ export function restoreMissingLegalFields(editor, config) {
                 class: 'block block--field',
                 'data-tpl-type': 'data-field',
                 'data-tpl-binding': binding.key,
-                'data-tpl-format': defaultFormatFor(binding),
+                ...defaultFormatFor(binding),
             },
             style: {
                 position: 'absolute',
@@ -608,8 +609,9 @@ function parsePoints(value) {
     return match[2] === 'mm' ? amount * (72 / 25.4) : amount;
 }
 
+/** The format attributes a restored legal field starts with: its type's default (CGE-49). */
 function defaultFormatFor(binding) {
-    return binding.default_format ?? '';
+    return specToAttributes(defaultSpecFor(binding.type) ?? (binding.default_format ? { name: binding.default_format } : null));
 }
 
 function format(template, replacements) {

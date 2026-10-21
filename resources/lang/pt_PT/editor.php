@@ -140,6 +140,21 @@ return [
         'upper'  => 'Maiúsculas',
     ],
 
+    'format_args' => [
+        'pattern'         => 'Padrão da data',
+        'decimals'        => 'Casas decimais',
+        'symbol'          => 'Símbolo',
+        'decimals_money'  => 'Da moeda',
+        'decimals_number' => 'Automático',
+    ],
+
+    'format_symbols' => [
+        'before' => 'Símbolo antes (€ 1,00)',
+        'after'  => 'Símbolo depois (1,00 €)',
+        'code'   => 'Código no fim (1,00 EUR)',
+        'none'   => 'Sem símbolo (1,00)',
+    ],
+
     'fits' => [
         'contain' => 'Caber sem cortar',
         'cover'   => 'Preencher e cortar',
