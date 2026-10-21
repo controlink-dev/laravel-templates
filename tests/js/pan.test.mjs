@@ -47,4 +47,12 @@ const AIR = 12;
     assert.deepEqual(wheelMove({ deltaX: 0, deltaY: 3, deltaMode: 1, shiftKey: false }), { x: 0, y: -48 });
 }
 
+// 5. At a limit the transform leaves a sliver of a pixel; that is no movement, or a wheel
+//    at the edge would be swallowed (and the page behind not scroll) for nothing.
+{
+    const almostAtTop = { left: 100, top: 11.9999, width: 600, height: 1200 };
+
+    assert.deepEqual(clampMove(canvas, almostAtTop, { x: 0, y: 50 }, AIR), { x: 0, y: 0 });
+}
+
 console.log('pan: OK');

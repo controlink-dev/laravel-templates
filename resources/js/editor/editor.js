@@ -27,6 +27,7 @@ import { mergeProblems } from './problems.js';
 import { confirmDialog } from './dialog.js';
 import { saveConfirmingWarnings } from './save.js';
 import { placementInZone, round, topInZone, zoneAt, zonesFor } from './zones.js';
+import { clampMove, wheelMove } from './pan.js';
 
 /*
  * Mounting, and the four things that made a workspace pane hostile.
@@ -1072,6 +1073,53 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         editor.Canvas.fitViewport({ gap: AIR, zoom: (z) => clampZoom(z) });
     };
 
+    /*
+     * The wheel pans a sheet the zoom made larger than the pane: up and down, and sideways
+     * with shift. The transform gives it no scrollbar to reach its edges (see pan.js).
+     *
+     * It is bound twice, on the canvas element (the grey around the sheet) and on the
+     * frame's document (the sheet itself), both non-passive so the host page does not
+     * scroll behind. GrapesJS also re-dispatches the frame's wheel on the canvas element,
+     * carrying the original as `_parentEvent`; that copy is skipped or one tick would pan
+     * twice. A wheel that moves nothing is left alone, so the page still scrolls when the
+     * sheet fits. Ctrl/Meta is the browser's zoom, not ours.
+     */
+    const panByWheel = (event) => {
+        if (event._parentEvent || event.ctrlKey || event.metaKey) {
+            return;
+        }
+
+        const canvasEl = editor.Canvas.getElement?.();
+        const frameEl = editor.Canvas.getFrameEl?.();
+
+        if (!canvasEl || !frameEl) {
+            return;
+        }
+
+        const move = clampMove(
+            canvasEl.getBoundingClientRect(),
+            frameEl.getBoundingClientRect(),
+            wheelMove(event),
+            AIR,
+        );
+
+        if (!move.x && !move.y) {
+            return;
+        }
+
+        event.preventDefault();
+
+        const coords = editor.Canvas.getCoords();
+
+        editor.Canvas.setCoords(coords.x + move.x, coords.y + move.y);
+    };
+
+    // The frame is rebuilt on a format change, and its old document goes with it, so this
+    // runs on every frame load. Adding the same listener twice to one document is a no-op.
+    const bindFrameWheel = () => {
+        editor.Canvas.getDocument?.()?.addEventListener('wheel', panByWheel, { passive: false });
+    };
+
     const commands = {
         'zoom-in': () => {
             userChoseZoom = true;
@@ -1944,6 +1992,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         const canvasEl = editor.Canvas.getElement?.();
 
         canvasEl?.addEventListener('scroll', drawRulers, { passive: true });
+        canvasEl?.addEventListener('wheel', panByWheel, { passive: false });
+        bindFrameWheel();
 
         /*
          * Both boxes are watched, and that is the fix for a sheet that sat small in a
@@ -1982,7 +2032,10 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     // loadProjectData (a saved format, e.g. the default A4) rebuilds the canvas iframe
     // asynchronously; re-apply the body size and geometry style to the new frame, or a
     // switch back to that format keeps the previous format's canvas.
-    editor.on('canvas:frame:load:body', () => applyCanvasToFrame());
+    editor.on('canvas:frame:load:body', () => {
+        applyCanvasToFrame();
+        bindFrameWheel();
+    });
 
     // The tree has to follow the geometry; see `reparentToZone`. A roll has no bands, and
     // flow mode reorders in the tree already, so there is nothing to reparent. A label has

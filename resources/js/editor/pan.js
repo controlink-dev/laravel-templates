@@ -39,8 +39,8 @@ export function wheelMove({ deltaX = 0, deltaY = 0, deltaMode = 0, shiftKey = fa
  * On an axis where the sheet fits the pane (with `air` either side) it does not move.
  * Where it does not fit, its near edge may go no further in than `air` from the pane's
  * edge and its far edge no further in than `air` from the other one. The result is the
- * clamped position minus the current one, so a sheet already past a limit is pulled
- * back even by a move of nothing.
+ * clamped position minus the current one, rounded to whole pixels, so a sheet already
+ * past a limit is pulled back even by a move of nothing.
  */
 export function clampMove(canvasRect, frameRect, move, air) {
     const axis = (start, size, paneStart, paneSize, delta) => {
@@ -52,7 +52,8 @@ export function clampMove(canvasRect, frameRect, move, air) {
         const highest = paneStart + air;
         const wanted = Math.min(highest, Math.max(lowest, start + delta));
 
-        return wanted - start || 0;
+        // Whole pixels: the transform leaves slivers at a limit, and a sliver is no move.
+        return Math.round(wanted - start) || 0;
     };
 
     return {
