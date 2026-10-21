@@ -16,7 +16,8 @@ import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, plainProjectData, refreshPreview } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
-import { wirePositionPanel } from './position-panel.js';
+import { measuredBox, wirePositionPanel } from './position-panel.js';
+import { dragResultToMm } from './anchors.js';
 import { icons } from './icons.js';
 import {
     checkLegalFieldsLocally,
@@ -2078,7 +2079,14 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     // The mode is checked when the drag ends, not when the handler is registered: a format
     // tab can turn the sheet into a roll (and back) after mount.
     editor.on('component:drag:end', ({ target }) => {
-        if (rollMode || labelMode) {
+        if (rollMode) {
+            return;
+        }
+
+        // A label has one band: nothing to reparent, but the drag still wrote pixels.
+        if (labelMode) {
+            dragToMillimetres(target);
+
             return;
         }
 
@@ -2490,6 +2498,8 @@ function reparentToZone(editor, config, component) {
     const target = zoneAt(fromTop, { header, bodyHeight });
 
     if (zoneOf(component) === target) {
+        dragToMillimetres(component);
+
         return;
     }
 
@@ -3050,4 +3060,27 @@ function showNotice(message, scope, closeLabel) {
     noticeTimer = setTimeout(() => {
         target.hidden = true;
     }, 6000);
+}
+
+/**
+ * GrapesJS's drag leaves whole pixels in `left`/`top`; the layout is written in
+ * millimetres on the half, keeping the side the block is anchored by (CGE-51).
+ */
+function dragToMillimetres(component) {
+    const el = component?.getEl?.();
+    const measured = measuredBox(el);
+
+    if (!measured || !component.getAttributes?.()['data-tpl-type']) {
+        return;
+    }
+
+    const { set, remove } = dragResultToMm(
+        component.getStyle(),
+        measured,
+        { width: el.offsetParent.clientWidth / PX_PER_MM, height: el.offsetParent.clientHeight / PX_PER_MM },
+    );
+    const style = { ...component.getStyle(), ...set };
+
+    remove.forEach((side) => delete style[side]);
+    component.setStyle(style);
 }
