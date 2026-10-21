@@ -36,7 +36,8 @@ export function wheelMove({ deltaX = 0, deltaY = 0, deltaMode = 0, shiftKey = fa
 /**
  * The part of `move` the sheet may make, per axis.
  *
- * On an axis where the sheet fits the pane (with `air` either side) it does not move.
+ * On an axis where the sheet fits the pane (with `air` either side) it does not move,
+ * unless it lies partly outside, in which case it is brought back inside the air.
  * Where it does not fit, its near edge may go no further in than `air` from the pane's
  * edge and its far edge no further in than `air` from the other one. The result is the
  * clamped position minus the current one, rounded to whole pixels, so a sheet already
@@ -44,13 +45,14 @@ export function wheelMove({ deltaX = 0, deltaY = 0, deltaMode = 0, shiftKey = fa
  */
 export function clampMove(canvasRect, frameRect, move, air) {
     const axis = (start, size, paneStart, paneSize, delta) => {
-        if (size <= paneSize - 2 * air) {
-            return 0;
-        }
+        const nearEdge = paneStart + air;
+        const farEdge = paneStart + paneSize - air - size;
 
-        const lowest = paneStart + paneSize - air - size;
-        const highest = paneStart + air;
-        const wanted = Math.min(highest, Math.max(lowest, start + delta));
+        // It fits: the wheel does not move it, but a sheet left partly outside (panned,
+        // then the pane grew) is brought back within the air rather than stranded.
+        const wanted = size <= paneSize - 2 * air
+            ? Math.min(farEdge, Math.max(nearEdge, start))
+            : Math.min(nearEdge, Math.max(farEdge, start + delta));
 
         // Whole pixels: the transform leaves slivers at a limit, and a sliver is no move.
         return Math.round(wanted - start) || 0;

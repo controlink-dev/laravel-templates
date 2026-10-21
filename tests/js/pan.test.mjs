@@ -55,4 +55,21 @@ const AIR = 12;
     assert.deepEqual(clampMove(canvas, almostAtTop, { x: 0, y: 50 }, AIR), { x: 0, y: 0 });
 }
 
+// 6. A sheet that fits but was left partly outside (panned at the bottom, then the pane
+//    grew — maximised or resized) is brought back in by the next tick, not stranded;
+//    one already inside the air stays put whatever the wheel asks.
+{
+    const clippedAbove = { left: 100, top: -500, width: 600, height: 500 };
+
+    assert.deepEqual(clampMove(canvas, clippedAbove, { x: 0, y: -100 }, AIR), { x: 0, y: 512 });
+
+    const clippedBelow = { left: 100, top: 300, width: 600, height: 500 };
+
+    assert.deepEqual(clampMove(canvas, clippedBelow, { x: 0, y: 100 }, AIR), { x: 0, y: -212 });
+
+    const inside = { left: 100, top: 50, width: 600, height: 500 };
+
+    assert.deepEqual(clampMove(canvas, inside, { x: 30, y: 30 }, AIR), { x: 0, y: 0 });
+}
+
 console.log('pan: OK');
