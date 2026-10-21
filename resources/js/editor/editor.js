@@ -221,7 +221,7 @@ async function mountEditor(el) {
         },
         // The editing decorations, delivered to the canvas document itself. See
         // `canvasDecorations()` for why they cannot live in `editor.css`.
-        canvasCss: `:root{--tpl-accent:${accent};--tpl-desk:${desk}}` + canvasDecorations(paper, rollMode),
+        canvasCss: `:root{--tpl-accent:${accent};--tpl-desk:${desk}}` + canvasDecorations(paper, rollMode, config.editable),
         blockManager: { appendTo: chrome.blocks },
         // Only the reduced set (spec 6.6): no flex, no grid, no transitions.
         styleManager: { appendTo: chrome.styles, sectors: styleManagerSectors(config.strings) },
@@ -698,7 +698,7 @@ function parseJson(value, fallback) {
  * Every rule hangs off a class on the canvas body, so the toolbar can turn each one on
  * and off, and the printed document carries none of them.
  */
-function canvasDecorations(paper, rollMode = false) {
+function canvasDecorations(paper, rollMode = false, editable = true) {
     return `
         /*
          * The page width in the canvas. The print stylesheet fixes .page to the A4 sheet
@@ -909,6 +909,28 @@ function canvasDecorations(paper, rollMode = false) {
         body.tpl-view-clean .block--lines__empty {
             border: 0;
             background: transparent;
+        }
+    ` + (editable ? blockCursors() : '');
+}
+
+/**
+ * The pointer over a block says what a click does.
+ *
+ * Without a rule the browser shows the text I-beam over any text, which promised an edit
+ * a click never makes: a click selects the block, and a data field, a table, an image or
+ * a code is moved, not typed into. Only the fixed text keeps the I-beam, since its words
+ * are what it is about. In the canvas only — print.css goes into the PDF — and only when
+ * the version can be edited: on a read-only one nothing moves, so "move" would lie too.
+ */
+function blockCursors() {
+    return `
+        .block {
+            cursor: move;
+        }
+
+        .block--text,
+        [contenteditable="true"] {
+            cursor: text;
         }
     `;
 }
