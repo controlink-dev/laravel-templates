@@ -195,6 +195,8 @@ return [
         'border_color'     => 'Cor do contorno',
         'top'              => 'Topo',
         'left'             => 'Esquerda',
+        'right'            => 'Direita',
+        'bottom'           => 'Fundo',
     ],
 
     /*

@@ -8,6 +8,7 @@
 
 import { resolvePaper } from './editor.js';
 import { defaultSpecFor, specToAttributes } from './formats.js';
+import { roundTo, snapOffsets } from './anchors.js';
 
 /**
  * The Style Manager the user gets: typography, colour, box and position, and nothing
@@ -89,14 +90,20 @@ export function styleManagerSectors(strings) {
         },
         {
             // Exact placement by number: dragging an absolute block over a zoomed canvas is
-            // imprecise, so left/top are editable here in millimetres. The strings for this
-            // sector already existed; only the sector was missing.
+            // imprecise, so the offsets are editable here in millimetres. All four sides
+            // (CGE-51): the starting layouts pin totals to the right and the bottom, and a
+            // panel without them showed those blocks as unplaced. No `min`: a block a hair
+            // off the sheet has to show its negative offset, not a reassuring 0. Writing
+            // one side drops the opposite one (position-panel.js), and the hint shows the
+            // measured value for a side the block does not set.
             id: 'tpl-position',
             name: strings['sector.position'],
             open: false,
             properties: [
-                number('left', 'left', ['mm'], { default: '0mm' }),
-                number('top', 'top', ['mm'], { default: '0mm' }),
+                number('left', 'left', ['mm'], { min: undefined, default: '' }),
+                number('top', 'top', ['mm'], { min: undefined, default: '' }),
+                number('right', 'right', ['mm'], { min: undefined, default: '' }),
+                number('bottom', 'bottom', ['mm'], { min: undefined, default: '' }),
             ],
         },
         {
@@ -104,8 +111,10 @@ export function styleManagerSectors(strings) {
             name: strings['sector.box'],
             open: false,
             properties: [
-                number('width', 'width', ['mm'], { default: '180mm' }),
-                number('height', 'height', ['mm'], { default: '0mm' }),
+                // No fixed default: the hint is the measured size (position-panel.js),
+                // never a 180mm the block does not have.
+                number('width', 'width', ['mm'], { default: '' }),
+                number('height', 'height', ['mm'], { default: '' }),
                 number('padding', 'padding', ['mm'], { default: '0mm' }),
                 colour('background-color', 'background_color', 'transparent'),
             ],
@@ -123,15 +132,6 @@ export function styleManagerSectors(strings) {
                     { id: 'dotted', label: strings['border.dotted'] },
                 ]),
                 colour('border-color', 'border_color', '#000000'),
-            ],
-        },
-        {
-            id: 'tpl-position',
-            name: strings['sector.position'],
-            open: false,
-            properties: [
-                number('top', 'top', ['mm'], { default: '0mm' }),
-                number('left', 'left', ['mm'], { default: '0mm' }),
             ],
         },
     ];
@@ -543,20 +543,27 @@ function snapComponent(component, metrics, isRoll, tolMm) {
     const rect = el.getBoundingClientRect();
     const { dx, dy } = sheetOverflow(rect, metrics.printable, isRoll, metrics.tolPx);
     const style = component.getStyle();
-    const next = {};
 
-    if (dx !== 0) {
-        const leftMm = parseLenMm(style.left, pxPerMm) ?? 0;
-        next.left = Math.max(leftMm + dx / pxPerMm, 0) + 'mm';
+    // CGE-51: the side the block is anchored by is corrected (a block pinned right gets
+    // a new `right`, not a `left` beside it), rounded to the tenth of a millimetre.
+    const overflow = {};
+
+    if (dx > 0) {
+        overflow.left = dx / pxPerMm;
+    } else if (dx < 0) {
+        overflow.right = -dx / pxPerMm;
     }
 
-    if (!isRoll && dy !== 0) {
-        const topMm = parseLenMm(style.top, pxPerMm) ?? 0;
-        next.top = Math.max(topMm + dy / pxPerMm, 0) + 'mm';
+    if (!isRoll && dy > 0) {
+        overflow.top = dy / pxPerMm;
+    } else if (!isRoll && dy < 0) {
+        overflow.bottom = -dy / pxPerMm;
     }
+
+    const { set: next } = snapOffsets(style, overflow);
 
     if (isRoll && rect.width / pxPerMm > metrics.printableWidthMm + tolMm) {
-        next.width = metrics.printableWidthMm + 'mm';
+        next.width = roundTo(metrics.printableWidthMm, 0.1) + 'mm';
     }
 
     if (Object.keys(next).length === 0) {
@@ -566,23 +573,6 @@ function snapComponent(component, metrics, isRoll, tolMm) {
     component.addStyle(next);
 
     return true;
-}
-
-/** A CSS length in mm. Accepts `mm` and `px` (px converted with `pxPerMm`); else null. */
-function parseLenMm(value, pxPerMm) {
-    if (typeof value !== 'string') {
-        return null;
-    }
-
-    const match = value.match(/^(-?[\d.]+)(mm|px)?$/);
-
-    if (!match || !Number.isFinite(parseFloat(match[1]))) {
-        return null;
-    }
-
-    const number = parseFloat(match[1]);
-
-    return match[2] === 'px' ? number / pxPerMm : number;
 }
 
 /**

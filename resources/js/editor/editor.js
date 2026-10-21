@@ -16,6 +16,7 @@ import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, plainProjectData, refreshPreview } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
+import { wirePositionPanel } from './position-panel.js';
 import { icons } from './icons.js';
 import {
     checkLegalFieldsLocally,
@@ -251,6 +252,9 @@ async function mountEditor(el) {
 
     registerComponents(editor, config);
     registerTableAndSlot(editor, config);
+
+    // CGE-51: the panel shows and writes real offsets — four sides, one anchor per axis.
+    wirePositionPanel(editor, chrome.styles);
 
     // Declared before the chrome is wired and filled in below: the format selector lives in
     // `wireChrome`, a different scope from the load/dirty tracking.

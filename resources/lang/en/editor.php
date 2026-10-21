@@ -189,6 +189,8 @@ return [
         'border_color'     => 'Border colour',
         'top'              => 'Top',
         'left'             => 'Left',
+        'right'            => 'Right',
+        'bottom'           => 'Bottom',
     ],
 
     /* Style property options; the canvas library offers 100-900 and raw CSS keywords. */

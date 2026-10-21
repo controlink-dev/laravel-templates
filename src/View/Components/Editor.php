@@ -220,6 +220,8 @@ class Editor extends Component
             'prop.border_color'     => __('templates::editor.properties.border_color'),
             'prop.top'              => __('templates::editor.properties.top'),
             'prop.left'             => __('templates::editor.properties.left'),
+            'prop.right'            => __('templates::editor.properties.right'),
+            'prop.bottom'           => __('templates::editor.properties.bottom'),
 
             'weight.normal' => __('templates::editor.style_options.weight_normal'),
             'weight.bold'   => __('templates::editor.style_options.weight_bold'),
