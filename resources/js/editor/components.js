@@ -200,9 +200,9 @@ function registerZones(editor, config) {
                 // user places blocks where they want them (RF-C03).
                 'custom-name': config.strings['zone.' + name],
                 layerable: true,
-                stylable: flow
-                    ? ['background-color']
-                    : ['background-color', 'height'],
+                // No 'height' (CGE-50): a band's height is the version's geometry, edited in
+                // the page panel (geometry-panel.js). As a style it only stretched the element.
+                stylable: ['background-color'],
             },
         },
     });
@@ -226,7 +226,8 @@ function registerZones(editor, config) {
                 removable: false,
                 copyable: false,
                 draggable: false,
-                selectable: false,
+                // Selectable (CGE-50): a click on the sheet's margin opens its page panel.
+                selectable: true,
                 attributes: { class: 'page' },
                 stylable: false,
             },

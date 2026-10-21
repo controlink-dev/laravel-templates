@@ -145,6 +145,20 @@ return [
         'decimals_number' => 'Automatic',
     ],
 
+    'geometry' => [
+        'page'             => 'Page',
+        'margin'           => [
+            'top'    => 'Top margin',
+            'right'  => 'Right margin',
+            'bottom' => 'Bottom margin',
+            'left'   => 'Left margin',
+        ],
+        'header_height'    => 'Header height',
+        'footer_height'    => 'Footer height',
+        'body_too_small'   => 'That leaves the body under 20 mm. Reduce the margins or the heights.',
+        'margins_too_wide' => 'The left and right margins leave no width on the sheet.',
+    ],
+
     'format_symbols' => [
         'before' => 'Symbol before (€ 1.00)',
         'after'  => 'Symbol after (1.00 €)',

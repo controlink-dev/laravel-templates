@@ -148,6 +148,20 @@ return [
         'decimals_number' => 'Automático',
     ],
 
+    'geometry' => [
+        'page'             => 'Página',
+        'margin'           => [
+            'top'    => 'Margem de cima',
+            'right'  => 'Margem direita',
+            'bottom' => 'Margem de baixo',
+            'left'   => 'Margem esquerda',
+        ],
+        'header_height'    => 'Altura do cabeçalho',
+        'footer_height'    => 'Altura do rodapé',
+        'body_too_small'   => 'Assim o corpo fica com menos de 20 mm. Reduza as margens ou as alturas.',
+        'margins_too_wide' => 'As margens esquerda e direita não deixam largura na folha.',
+    ],
+
     'format_symbols' => [
         'before' => 'Símbolo antes (€ 1,00)',
         'after'  => 'Símbolo depois (1,00 €)',

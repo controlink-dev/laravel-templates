@@ -1764,3 +1764,38 @@ select.tpl-pf-input {
 .tpl-pf-row:last-child {
     border-bottom: 0;
 }
+
+/* CGE-50: the page panel — margins and header/footer heights of the version. */
+.tpl-geometry {
+    padding: 0.5rem 0.6rem 0.6rem;
+    border-bottom: 1px solid var(--tpl-slate-200, #e2e8f0);
+}
+
+.tpl-geometry__title {
+    margin-bottom: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+.tpl-geometry__field {
+    display: grid;
+    grid-template-columns: 1fr 4.5rem auto;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+}
+
+.tpl-geometry__field input {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tpl-geometry__error {
+    margin: 0.4rem 0 0;
+    font-size: 0.75rem;
+    color: var(--tpl-danger, #b91c1c);
+}

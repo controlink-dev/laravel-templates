@@ -18,6 +18,7 @@ import { mountPreviewPanel, plainProjectData, refreshPreview } from './preview-f
 import { createFormatPreview } from './format-preview.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
+import { mountGeometryPanel } from './geometry-panel.js';
 import { icons } from './icons.js';
 import {
     checkLegalFieldsLocally,
@@ -1255,8 +1256,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
          */
         const vars = '--margin-top:' + mm(m.top) + ';--margin-right:' + mm(m.right)
             + ';--margin-bottom:' + mm(m.bottom) + ';--margin-left:' + mm(m.left)
-            + ';--header-height:' + (Number(config.zones?.header_height ?? 35)) + 'mm'
-            + ';--footer-height:' + (Number(config.zones?.footer_height ?? 20)) + 'mm;';
+            + ';--header-height:' + (Number(effectiveZones(config).header_height ?? 35)) + 'mm'
+            + ';--footer-height:' + (Number(effectiveZones(config).footer_height ?? 20)) + 'mm;';
 
         style.textContent = 'html .page{width:' + paper.width + 'mm;box-sizing:border-box;'
             + vars
@@ -1358,6 +1359,25 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         layoutState.pristine = snapshot(editor);
         layoutState.refresh();
     };
+
+    // CGE-50: the version's margins and header/footer heights, edited on the sheet or on
+    // a band. They live in `config.geometry` like a custom size, so the save carries them
+    // and the canvas, the server checks and the PDF all read the same values.
+    mountGeometryPanel(editor, config, {
+        root: chrome.styles,
+        read: () => ({
+            geometry: config.geometry ?? {},
+            effective: { margins: effectiveMargins(config), zones: effectiveZones(config) },
+            paper: resolvePaper(config.geometry, config.paperFormat),
+            mode: rollMode ? 'roll' : (labelMode ? 'label' : 'sheet'),
+        }),
+        onChange: (geometry) => {
+            config.geometry = geometry;
+            applyPaper(config.geometry);
+            layoutState.markDirty?.();
+            layoutState.refresh?.();
+        },
+    });
 
     const formatSelect = chrome.toolbar?.querySelector('[data-tpl-format]');
 
@@ -2135,7 +2155,7 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         // margin, the usual shape of a line list, which the user can then resize or move.
         if (component.getAttributes?.()['data-tpl-type'] === 'line-table'
             && !component.getStyle?.().width) {
-            const margins = config.margins ?? {};
+            const margins = effectiveMargins(config);
             const left = Number(margins.left ?? 15);
             const printable = Number(config.paper?.width ?? 210) - left - Number(margins.right ?? 15);
 
@@ -2435,8 +2455,8 @@ function pageVariables(config) {
     const declarations = sides
         .map((side) => `--margin-${side}:${Number(margins[side] || 0)}mm`)
         .concat([
-            `--header-height:${Number(config.zones?.header_height ?? 35)}mm`,
-            `--footer-height:${Number(config.zones?.footer_height ?? 20)}mm`,
+            `--header-height:${Number(effectiveZones(config).header_height ?? 35)}mm`,
+            `--footer-height:${Number(effectiveZones(config).footer_height ?? 20)}mm`,
         ])
         .join(';');
 
@@ -2471,7 +2491,7 @@ function moveToPoint(component, el, point) {
  * in one too.
  */
 function reparentToZone(editor, config, component) {
-    const zones = config.zones ?? {};
+    const zones = effectiveZones(config);
     const el = component?.getEl?.();
     const page = editor.Canvas.getBody?.()?.querySelector('.page');
 
@@ -2484,11 +2504,12 @@ function reparentToZone(editor, config, component) {
         return;
     }
 
-    const marginTop = Number(config.margins?.top ?? 15);
+    const margins = effectiveMargins(config);
+    const marginTop = Number(margins.top ?? 15);
     const header = Number(zones.header_height ?? 0);
     const footer = Number(zones.footer_height ?? 0);
     const pageHeight = (config.paper ?? PAPER_SIZES[config.paperFormat] ?? PAPER_SIZES.A4).height;
-    const bodyHeight = pageHeight - marginTop - Number(config.margins?.bottom ?? 15) - header - footer;
+    const bodyHeight = pageHeight - marginTop - Number(margins.bottom ?? 15) - header - footer;
 
     // Where the block's top edge is, in millimetres from the top of the printable area.
     const pageBox = page.getBoundingClientRect();
@@ -3095,4 +3116,17 @@ function dragToMillimetres(component) {
 
     remove.forEach((side) => delete style[side]);
     component.setStyle(style);
+}
+
+/**
+ * The header/footer heights the page is laid out with: the version's own where it set
+ * them (CGE-50), else the type's from the catalogue.
+ */
+export function effectiveZones(config) {
+    return { ...(config.zones ?? {}), ...(config.geometry?.zones ?? {}) };
+}
+
+/** The page margins: the version's or its format's, else the type's. */
+export function effectiveMargins(config) {
+    return config.geometry?.margins ?? config.margins ?? {};
 }

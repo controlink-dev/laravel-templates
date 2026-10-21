@@ -340,6 +340,11 @@ class Editor extends Component
             $strings['format_arg.'.$label] = __('templates::editor.format_args.'.$label);
         }
 
+        // CGE-50: the page panel (margins, header/footer heights).
+        foreach (['page', 'margin.top', 'margin.right', 'margin.bottom', 'margin.left', 'header_height', 'footer_height', 'body_too_small', 'margins_too_wide'] as $key) {
+            $strings['geometry.'.$key] = __('templates::editor.geometry.'.$key);
+        }
+
         foreach (FormatSpec::SYMBOLS as $symbol) {
             $strings['format_symbol.'.$symbol] = __('templates::editor.format_symbols.'.$symbol);
         }
