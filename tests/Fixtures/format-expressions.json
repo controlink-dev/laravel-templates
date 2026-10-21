@@ -1,0 +1,19 @@
+[
+    {"attributes": {"data-tpl-format": ""}, "expression": "{{ x }}"},
+    {"attributes": {}, "expression": "{{ x }}"},
+    {"attributes": {"data-tpl-format": "upper"}, "expression": "{{ x|upper }}"},
+    {"attributes": {"data-tpl-format": "date"}, "expression": "{{ x|date }}"},
+    {"attributes": {"data-tpl-format": "date", "data-tpl-format-pattern": "dd/MM/yyyy"}, "expression": "{{ x|date('dd/MM/yyyy') }}"},
+    {"attributes": {"data-tpl-format": "date", "data-tpl-format-pattern": "yyyy-MM-dd"}, "expression": "{{ x|date('yyyy-MM-dd') }}"},
+    {"attributes": {"data-tpl-format": "date", "data-tpl-format-pattern": "yyyy/MM/dd"}, "expression": "{{ x|date('yyyy/MM/dd') }}"},
+    {"attributes": {"data-tpl-format": "date", "data-tpl-format-pattern": "dd-MM-yyyy"}, "expression": "{{ x|date('dd-MM-yyyy') }}"},
+    {"attributes": {"data-tpl-format": "date", "data-tpl-format-pattern": "dd MMM yyyy"}, "expression": "{{ x|date('dd MMM yyyy') }}"},
+    {"attributes": {"data-tpl-format": "number"}, "expression": "{{ x|number }}"},
+    {"attributes": {"data-tpl-format": "number", "data-tpl-format-decimals": "0"}, "expression": "{{ x|number(0) }}"},
+    {"attributes": {"data-tpl-format": "number", "data-tpl-format-decimals": "4"}, "expression": "{{ x|number(4) }}"},
+    {"attributes": {"data-tpl-format": "money"}, "expression": "{{ x|money }}"},
+    {"attributes": {"data-tpl-format": "money", "data-tpl-format-decimals": "", "data-tpl-format-symbol": "after"}, "expression": "{{ x|money(null, 'after') }}"},
+    {"attributes": {"data-tpl-format": "money", "data-tpl-format-decimals": "2", "data-tpl-format-symbol": "code"}, "expression": "{{ x|money(2, 'code') }}"},
+    {"attributes": {"data-tpl-format": "money", "data-tpl-format-decimals": "3"}, "expression": "{{ x|money(3) }}"},
+    {"attributes": {"data-tpl-format": "money", "data-tpl-format-symbol": "none"}, "expression": "{{ x|money(null, 'none') }}"}
+]

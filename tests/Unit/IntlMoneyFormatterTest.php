@@ -35,6 +35,20 @@ class IntlMoneyFormatterTest extends TestCase
         $this->assertSame('HOST 5', app(MoneyFormatter::class)->format(5));
     }
 
+    public function test_decimals_and_symbol_options(): void
+    {
+        app()->setLocale('pt_PT');
+        config(['templates.money.currency' => 'EUR']);
+        $formatter = new IntlMoneyFormatter;
+        $plain = fn (string $value): string => str_replace(["\u{202F}", "\u{A0}"], ' ', $value);
+
+        $this->assertSame('1 230 000', $plain($formatter->format(1229999.98, 0, 'none')));
+        $this->assertSame('1 229 999,98 EUR', $plain($formatter->format(1229999.98, 2, 'code')));
+        $this->assertSame('€ 1 229 999,98', $plain($formatter->format(1229999.98, 2, 'before')));
+        $this->assertSame('1 229 999,98 €', $plain($formatter->format(1229999.98, 2, 'after')));
+        $this->assertSame($formatter->format(1229999.98), $formatter->format(1229999.98, null, null));
+    }
+
     public function test_non_numeric_values_format_to_an_empty_string(): void
     {
         $this->assertSame('', app(MoneyFormatter::class)->format(null));

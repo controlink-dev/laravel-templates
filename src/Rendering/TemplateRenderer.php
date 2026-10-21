@@ -116,11 +116,11 @@ class TemplateRenderer
      * exists so the formatting lives in exactly one place: a second copy of the
      * currency or number rules would be a second source of truth to keep in sync.
      */
-    public function formatValue(mixed $value, string $format): string
+    public function formatValue(mixed $value, string $format, array $arguments = []): string
     {
         $filter = $this->filters()[$format] ?? null;
 
-        return $filter ? $filter($value) : (string) $value;
+        return $filter ? $filter($value, ...array_values($arguments)) : (string) $value;
     }
 
     /**
