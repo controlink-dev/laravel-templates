@@ -9,6 +9,7 @@ use Controlink\Templates\Output\Pdf\LayoutValidator;
 use Controlink\Templates\Templates;
 use Controlink\Templates\Tests\Concerns\BuildsLayouts;
 use Controlink\Templates\Tests\TestCase;
+use Controlink\Templates\Toolkit\Documents;
 use Controlink\Templates\Types\TemplateType;
 
 /**
@@ -295,6 +296,222 @@ class LayoutValidatorTest extends TestCase
         $this->assertSame([], $this->problems(
             $this->layoutWithRectangleOverTheIssuerVatNumber('#000000', '0mm'),
         ));
+    }
+
+    /* -----------------------------------------------------------------------
+     * Occlusion (CGE-27): V-15 blocks a covered legal field, V-18 warns otherwise
+     * -------------------------------------------------------------------- */
+
+    public function test_v15_rejects_an_image_over_a_legal_field(): void
+    {
+        $this->assertHasProblem('V-15', $this->layoutWithCover(
+            'emitente.nif',
+            $this->image(['left' => '90mm', 'top' => '0mm', 'width' => '60mm', 'height' => '6mm']),
+            ['width' => '40mm', 'height' => '4mm'],
+        ));
+    }
+
+    public function test_v15_rejects_an_image_over_the_legal_qr(): void
+    {
+        $layout = $this->layoutWithCover(
+            'documento.qr',
+            $this->image(['left' => '150mm', 'top' => '0mm', 'width' => '20mm', 'height' => '20mm'], 'footer'),
+        );
+
+        $occluded = array_values(array_filter(
+            $this->problems($layout),
+            fn (array $problem): bool => $problem['code'] === 'V-15',
+        ));
+
+        $this->assertCount(1, $occluded);
+        $this->assertSame('tpl-code-'.md5('documento.qr'), $occluded[0]['component_id']);
+    }
+
+    /** A covered field that the law does not require is the user's call: warned, not refused. */
+    public function test_v18_warns_but_does_not_block_a_covered_non_legal_field(): void
+    {
+        $layout = $this->layoutWithCover(
+            'documento.data_bens',
+            $this->image(['left' => '0mm', 'top' => '0mm', 'width' => '300mm', 'height' => '40mm']),
+            ['width' => '40mm', 'height' => '4mm'],
+        );
+
+        $codes = array_column($this->problems($layout), 'code');
+        $this->assertNotContains('V-18', $codes, 'validate() returns blocking problems only.');
+
+        $occlusions = $this->occlusions($layout);
+        $warned     = array_values(array_filter($occlusions, fn (array $o): bool => $o['code'] === 'V-18'));
+
+        $this->assertCount(1, $warned);
+        $this->assertStringContainsString('Data dos bens/serviços', $warned[0]['message']);
+        $this->assertNotContains('V-15', array_column($occlusions, 'code'));
+    }
+
+    public function test_v18_warns_on_a_covered_non_legal_code_slot(): void
+    {
+        $layout = $this->layout(array_merge($this->defaultBlocks(self::TYPE_CODE), [
+            [
+                'type'       => 'code-slot',
+                'zone'       => 'footer',
+                'id'         => 'tpl-fixed-code',
+                'attributes' => ['data-tpl-code-type' => 'qr'],
+                'style'      => ['position' => 'absolute', 'left' => '100mm', 'top' => '0mm', 'width' => '20mm', 'height' => '20mm'],
+            ],
+            $this->image(['left' => '100mm', 'top' => '0mm', 'width' => '20mm', 'height' => '20mm'], 'footer'),
+        ]));
+
+        $warned = array_values(array_filter(
+            $this->occlusions($layout),
+            fn (array $o): bool => $o['code'] === 'V-18' && $o['component_id'] === 'tpl-fixed-code',
+        ));
+
+        $this->assertCount(1, $warned);
+        $this->assertStringContainsString(__('templates::editor.blocks.code_slot'), $warned[0]['message']);
+    }
+
+    /** The B4 case: a grey band over the total, in the body, on a field with no height. */
+    public function test_occlusion_is_detected_in_the_body_zone(): void
+    {
+        $this->assertHasProblem('V-15', $this->layoutWithCover(
+            'totais.total_a_pagar',
+            $this->rectangle(['left' => '140mm', 'top' => '171mm', 'width' => '40mm', 'height' => '5mm'], '#d9d9d9', 'body'),
+            ['left' => '145mm', 'top' => '172mm', 'width' => '35mm'],
+            'body',
+        ));
+    }
+
+    /**
+     * A field with no stated height is one line of its own font (blocks never wrap), so
+     * a band starting just under that line does not cover it. At the 12pt default the
+     * line would reach it.
+     */
+    public function test_a_field_with_no_height_is_one_line_tall(): void
+    {
+        $layout = $this->layoutWithCover(
+            'totais.total_a_pagar',
+            $this->rectangle(['left' => '140mm', 'top' => '175mm', 'width' => '40mm', 'height' => '5mm'], '#000000', 'body'),
+            ['left' => '145mm', 'top' => '172mm', 'width' => '35mm'],
+            'body',
+        );
+
+        $this->assertNotContains('V-15', array_column($this->problems($layout), 'code'));
+    }
+
+    /** The editor drops every image with a transparent pixel until a file is chosen. */
+    public function test_the_empty_image_placeholder_does_not_occlude(): void
+    {
+        $layout = $this->layoutWithCover(
+            'emitente.nif',
+            $this->image(
+                ['left' => '90mm', 'top' => '0mm', 'width' => '60mm', 'height' => '6mm'],
+                'header',
+                'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+            ),
+            ['width' => '40mm', 'height' => '4mm'],
+        );
+
+        $this->assertNotContains('V-15', array_column($this->problems($layout), 'code'));
+    }
+
+    public function test_a_translucent_image_does_not_occlude(): void
+    {
+        $layout = $this->layoutWithCover(
+            'emitente.nif',
+            $this->image(['left' => '90mm', 'top' => '0mm', 'width' => '60mm', 'height' => '6mm', 'opacity' => '0.5']),
+            ['width' => '40mm', 'height' => '4mm'],
+        );
+
+        $this->assertNotContains('V-15', array_column($this->problems($layout), 'code'));
+    }
+
+    /** A separator line grazing the bottom of the field is within the engine's tolerance. */
+    public function test_a_rule_touching_a_legal_field_does_not_occlude(): void
+    {
+        $layout = $this->layoutWithCover(
+            'emitente.nif',
+            $this->rectangle(['left' => '90mm', 'top' => '3.7mm', 'width' => '60mm', 'height' => '0.26mm'], '#000000'),
+            ['width' => '40mm', 'height' => '4mm'],
+        );
+
+        $this->assertNotContains('V-15', array_column($this->problems($layout), 'code'));
+    }
+
+    public function test_text_over_text_does_not_occlude(): void
+    {
+        $layout = $this->layoutWithCover(
+            'emitente.nif',
+            [
+                'type'  => 'static-text',
+                'zone'  => 'header',
+                'id'    => 'tpl-cover',
+                'style' => ['position' => 'absolute', 'left' => '90mm', 'top' => '0mm', 'width' => '60mm', 'height' => '6mm'],
+            ],
+            ['width' => '40mm', 'height' => '4mm'],
+        );
+
+        $this->assertNotContains('V-15', array_column($this->problems($layout), 'code'));
+    }
+
+    /**
+     * A talão is a fiscal invoice too. Its blocks stay absolutely positioned inside their
+     * zone (a roll only pads the page), so two blocks of one zone overlap there exactly as
+     * on a sheet.
+     */
+    public function test_occlusion_is_detected_on_a_roll(): void
+    {
+        $layout = $this->layoutWithRectangleOverTheIssuerVatNumber('#000000');
+
+        $codes = array_column(
+            app(LayoutValidator::class)->validate($layout['project_data'], $this->rollType(), $layout['html'], $layout['css']),
+            'code',
+        );
+
+        $this->assertContains('V-15', $codes);
+    }
+
+    /**
+     * An underline drawn in the descender band of a field with no height is not covering
+     * it: the field's box is its em box, not a line box padded below the ink. Medium
+     * (0.53mm) and thick (0.79mm) rules exceed the tolerance by their thickness alone.
+     */
+    public function test_a_thick_rule_under_a_field_with_no_height_does_not_occlude(): void
+    {
+        foreach (['0.53mm' => '2.8mm', '0.79mm' => '2.6mm'] as $thickness => $top) {
+            $layout = $this->layoutWithCover(
+                'emitente.nif',
+                $this->rectangle(['left' => '90mm', 'top' => $top, 'width' => '60mm', 'height' => $thickness], '#000000'),
+                ['width' => '40mm'],
+            );
+
+            $this->assertNotContains('V-15', array_column($this->problems($layout), 'code'), "A {$thickness} rule at {$top}.");
+        }
+    }
+
+    public function test_documents_split_occlusions_by_severity(): void
+    {
+        $layout = $this->layout(array_merge(
+            array_map(function (array $block): array {
+                if (in_array($block['binding'] ?? null, ['emitente.nif', 'documento.data_bens'], true)) {
+                    $block['style']['width']  = '40mm';
+                    $block['style']['height'] = '4mm';
+                }
+
+                return $block;
+            }, $this->defaultBlocks(self::TYPE_CODE)),
+            [$this->image(['left' => '0mm', 'top' => '0mm', 'width' => '180mm', 'height' => '40mm'])],
+        ));
+
+        $type     = Templates::type(self::TYPE_CODE);
+        $fields   = array_values($type->bindings);
+        $geometry = $type->pdf + ['zones' => $type->initialLayout['zones'] ?? []];
+
+        $legal    = app(Documents::class)->legalOcclusions($layout, $fields, $geometry);
+        $warnings = app(Documents::class)->layoutWarnings($layout, $fields, $geometry);
+
+        $this->assertNotSame([], $legal);
+        $this->assertNotSame([], $warnings);
+        $this->assertSame(['V-15'], array_values(array_unique(array_column($legal, 'code'))));
+        $this->assertSame(['V-18'], array_values(array_unique(array_column($warnings, 'code'))));
     }
 
     /**
@@ -682,6 +899,87 @@ class LayoutValidatorTest extends TestCase
                 'background-color' => $background,
             ],
         ]]));
+    }
+
+    /**
+     * The default layout with one block restyled (and optionally moved to another zone)
+     * and a covering block appended after it, so the cover is later in document order.
+     *
+     * @param  array<string, mixed>  $cover
+     * @param  array<string, string>  $fieldStyle
+     * @return array{project_data: array<string, mixed>, html: string, css: string}
+     */
+    private function layoutWithCover(string $binding, array $cover, array $fieldStyle = [], ?string $zone = null): array
+    {
+        $blocks = array_map(
+            function (array $block) use ($binding, $fieldStyle, $zone): array {
+                if ($this->bindingOf($block) !== $binding) {
+                    return $block;
+                }
+
+                $block['style'] = array_merge($block['style'] ?? [], $fieldStyle);
+
+                return $zone === null ? $block : [...$block, 'zone' => $zone];
+            },
+            $this->defaultBlocks(self::TYPE_CODE),
+        );
+
+        return $this->layout(array_merge($blocks, [$cover]));
+    }
+
+    /**
+     * An image block with a real (opaque) file unless another source is given.
+     *
+     * @param  array<string, string>  $style
+     * @return array<string, mixed>
+     */
+    private function image(array $style, string $zone = 'header', ?string $source = null): array
+    {
+        return [
+            'type'       => 'image',
+            'zone'       => $zone,
+            'id'         => 'tpl-cover',
+            'attributes' => ['src' => $source ?? 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='],
+            'style'      => ['position' => 'absolute'] + $style,
+        ];
+    }
+
+    /**
+     * @param  array<string, string>  $style
+     * @return array<string, mixed>
+     */
+    private function rectangle(array $style, string $background, string $zone = 'header'): array
+    {
+        return [
+            'type'  => 'rule',
+            'zone'  => $zone,
+            'id'    => 'tpl-cover',
+            'style' => ['position' => 'absolute', 'background-color' => $background] + $style,
+        ];
+    }
+
+    /**
+     * @param  array{project_data: array<string, mixed>, html: string, css: string}  $layout
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    private function occlusions(array $layout): array
+    {
+        return app(LayoutValidator::class)->occlusions($layout['project_data'], Templates::type(self::TYPE_CODE));
+    }
+
+    /** The invoice type laid out on an 80mm roll. */
+    private function rollType(): TemplateType
+    {
+        $base = Templates::type(self::TYPE_CODE);
+
+        return new TemplateType(
+            $base->code, $base->label, $base->output, $base->seeded, $base->layoutRevision,
+            $base->bindings, $base->nodes, $base->fixture, $base->fixtureRepeats,
+            $base->initialLayout,
+            ['medium' => 'roll', 'width_mm' => 80, 'fit' => 'measure', 'max_height_mm' => 4000,
+                'margins' => ['top' => 3, 'right' => 3, 'bottom' => 3, 'left' => 3]],
+            [],
+        );
     }
 
 }

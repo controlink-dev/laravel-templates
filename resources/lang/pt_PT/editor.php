@@ -235,6 +235,7 @@ return [
         'legal_locked' => '«:field» não pode ser eliminado. É um campo obrigatório por lei neste tipo de documento.',
         'close'        => 'Fechar aviso',
         'confirm_delete_legal' => '«:field» é um campo obrigatório por lei. Eliminar à mesma? Terá de o voltar a colocar antes de o poder pôr em produção.',
+        'confirm_occlusion'    => 'Alguns campos podem não aparecer impressos porque têm outro elemento por cima. Gravar à mesma?',
     ],
 
     // Botões dos diálogos de confirmação/aviso do próprio editor (dialog.js), em vez
@@ -267,6 +268,7 @@ return [
         'scope'             => '«:field» tem de aparecer em todas as páginas, logo só pode estar no cabeçalho ou no rodapé.',
         'outside_printable' => '«:field» está fora da área imprimível.',
         'occluded'          => '«:field» está coberto por um elemento opaco colocado por cima.',
+        'occluded_warning'  => '«:field» está tapado por outro elemento colocado por cima e pode não aparecer impresso.',
     ],
 
     // Rotas (Http\Controllers\*), mensagens de sucesso.

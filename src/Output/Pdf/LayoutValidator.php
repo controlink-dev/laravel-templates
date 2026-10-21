@@ -20,6 +20,10 @@ use Controlink\Templates\Types\TemplateType;
  *   no position until something lays it out, so V-04 and V-14 stay silent there and
  *   R-04 measures it on the rendered PDF instead. A block with no explicit width has
  *   no width either: the rules check the edges the document states and no others.
+ * - **Occlusion is the exception: it is checked in every zone of a sheet.** It compares
+ *   two blocks of the same zone in that zone's own coordinates, so it needs no zone band
+ *   (and holds on a roll), and a text block with no height is one line tall (blocks never
+ *   wrap). It still needs a stated width.
  * - **Truncation has no static rule at all.** It depends on font metrics and resolved
  *   box widths, and an estimate that is wrong in either direction is worse than no
  *   estimate — a false refusal blocks a layout that fits, a false pass ships a cut
@@ -75,9 +79,33 @@ class LayoutValidator
         $problems = array_merge(
             $this->checkStructure($document, $bindings, $type, $html, $css),
             $this->checkLegalVisibility($document, $bindings, $type),
+            // Only the blocking half: a covered field the law does not require is a
+            // warning (V-18), which the host asks the user to confirm, never a refusal.
+            array_filter(
+                $this->checkOcclusion($document, $bindings, $type),
+                fn (array $problem): bool => $problem['code'] === 'V-15',
+            ),
         );
 
         return array_values($problems);
+    }
+
+    /**
+     * Every field or code slot covered by a block placed on top of it (CGE-27).
+     *
+     * V-15 when the covered binding is legal — it blocks saving and activation — and V-18
+     * otherwise, a warning: the field may not appear when printed, and that is the user's
+     * call. Occlusion is a property of the layout the render is blind to (covered text is
+     * still in the PDF's content stream), so it is decided here, from the stated boxes.
+     *
+     * @param  array<string, mixed>  $projectData
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    public function occlusions(array $projectData, TemplateType $type): array
+    {
+        $document = LayoutDocument::fromProjectData($projectData);
+
+        return $this->checkOcclusion($document, $this->bindingsByKey($type, $this->placedKeys($projectData)), $type);
     }
 
     /**
@@ -435,12 +463,6 @@ class LayoutValidator
             if ($this->exceeds($absolute, $printable, PageGeometry::fromType($type->pdf)->medium !== 'roll')) {
                 $problems[] = $this->problem('V-14', $field, 'outside_printable', $label);
             }
-
-            $occluder = $this->occluderOf($document, $field, $zoneBox);
-
-            if ($occluder !== null) {
-                $problems[] = $this->problem('V-15', $field, 'occluded', $label);
-            }
         }
 
         return $problems;
@@ -670,57 +692,163 @@ class LayoutValidator
         return false;
     }
 
-    /**
-     * An opaque block, later in document order, whose box covers the field's.
-     *
-     * Both boxes have to be fully stated for this to mean anything, which in practice
-     * limits it to a rectangle or an image over a sized field. The general case — a
-     * logo dropped over an auto-width legal field — is caught on the rendered PDF by
-     * R-04.
-     *
-     * @param  array<string, mixed>  $field
-     * @param  array{left: float, top: float, width: float, height: float}  $zoneBox
-     * @return array<string, mixed>|null
-     */
-    private function occluderOf(LayoutDocument $document, array $field, array $zoneBox): ?array
-    {
-        $target = $document->boxOf($field);
+    /* -----------------------------------------------------------------------
+     * Occlusion (V-15 legal, V-18 warning)
+     * -------------------------------------------------------------------- */
 
-        if ($target['width'] === null || $target['height'] === null
-            || $target['left'] === null || $target['top'] === null) {
-            return null;
+    /**
+     * The placeholder the editor gives an image before a file is chosen (`TRANSPARENT_PIXEL`
+     * in resources/js/editor/components.js). It paints nothing, so it hides nothing.
+     */
+    private const EMPTY_IMAGE = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
+    /** The font size a text block prints at when it states none (the browser's 16px). */
+    private const DEFAULT_FONT_PT = 12.0;
+
+    /**
+     * Each covered data field and code slot, once, against the first block on top of it.
+     *
+     * Boxes are compared relative to their zone, so any zone qualifies — the body's blocks
+     * are absolutely positioned too — and so does a roll: it only pads the page, and two
+     * blocks of one zone overlap there exactly as on a sheet.
+     *
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    private function checkOcclusion(LayoutDocument $document, array $bindings, TemplateType $type): array
+    {
+        $problems = [];
+
+        foreach ($document->blocks() as $target) {
+            $blockType = $target['attributes']['data-tpl-type'] ?? '';
+
+            if (! in_array($blockType, ['data-field', 'code-slot'], true)) {
+                continue;
+            }
+
+            $key = $target['attributes']['data-tpl-binding'] ?? '';
+
+            // An unknown binding is V-01's to report; a code slot with no binding prints
+            // fixed text and is required by nobody.
+            if ($blockType === 'data-field' && ! isset($bindings[$key])) {
+                continue;
+            }
+
+            $binding = $bindings[$key] ?? null;
+            $box     = $this->occlusionBox($document, $target);
+
+            if ($box === null || $this->firstOccluder($document, $target, $box) === null) {
+                continue;
+            }
+
+            $label = ['field' => $binding['label'] ?? __('templates::editor.blocks.code_slot')];
+
+            $problems[] = ($binding['legal'] ?? false)
+                ? $this->problem('V-15', $target, 'occluded', $label)
+                : $this->problem('V-18', $target, 'occluded_warning', $label);
         }
 
+        return $problems;
+    }
+
+    /**
+     * @param  array<string, mixed>  $target
+     * @param  array{left: float, top: float, width: float, height: float}  $box
+     * @return array<string, mixed>|null
+     */
+    private function firstOccluder(LayoutDocument $document, array $target, array $box): ?array
+    {
+        $tolerance = (float) config('templates.geometry_tolerance_mm', 0.5);
+
         foreach ($document->blocks() as $candidate) {
-            if ($candidate['index'] <= $field['index'] || $candidate['zone'] !== $field['zone']) {
+            // Later in document order paints on top; there is no z-index to say otherwise.
+            if ($candidate['index'] <= $target['index'] || $candidate['zone'] !== $target['zone']
+                || in_array($target['id'], array_column($candidate['ancestors'], 'id'), true)
+                || ! $this->isOpaqueOccluder($document, $candidate)) {
                 continue;
             }
 
-            $style      = $document->styleOf($candidate);
-            $background = Colour::parse($style['background-color'] ?? $style['background'] ?? null);
+            $cover = $this->occlusionBox($document, $candidate);
 
-            if ($background === null || ! $background->isOpaque()) {
+            if ($cover === null) {
                 continue;
             }
 
-            $box = $document->boxOf($candidate);
+            // Overlapping by more than the engine's rounding on both axes: a separator line
+            // grazing the field's line box is not covering it.
+            $width  = min($box['left'] + $box['width'], $cover['left'] + $cover['width']) - max($box['left'], $cover['left']);
+            $height = min($box['top'] + $box['height'], $cover['top'] + $cover['height']) - max($box['top'], $cover['top']);
 
-            if ($box['left'] === null || $box['top'] === null
-                || $box['width'] === null || $box['height'] === null) {
-                continue;
-            }
-
-            $overlapsHorizontally = $box['left'] < $target['left'] + $target['width']
-                && $target['left'] < $box['left'] + $box['width'];
-            $overlapsVertically = $box['top'] < $target['top'] + $target['height']
-                && $target['top'] < $box['top'] + $box['height'];
-
-            if ($overlapsHorizontally && $overlapsVertically) {
+            if ($width > $tolerance && $height > $tolerance) {
                 return $candidate;
             }
         }
 
         return null;
+    }
+
+    /**
+     * Whether a block paints over whatever is under it: an opaque background, an image
+     * with a file (unless translucent, like a translucent background), or a code — a QR
+     * prints its white quiet zone across its whole slot. Text alone hides nothing.
+     *
+     * @param  array<string, mixed>  $block
+     */
+    private function isOpaqueOccluder(LayoutDocument $document, array $block): bool
+    {
+        $style      = $document->styleOf($block);
+        $background = Colour::parse($style['background-color'] ?? $style['background'] ?? null);
+
+        if ($background !== null && $background->isOpaque()) {
+            return true;
+        }
+
+        $blockType = $block['attributes']['data-tpl-type'] ?? '';
+
+        if ($blockType === 'code-slot') {
+            return true;
+        }
+
+        if ($blockType !== 'image') {
+            return false;
+        }
+
+        $source = $block['attributes']['src'] ?? '';
+
+        return str_starts_with($source, 'data:')
+            && $source !== self::EMPTY_IMAGE
+            && (! isset($style['opacity']) || (float) $style['opacity'] >= 1.0);
+    }
+
+    /**
+     * The block's box relative to its zone, or null when the layout does not state it.
+     *
+     * A text block with no height is one line of its own font: blocks never wrap
+     * (`white-space: nowrap` in print.css). That line is measured as its em box, the
+     * font size, not a padded line box: the band under the descenders is where an
+     * underline is drawn, and counting it would refuse a rule that only touches the text.
+     * A missing width says nothing (auto-width fields are a known gap of the static rule),
+     * and neither does anything else missing.
+     *
+     * @param  array<string, mixed>  $block
+     * @return array{left: float, top: float, width: float, height: float}|null
+     */
+    private function occlusionBox(LayoutDocument $document, array $block): ?array
+    {
+        $box    = $document->boxOf($block);
+        $height = $box['height'];
+
+        if ($height === null
+            && in_array($block['attributes']['data-tpl-type'] ?? '', ['data-field', 'static-text'], true)) {
+            $points = LayoutDocument::points($document->styleOf($block)['font-size'] ?? null) ?? self::DEFAULT_FONT_PT;
+            $height = $points * 25.4 / 72;
+        }
+
+        if ($box['left'] === null || $box['top'] === null || $box['width'] === null || $height === null) {
+            return null;
+        }
+
+        return ['left' => $box['left'], 'top' => $box['top'], 'width' => $box['width'], 'height' => $height];
     }
 
     /**

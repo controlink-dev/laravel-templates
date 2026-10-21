@@ -102,6 +102,34 @@ final class Documents
     }
 
     /**
+     * The layout's warnings: fields not required by law that are covered by a block on top
+     * of them (V-18). They do not refuse a save; the host asks the user to confirm.
+     *
+     * @param  array{project_data: array<string, mixed>, html?: string, css?: string}  $layout
+     * @param  list<array<string, mixed>>  $fields
+     * @param  array<string, mixed>  $geometry
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    public function layoutWarnings(array $layout, array $fields, array $geometry = []): array
+    {
+        return $this->occlusionsCoded('V-18', $layout, $fields, $geometry);
+    }
+
+    /**
+     * The covered legal fields and codes (V-15), alone: what activation must refuse without
+     * re-running every other layer-1 rule. The render cannot see occlusion.
+     *
+     * @param  array{project_data: array<string, mixed>, html?: string, css?: string}  $layout
+     * @param  list<array<string, mixed>>  $fields
+     * @param  array<string, mixed>  $geometry
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    public function legalOcclusions(array $layout, array $fields, array $geometry = []): array
+    {
+        return $this->occlusionsCoded('V-15', $layout, $fields, $geometry);
+    }
+
+    /**
      * Layer 2: validation of a rendered PDF.
      *
      * @param  list<array<string, mixed>>  $fields
@@ -125,6 +153,20 @@ final class Documents
     public function inputHash(array $projectData, ?array $geometry = null): string
     {
         return CanonicalHash::of($projectData, $geometry);
+    }
+
+    /**
+     * @param  array{project_data: array<string, mixed>, html?: string, css?: string}  $layout
+     * @param  list<array<string, mixed>>  $fields
+     * @param  array<string, mixed>  $geometry
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    private function occlusionsCoded(string $code, array $layout, array $fields, array $geometry): array
+    {
+        return array_values(array_filter(
+            $this->layoutValidator->occlusions($layout['project_data'], $this->carrier($fields, $geometry)),
+            fn (array $problem): bool => $problem['code'] === $code,
+        ));
     }
 
     /**
