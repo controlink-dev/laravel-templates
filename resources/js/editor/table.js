@@ -35,6 +35,8 @@ function registerLineTable(editor, config) {
             defaults: {
                 name: config.strings['block.line_table'],
                 tagName: 'div',
+                // A block holds no other block; see the data field (CGE-48).
+                droppable: false,
                 attributes: {
                     class: 'block block--lines',
                     'data-tpl-type': 'line-table',
@@ -522,6 +524,8 @@ function registerCodeSlot(editor, config) {
             defaults: {
                 name: config.strings['block.code_slot'],
                 tagName: 'div',
+                // A block holds no other block; see the data field (CGE-48).
+                droppable: false,
                 attributes: {
                     class: 'block block--code',
                     'data-tpl-type': 'code-slot',

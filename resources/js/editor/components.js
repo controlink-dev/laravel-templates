@@ -55,6 +55,8 @@ function registerPageNumber(editor, config) {
             defaults: {
                 name: config.strings['block.page_number'],
                 tagName: 'div',
+                // A block holds no other block; see the data field (CGE-48).
+                droppable: false,
                 attributes: {
                     class: 'block block--page-number',
                     'data-tpl-type': 'page-number',
@@ -174,6 +176,10 @@ function registerZones(editor, config) {
                 // The sheet is the container, not a layer: leaving it in the tree puts
                 // an extra level above the three bands and nothing can be done to it.
                 layerable: false,
+                // It holds its bands and nothing else. It is also the root of the layer
+                // tree, so a block let go between two band rows landed on the sheet,
+                // outside every band (CGE-48).
+                droppable: false,
                 removable: false,
                 copyable: false,
                 draggable: false,
@@ -195,6 +201,8 @@ function registerStaticText(editor, config) {
             defaults: {
                 name: config.strings['block.static_text'],
                 tagName: 'div',
+                // A block holds no other block; see the data field (CGE-48).
+                droppable: false,
                 attributes: { class: 'block block--text', 'data-tpl-type': 'static-text' },
                 // Editable as text, but never as HTML: the content is written as a
                 // single textnode, so no markup can be pasted in.
@@ -301,6 +309,16 @@ function registerDataField(editor, config) {
                     'data-tpl-format': '',
                 },
                 editable: false,
+                /*
+                 * Not a container, like every block (CGE-48). GrapesJS makes any
+                 * component droppable unless its type says otherwise, and the layer
+                 * tree sorts in nested mode: a block let go under the last row of a band
+                 * went INSIDE that row's field. `renderPreviewText` then emptied the
+                 * field's children for good, so the moved block lost its `#id` rule
+                 * (size, colour, font) and its parent, and came back with only a top and
+                 * a left. Before CGE-47 nothing put it back, and it vanished on save.
+                 */
+                droppable: false,
                 /*
                  * The node, the binding and the format are ATTRIBUTES, not model
                  * properties. Traits with `changeProp` would live only in the model,
@@ -588,6 +606,8 @@ function registerImage(editor, config) {
                 name: config.strings['block.image'],
                 tagName: 'img',
                 void: true,
+                // A block holds no other block; see the data field (CGE-48).
+                droppable: false,
                 attributes: {
                     class: 'block block--image',
                     'data-tpl-type': 'image',
@@ -709,6 +729,8 @@ function registerRule(editor, config) {
                 name: config.strings['block.rule'],
                 tagName: 'div',
                 void: true,
+                // A block holds no other block; see the data field (CGE-48).
+                droppable: false,
                 attributes: { class: 'block block--rule', 'data-tpl-type': 'rule' },
                 traits: [
                     {
