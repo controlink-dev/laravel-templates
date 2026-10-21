@@ -3068,9 +3068,21 @@ function showNotice(message, scope, closeLabel) {
  */
 function dragToMillimetres(component) {
     const el = component?.getEl?.();
-    const measured = measuredBox(el);
 
-    if (!measured || !component.getAttributes?.()['data-tpl-type']) {
+    if (!el || !component.getAttributes?.()['data-tpl-type']) {
+        return;
+    }
+
+    // A block pinned right/bottom has both sides set while the drag's left/top are on
+    // it, and an auto-sized box stretches between them: its natural size is measured
+    // with the far sides released, on the element only (the model is not touched).
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    const measured = measuredBox(el);
+    el.style.right = '';
+    el.style.bottom = '';
+
+    if (!measured) {
         return;
     }
 

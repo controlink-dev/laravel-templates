@@ -18,6 +18,17 @@ const LENGTHS = [...SIDES, 'width', 'height'];
 export function wirePositionPanel(editor, root) {
     let applying = false;
 
+    // A drag writes `left`/`top` on every move; the anchor is settled once, at the end
+    // (`dragToMillimetres` in editor.js), so a block pinned right stays pinned right.
+    let dragging = false;
+
+    editor.on('component:drag:start', () => {
+        dragging = true;
+    });
+    editor.on('component:drag:end', () => {
+        dragging = false;
+    });
+
     const apply = (component, set, remove) => {
         const style = { ...component.getStyle(), ...set };
 
@@ -34,7 +45,7 @@ export function wirePositionPanel(editor, root) {
 
     SIDES.forEach((side) => {
         editor.on(`component:styleUpdate:${side}`, (component) => {
-            if (applying || !component?.getAttributes?.()['data-tpl-type']) {
+            if (applying || dragging || !component?.getAttributes?.()['data-tpl-type']) {
                 return;
             }
 

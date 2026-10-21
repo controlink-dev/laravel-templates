@@ -65,7 +65,7 @@ function registerLineTable(editor, config) {
                         label: config.strings['trait.columns'],
                     },
                 ],
-                stylable: ['left', 'top', 'font-size', 'color', 'width'],
+                stylable: ['left', 'top', 'right', 'bottom', 'font-size', 'color', 'width'],
             },
 
             init() {
@@ -617,7 +617,7 @@ function registerCodeSlot(editor, config) {
                         name: 'data-tpl-code-content',
                     },
                 ],
-                stylable: ['left', 'top', 'width', 'height'],
+                stylable: ['left', 'top', 'right', 'bottom', 'width', 'height'],
                 style: { width: minimum + 'mm', height: minimum + 'mm' },
             },
 
