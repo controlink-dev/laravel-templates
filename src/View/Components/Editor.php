@@ -258,6 +258,7 @@ class Editor extends Component
             'chrome.scope_all'      => __('templates::editor.chrome.scope_all'),
             'chrome.type'           => __('templates::editor.chrome.type'),
             'chrome.nothing_chosen' => __('templates::editor.chrome.nothing_chosen'),
+            'chrome.zone'           => __('templates::editor.chrome.zone'),
 
             'problems.heading'   => __('templates::editor.problems.heading'),
             'problems.structure' => __('templates::editor.problems.structure'),

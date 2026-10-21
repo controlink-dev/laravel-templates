@@ -26,7 +26,7 @@ import {
 import { mergeProblems } from './problems.js';
 import { confirmDialog } from './dialog.js';
 import { saveConfirmingWarnings } from './save.js';
-import { placementInZone, round, zoneAt } from './zones.js';
+import { placementInZone, round, topInZone, zoneAt, zonesFor } from './zones.js';
 
 /*
  * Mounting, and the four things that made a workspace pane hostile.
@@ -1687,6 +1687,77 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
 
     editor.on('component:selected component:deselected', renderSelection);
 
+    /* ------------------------------------------------------------ zone picker */
+
+    /*
+     * "Zone" at the top of the Field panel: the plain way to put a block in another band
+     * (CGE-48). Dragging did it badly — on the canvas the drop decides by geometry, and
+     * the layer tree only reorders within a band — and moving between bands is common
+     * enough (a field that belongs in the footer) to deserve a control of its own.
+     *
+     * Built here and not as a trait: it applies to every kind of block, and a trait
+     * would have to be declared on each type. It sits above the trait manager's own
+     * element, which GrapesJS re-renders on every selection without touching siblings.
+     */
+    const zoneField = chrome.traits ? document.createElement('div') : null;
+
+    if (zoneField) {
+        // The trait manager's own markup, so the row reads as one of the panel's fields.
+        zoneField.className = 'gjs-trt-trait__wrp tpl-zone-trait';
+        zoneField.innerHTML = '<div class="gjs-trt-trait gjs-trt-trait--select">'
+            + `<div class="gjs-label-wrp"><div class="gjs-label">${escapeHtml(config.strings['chrome.zone'])}</div></div>`
+            + '<div class="gjs-field-wrp gjs-field-wrp--select"><div class="gjs-field gjs-field-select">'
+            + '<div><select data-tpl-zone-select></select></div>'
+            + '<div class="gjs-sel-arrow"><div class="gjs-d-s-arrow"></div></div>'
+            + '</div></div></div>';
+        chrome.traits.prepend(zoneField);
+    }
+
+    const renderZonePicker = () => {
+        const select = zoneField?.querySelector('select');
+
+        if (!select) {
+            return;
+        }
+
+        const component = editor.getSelected();
+        const current = zoneOf(component);
+        const bands = editor.getWrapper()?.find('[data-tpl-zone]').map((zone) => zone.getAttributes()['data-tpl-zone']) ?? [];
+
+        // Only blocks move, and only where there is somewhere to go: a label has one band.
+        zoneField.hidden = !current || !component.getAttributes()['data-tpl-type'] || bands.length < 2;
+
+        if (zoneField.hidden) {
+            return;
+        }
+
+        // What the server would refuse is shown but not offered: see `zonesFor`.
+        const attributes = component.getAttributes();
+        const binding = config.bindings?.find((item) => item.key === attributes['data-tpl-binding']);
+        const allowed = zonesFor(attributes['data-tpl-type'], bands, {
+            everyPage: Boolean(binding?.legal && binding.scope === 'every_page'),
+        });
+
+        select.innerHTML = bands.map((zone) => `<option value="${zone}"`
+            + (zone === current ? ' selected' : '')
+            + (allowed.includes(zone) ? '' : ' disabled')
+            + `>${escapeHtml(config.strings['zone.' + zone] ?? zone)}</option>`).join('');
+    };
+
+    zoneField?.querySelector('select')?.addEventListener('change', (event) => {
+        const component = editor.getSelected();
+
+        if (component) {
+            moveToZone(editor, component, event.target.value, { flow: rollMode });
+        }
+
+        renderZonePicker();
+    });
+
+    // The tree changes under a selection too: an undo puts the block back in its band, and
+    // it does so without a `component:add` — measured, the select kept the undone band.
+    editor.on('component:selected component:deselected undo redo', renderZonePicker);
+
     /* ----------------------------------------------------------------- counts */
 
     const sync = (problemCount = 0) => {
@@ -2354,6 +2425,39 @@ function settleInto(destination, component) {
 
     destination.append(component);
     component.addStyle({ top: place.top + 'mm', left: place.left + 'mm' });
+}
+
+/**
+ * Put a block in another band because the user asked for it (CGE-48).
+ *
+ * Unlike `settleInto`, which follows where a block was dropped, this follows a choice:
+ * the block keeps its left and its style, and its top carries over — pulled up when the
+ * new band is shorter, so it does not land past the band's bottom. A block anchored by
+ * `bottom` (the totals) keeps that anchor. In a roll the bands flow and a top means
+ * nothing, so the block only changes parent.
+ */
+function moveToZone(editor, component, zone, { flow = false } = {}) {
+    const destination = editor.getWrapper()?.find(`[data-tpl-zone="${zone}"]`)?.[0];
+    const el = component.getEl?.();
+    const from = component.parent?.()?.getEl?.();
+    const to = destination?.getEl?.();
+
+    if (!destination || !el || !from || !to || zoneOf(component) === zone) {
+        return;
+    }
+
+    // Measured before the move: the top in the band it leaves, and the room in the new one.
+    const box = el.getBoundingClientRect();
+    const { top } = placementInZone(box, from.getBoundingClientRect(), PX_PER_MM);
+    const room = to.getBoundingClientRect().height / PX_PER_MM;
+
+    destination.append(component);
+
+    if (!flow && component.getStyle?.().top !== undefined) {
+        component.addStyle({ top: topInZone(top, box.height / PX_PER_MM, room) + 'mm' });
+    }
+
+    editor.select(component);
 }
 
 /** The zone a component currently lives in, by walking its ancestors. */

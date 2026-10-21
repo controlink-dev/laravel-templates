@@ -112,6 +112,7 @@ return [
         'field'          => 'Campo',
         'layers'         => 'Camadas',
         'nothing_chosen' => 'Escolhe um bloco na folha.',
+        'zone'           => 'Zona',
         'scope_any'      => 'visível em qualquer página',
         'scope_all'      => 'visível em todas as páginas',
         'type'           => 'tipo :type',

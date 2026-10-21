@@ -109,6 +109,7 @@ return [
         'field'          => 'Field',
         'layers'         => 'Layers',
         'nothing_chosen' => 'Choose a block on the sheet.',
+        'zone'           => 'Zone',
         'scope_any'      => 'visible on any page',
         'scope_all'      => 'visible on every page',
         'type'           => ':type',
