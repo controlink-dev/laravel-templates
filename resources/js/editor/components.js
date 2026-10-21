@@ -441,29 +441,24 @@ function registerDataField(editor, config) {
                 const binding = findBinding(config, this.binding());
                 const isLegal = Boolean(binding?.legal);
 
-                // A legal field is locked from deletion only while it is the single block
-                // that keeps the document compliant. A second block bound to the same
-                // legal field is redundant — the server validates every occurrence but
-                // requires no particular one (V-10 fires only on total absence) — so the
-                // extra stays deletable and the user is never trapped with a duplicate
-                // they cannot undo. Copy stays disabled on any legal field, so the toolbar
-                // never makes a fresh duplicate.
+                // A legal field is deletable like any other block, so the component toolbar
+                // shows its trash icon (CGE-26). Removing the last block that keeps the
+                // document compliant still asks for a deliberate confirm, but that guard now
+                // lives on the delete command (see the `core:component-delete` override in
+                // editor.js), so it covers the toolbar icon and the Delete key alike — it is
+                // no longer enforced by withholding the icon. Copy stays disabled on a legal
+                // field, so the toolbar never makes a fresh duplicate.
                 //
-                // The count is recomputed here and re-run across every data field by
-                // `lockLegalFields()` on add and remove, so deleting the extra re-locks
-                // the one that remains. `getWrapper()` is undefined mid-load (see
-                // `lockLegalFields`), and the safe default there is the locked one.
-                const currentBinding = this.binding();
-                const sameBinding = (editor.getWrapper()?.find('[data-tpl-type="data-field"]') ?? [])
-                    .filter((component) => component.getAttributes()['data-tpl-binding'] === currentBinding)
-                    .length;
-                const removable = !isLegal || sameBinding > 1;
-
-                // Not silent: the component toolbar is rebuilt from `removable` and
-                // `copyable`, so a silent change left the delete and duplicate icons
-                // sitting on a block that must never be deleted or duplicated.
-                if (this.get('removable') !== removable || this.get('copyable') !== !isLegal) {
-                    this.set({ removable, copyable: !isLegal });
+                // GrapesJS builds a component's toolbar once, in `initToolbar()`, reading
+                // `removable`/`copyable` at that instant, and never rebuilds it when they
+                // change. Setting them here is not enough — the restored trash icon would
+                // never appear (and a stale one would linger) — so the toolbar is refreshed
+                // by hand: unset it and let `initToolbar()` rebuild from the new flags
+                // (move + delete on a legal field, no duplicate).
+                if (this.get('removable') !== true || this.get('copyable') !== !isLegal) {
+                    this.set({ removable: true, copyable: !isLegal });
+                    this.unset('toolbar');
+                    this.initToolbar();
                 }
 
                 const marking = isLegal ? '1' : null;

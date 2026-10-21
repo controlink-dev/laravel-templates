@@ -619,8 +619,16 @@ function registerCodeSlot(editor, config) {
                 const binding = isFixed ? undefined : config.bindings.find((item) => item.key === this.binding());
                 const isLegal = Boolean(binding?.legal);
 
-                if (this.get('removable') !== !isLegal) {
-                    this.set({ removable: !isLegal, copyable: !isLegal });
+                // A legal code slot is deletable like any other (CGE-26), so its trash icon
+                // stays; removing the last one is guarded by the `core:component-delete`
+                // confirm, not by withholding the icon. Copy stays disabled on a legal slot.
+                // GrapesJS builds the toolbar once and never rebuilds it on a flag change, so
+                // refresh it by hand: unset it and let `initToolbar()` rebuild from the new
+                // flags.
+                if (this.get('removable') !== true || this.get('copyable') !== !isLegal) {
+                    this.set({ removable: true, copyable: !isLegal });
+                    this.unset('toolbar');
+                    this.initToolbar();
                 }
 
                 const marking = isLegal ? '1' : null;

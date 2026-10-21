@@ -224,7 +224,7 @@ return [
     'notices' => [
         'legal_locked' => '":field" cannot be deleted. It is a field required by law on this document type.',
         'close'        => 'Close notice',
-        'confirm_delete_legal' => '":field" is a field required by law. Delete it anyway? You will need to place it again before you can save.',
+        'confirm_delete_legal' => '":field" is a field required by law. Delete it anyway? You will need to place it again before you can put the document into production.',
     ],
 
     // Buttons of the editor's own confirm/alert dialogs (dialog.js), in place of the

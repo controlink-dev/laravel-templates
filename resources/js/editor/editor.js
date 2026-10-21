@@ -1574,40 +1574,43 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         });
     };
 
-    editor.Keymaps.remove('core:component-delete');
+    // A legal field is deletable like any other block — the toolbar shows its trash icon
+    // (CGE-26) — but removing the LAST block that keeps the document compliant goes through
+    // a deliberate confirm. The guard wraps the `core:component-delete` command itself, not
+    // the Delete/Backspace keymap, so the toolbar trash icon and the keys share the one
+    // prompt: GrapesJS wires both to this command (`tlb-delete` runs it, and it is the
+    // default keymap for backspace/delete). The confirm guards against an accidental delete,
+    // not the compliance boundary — the problems panel flags a missing legal field live, and
+    // the server refuses to activate a layout without it. Declining leaves the block untouched.
+    const defaultDelete = editor.Commands.get('core:component-delete');
 
-    // `prevent: true` matches the default GrapesJS registers for this command: it calls
-    // `preventDefault()` on the native keydown before the handler runs, same as before.
-    editor.Keymaps.add('pf:component-delete', 'backspace, delete', (ed) => {
-        const blocked = legalBlocks(ed);
+    editor.Commands.add('core:component-delete', {
+        run(ed, sender, options = {}) {
+            const blocked = options.pfConfirmed ? [] : legalBlocks(ed);
 
-        if (blocked.length > 0) {
-            // Soft lock: a legal field CAN be removed, but deliberately. The confirm is the
-            // guard against an accidental Delete, not the compliance boundary — the problems
-            // panel flags a missing legal field live, and the server refuses to save a layout
-            // without it (spec 8.1). Declining leaves the block untouched.
-            //
-            // The dialog is async, so the delete cannot run inline: `prevent: true` has
-            // already stopped the native delete, and the command runs only once the user
-            // confirms. Returning here (without deleting) is the "ask first" path.
-            confirmDialog(
-                config.strings['confirm.delete_legal'].replace(':field', legalFieldName(blocked[0])),
-                {
-                    root: config.root,
-                    confirmLabel: config.strings['dialog.confirm'],
-                    cancelLabel: config.strings['dialog.cancel'],
-                },
-            ).then((confirmed) => {
-                if (confirmed) {
-                    ed.runCommand('core:component-delete');
-                }
-            });
+            if (blocked.length > 0) {
+                // The dialog is async, so the delete cannot run inline: the command returns
+                // without deleting (the "ask first" path) and re-runs itself once the user
+                // confirms, flagged so the second pass skips the prompt and deletes.
+                confirmDialog(
+                    config.strings['confirm.delete_legal'].replace(':field', legalFieldName(blocked[0])),
+                    {
+                        root: config.root,
+                        confirmLabel: config.strings['dialog.confirm'],
+                        cancelLabel: config.strings['dialog.cancel'],
+                    },
+                ).then((confirmed) => {
+                    if (confirmed) {
+                        ed.runCommand('core:component-delete', { ...options, pfConfirmed: true });
+                    }
+                });
 
-            return;
-        }
+                return undefined;
+            }
 
-        ed.runCommand('core:component-delete');
-    }, { prevent: true });
+            return defaultDelete.run.call(defaultDelete, ed, sender, options);
+        },
+    });
 
     /* --------------------------------------------------------------- selection */
 
