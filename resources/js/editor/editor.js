@@ -27,6 +27,7 @@ import { mergeProblems } from './problems.js';
 import { confirmDialog } from './dialog.js';
 import { saveConfirmingWarnings } from './save.js';
 import { placementInZone, round, topInZone, zoneAt, zonesFor } from './zones.js';
+import { clampMove, wheelMove } from './pan.js';
 
 /*
  * Mounting, and the four things that made a workspace pane hostile.
@@ -220,7 +221,7 @@ async function mountEditor(el) {
         },
         // The editing decorations, delivered to the canvas document itself. See
         // `canvasDecorations()` for why they cannot live in `editor.css`.
-        canvasCss: `:root{--tpl-accent:${accent};--tpl-desk:${desk}}` + canvasDecorations(paper, rollMode),
+        canvasCss: `:root{--tpl-accent:${accent};--tpl-desk:${desk}}` + canvasDecorations(paper, rollMode, config.editable),
         blockManager: { appendTo: chrome.blocks },
         // Only the reduced set (spec 6.6): no flex, no grid, no transitions.
         styleManager: { appendTo: chrome.styles, sectors: styleManagerSectors(config.strings) },
@@ -697,7 +698,7 @@ function parseJson(value, fallback) {
  * Every rule hangs off a class on the canvas body, so the toolbar can turn each one on
  * and off, and the printed document carries none of them.
  */
-function canvasDecorations(paper, rollMode = false) {
+function canvasDecorations(paper, rollMode = false, editable = true) {
     return `
         /*
          * The page width in the canvas. The print stylesheet fixes .page to the A4 sheet
@@ -909,6 +910,28 @@ function canvasDecorations(paper, rollMode = false) {
             border: 0;
             background: transparent;
         }
+    ` + (editable ? blockCursors() : '');
+}
+
+/**
+ * The pointer over a block says what a click does.
+ *
+ * Without a rule the browser shows the text I-beam over any text, which promised an edit
+ * a click never makes: a click selects the block, and a data field, a table, an image or
+ * a code is moved, not typed into. Only the fixed text keeps the I-beam, since its words
+ * are what it is about. In the canvas only — print.css goes into the PDF — and only when
+ * the version can be edited: on a read-only one nothing moves, so "move" would lie too.
+ */
+function blockCursors() {
+    return `
+        .block {
+            cursor: move;
+        }
+
+        .block--text,
+        [contenteditable="true"] {
+            cursor: text;
+        }
     `;
 }
 
@@ -1070,6 +1093,53 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         }
 
         editor.Canvas.fitViewport({ gap: AIR, zoom: (z) => clampZoom(z) });
+    };
+
+    /*
+     * The wheel pans a sheet the zoom made larger than the pane: up and down, and sideways
+     * with shift. The transform gives it no scrollbar to reach its edges (see pan.js).
+     *
+     * It is bound twice, on the canvas element (the grey around the sheet) and on the
+     * frame's document (the sheet itself), both non-passive so the host page does not
+     * scroll behind. GrapesJS also re-dispatches the frame's wheel on the canvas element,
+     * carrying the original as `_parentEvent`; that copy is skipped or one tick would pan
+     * twice. A wheel that moves nothing is left alone, so the page still scrolls when the
+     * sheet fits. Ctrl/Meta is the browser's zoom, not ours.
+     */
+    const panByWheel = (event) => {
+        if (event._parentEvent || event.ctrlKey || event.metaKey) {
+            return;
+        }
+
+        const canvasEl = editor.Canvas.getElement?.();
+        const frameEl = editor.Canvas.getFrameEl?.();
+
+        if (!canvasEl || !frameEl) {
+            return;
+        }
+
+        const move = clampMove(
+            canvasEl.getBoundingClientRect(),
+            frameEl.getBoundingClientRect(),
+            wheelMove(event),
+            AIR,
+        );
+
+        if (!move.x && !move.y) {
+            return;
+        }
+
+        event.preventDefault();
+
+        const coords = editor.Canvas.getCoords();
+
+        editor.Canvas.setCoords(coords.x + move.x, coords.y + move.y);
+    };
+
+    // The frame is rebuilt on a format change, and its old document goes with it, so this
+    // runs on every frame load. Adding the same listener twice to one document is a no-op.
+    const bindFrameWheel = () => {
+        editor.Canvas.getDocument?.()?.addEventListener('wheel', panByWheel, { passive: false });
     };
 
     const commands = {
@@ -1944,6 +2014,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         const canvasEl = editor.Canvas.getElement?.();
 
         canvasEl?.addEventListener('scroll', drawRulers, { passive: true });
+        canvasEl?.addEventListener('wheel', panByWheel, { passive: false });
+        bindFrameWheel();
 
         /*
          * Both boxes are watched, and that is the fix for a sheet that sat small in a
@@ -1982,7 +2054,10 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     // loadProjectData (a saved format, e.g. the default A4) rebuilds the canvas iframe
     // asynchronously; re-apply the body size and geometry style to the new frame, or a
     // switch back to that format keeps the previous format's canvas.
-    editor.on('canvas:frame:load:body', () => applyCanvasToFrame());
+    editor.on('canvas:frame:load:body', () => {
+        applyCanvasToFrame();
+        bindFrameWheel();
+    });
 
     // The tree has to follow the geometry; see `reparentToZone`. A roll has no bands, and
     // flow mode reorders in the tree already, so there is nothing to reparent. A label has
