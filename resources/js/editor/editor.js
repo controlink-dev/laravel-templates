@@ -1366,7 +1366,9 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     mountGeometryPanel(editor, config, {
         root: chrome.styles,
         read: () => ({
-            geometry: config.geometry ?? {},
+            // A version saved before formats existed has no geometry of its own: it is the
+            // type's sheet, which the save has to name for the server to accept the change.
+            geometry: config.geometry ?? { medium: 'sheet', paper_format: config.paperFormat || 'A4' },
             effective: { margins: effectiveMargins(config), zones: effectiveZones(config) },
             paper: resolvePaper(config.geometry, config.paperFormat),
             mode: rollMode ? 'roll' : (labelMode ? 'label' : 'sheet'),
