@@ -84,6 +84,7 @@ class LayoutValidator
         $problems = array_merge(
             $this->checkStructure($document, $bindings, $type, $html, $css),
             $this->checkFormulas($document, $formulas, $bindings),
+            $this->checkFormulaExport($document, $formulas, $html),
             $this->checkLegalVisibility($document, $bindings, $type),
             // Only the blocking half: a covered field the law does not require is a
             // warning (V-18), which the host asks the user to confirm, never a refusal.
@@ -252,7 +253,13 @@ class LayoutValidator
             $columns = json_decode((string) ($table['attributes']['data-tpl-columns'] ?? '[]'), true);
 
             try {
-                foreach (is_array($columns) ? $columns : [] as $column) {
+                // Unreadable columns hide whatever the table carries — its formulas among
+                // them (CGE-37) — from every rule here, while the markup still prints them.
+                if (! is_array($columns)) {
+                    throw new InvalidArgumentException('The table\'s columns are not a list.');
+                }
+
+                foreach ($columns as $column) {
                     $this->assertKnownFormat(FormatSpec::fromColumn((array) $column));
                 }
 
@@ -505,11 +512,105 @@ class LayoutValidator
                 continue;
             }
 
+            // A table bound to no collection has no rows, so the compositor never fills
+            // its formula column: it would print empty whatever the formula says.
+            if ($formula['kind'] === 'column' && $formula['collection'] === null) {
+                $problems[] = $this->problem('V-19', $formula['block'], 'formula_scope', $replacements);
+
+                continue;
+            }
+
             $error = Formula::check($formula['source'], $knownKeys, $collections, $formula['collection']);
 
             if ($error !== null) {
                 $problems[] = $this->problem('V-19', $formula['block'], self::FORMULA_REASONS[$error->reason] ?? 'formula_syntax', $replacements);
             }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * V-01 `format_mismatch`: the formulas validated here are the ones that print.
+     *
+     * The rules above read the sources in `project_data`, but the compositor evaluates
+     * the ones in the exported markup (`FormulaSet`). The editor writes both from the same
+     * component, so they only differ when the payload was assembled by hand — and then a
+     * formula that passed V-19 is not the one that would print. Compared as `FormulaSet`
+     * reads them: fields by key, columns by collection and key (a column of an unbound
+     * table is not evaluated, and V-19 already refuses it), the last occurrence of a key
+     * winning, sources trimmed. A difference is reported on the block that holds it in
+     * `project_data` (for a column only the markup has, its collection's table), or on no
+     * block for a field only the markup has.
+     *
+     * Reported as the existing mismatch between what the block says and what it exports,
+     * rather than a V-19 key: it is the same defect V-01 already names for formats. Markup
+     * the formula reader refuses is V-07's (`assertSafe` runs the same reader).
+     *
+     * @param  list<array{kind: string, key: string, source: string, block: array<string, mixed>, collection: ?string, label: string}>  $formulas
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    private function checkFormulaExport(LayoutDocument $document, array $formulas, string $html): array
+    {
+        if ($html === '') {
+            return [];
+        }
+
+        try {
+            $exported = FormulaSet::fromHtml($html);
+        } catch (UnsafeTemplateException) {
+            return [];
+        }
+
+        $printed = [];
+
+        foreach ($exported->fields() as $key => $source) {
+            $printed['field:'.$key] = $this->formulaSource($source);
+        }
+
+        foreach ($exported->columns() as $column) {
+            $printed['column:'.$column['collection'].':'.$column['key']] = $this->formulaSource($column['source']);
+        }
+
+        $validated = [];
+        $blocks    = [];
+
+        // A column only the markup has is still pinned to its table, found by collection.
+        foreach ($exported->columns() as $column) {
+            foreach ($document->blocksOfType('line-table') as $table) {
+                if (($table['attributes']['data-tpl-collection'] ?? '') === $column['collection']) {
+                    $blocks['column:'.$column['collection'].':'.$column['key']] ??= $table;
+                }
+            }
+        }
+
+        foreach ($formulas as $formula) {
+            if ($formula['kind'] === 'column' && $formula['collection'] === null) {
+                continue;
+            }
+
+            $id = $formula['kind'] === 'field'
+                ? 'field:'.$formula['key']
+                : 'column:'.$formula['collection'].':'.$formula['key'];
+
+            $validated[$id] = $formula['source'];
+            $blocks[$id] ??= $formula['block'];
+        }
+
+        $problems = [];
+
+        foreach (array_keys($validated + $printed) as $id) {
+            if (($validated[$id] ?? null) === ($printed[$id] ?? null)) {
+                continue;
+            }
+
+            $problems[] = isset($blocks[$id])
+                ? $this->problem('V-01', $blocks[$id], 'format_mismatch', ['format' => ''])
+                : [
+                    'code'         => 'V-01',
+                    'component_id' => '',
+                    'message'      => __('templates::editor.validation.format_mismatch', ['format' => '']),
+                ];
         }
 
         return $problems;

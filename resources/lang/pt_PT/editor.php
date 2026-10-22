@@ -311,7 +311,7 @@ return [
         'formula_unknown_function'  => '«:formula»: a fórmula usa uma função que não existe.',
         'formula_unknown_reference' => '«:formula»: a fórmula usa um campo que não existe neste tipo de documento (ou o resultado de outra fórmula, o que não é permitido).',
         'formula_scope'             => '«:formula»: aqui, uma coluna das linhas só pode ser usada dentro de SUM ou COUNT.',
-        'formula_duplicate_key'     => '«:formula»: outra fórmula tem a mesma chave e imprimiria o resultado dessa. Apague esta e crie-a de novo.',
+        'formula_duplicate_key'     => '«:formula»: duas fórmulas têm a mesma chave. Apague esta e crie-a de novo.',
         'formula_without_source'    => '«:formula»: a fórmula está vazia.',
     ],
 

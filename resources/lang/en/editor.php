@@ -301,7 +301,7 @@ return [
         'formula_unknown_function'  => '":formula": the formula uses a function that does not exist.',
         'formula_unknown_reference' => '":formula": the formula uses a field that does not exist in this document type (or the result of another formula, which is not allowed).',
         'formula_scope'             => '":formula": a column of the lines can only be used inside SUM or COUNT here.',
-        'formula_duplicate_key'     => '":formula": another formula has the same key, so it would print that one\'s result. Delete this one and create it again.',
+        'formula_duplicate_key'     => '":formula": two formulas share the same key. Delete this one and create it again.',
         'formula_without_source'    => '":formula": the formula is empty.',
     ],
 

@@ -1137,6 +1137,79 @@ class LayoutValidatorTest extends TestCase
         $this->assertSame([], $validate());
     }
 
+    /**
+     * What is validated is what prints: the compositor evaluates the sources in the
+     * exported markup, so a payload whose markup carries another formula is refused.
+     */
+    public function test_formula_field_source_differing_from_the_export_is_blocked(): void
+    {
+        $layout = $this->layoutPlus($this->formulaField('formula.abc123', 'totais.total_a_pagar * 2'));
+
+        $this->assertSame([], $this->problems($layout));
+
+        $layout['html'] = str_replace('data-tpl-formula="totais.total_a_pagar * 2"', 'data-tpl-formula="TODAY()"', $layout['html'], $count);
+        $this->assertSame(1, $count);
+
+        $problems = $this->problems($layout);
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame('tpl-formula', $problems[0]['component_id']);
+        $this->assertSame(__('templates::editor.validation.format_mismatch', ['format' => '']), $problems[0]['message']);
+    }
+
+    public function test_formula_field_only_in_the_export_is_blocked(): void
+    {
+        $layout         = $this->validLayout();
+        $layout['html'] = str_replace('</body>', '<div data-tpl-type="data-field" data-tpl-binding="formula.abc123" data-tpl-formula="TODAY()">{{ formula.abc123 }}</div></body>', $layout['html']);
+
+        $this->assertHasProblem('V-01', $layout);
+    }
+
+    public function test_formula_column_source_differing_from_the_export_is_blocked(): void
+    {
+        $layout = $this->layoutWithFormulaColumns([['formula_abc123', 'linhas.quantidade * 2']]);
+
+        $this->assertSame([], $this->problems($layout));
+
+        $layout['html'] = str_replace('linhas.quantidade * 2', 'TODAY()', $layout['html'], $count);
+        $this->assertSame(1, $count);
+
+        $problems = $this->problems($layout);
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame('tpl-lines', $problems[0]['component_id']);
+    }
+
+    /** Unreadable columns in the project data hide the formulas the markup still carries. */
+    public function test_formula_malformed_columns_in_the_project_data_are_blocked(): void
+    {
+        $layout = $this->layoutWithFormulaColumns([['formula_abc123', 'linhas.quantidade * 2']]);
+
+        array_walk_recursive($layout['project_data'], function (mixed &$value, string|int $attribute): void {
+            if ($attribute === 'data-tpl-columns') {
+                $value = '[{"key":';
+            }
+        });
+
+        $problems = $this->problems($layout);
+        $this->assertContains('V-01', array_column($problems, 'code'));
+        $this->assertSame(['tpl-lines'], array_values(array_unique(array_column($problems, 'component_id'))));
+    }
+
+    /** A table bound to no collection has no rows: the compositor would print the column empty. */
+    public function test_formula_column_in_a_table_without_collection_is_v19_scope(): void
+    {
+        $layout = $this->layoutPlus([
+            'type'       => 'line-table',
+            'zone'       => 'body',
+            'id'         => 'tpl-unbound',
+            'attributes' => ['data-tpl-columns' => json_encode([
+                ['key' => 'formula_abc123', 'label' => 'Calculado', 'width' => '', 'align' => 'right', 'format' => '', 'formula' => '1 + 1'],
+            ])],
+            'style' => ['position' => 'absolute', 'left' => '0mm', 'top' => '50mm', 'width' => '180mm'],
+        ]);
+
+        $this->assertFormulaProblem('formula_scope', $layout, 'Calculado');
+    }
+
     /** The formula's descriptor reaches the occlusion check too: a covered formula is warned about. */
     public function test_formula_field_covered_by_a_block_is_a_v18_warning(): void
     {

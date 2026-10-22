@@ -66,7 +66,7 @@ class TypeCatalogueTest extends TestCase
                     }
                 }
             }, 'formula'],
-            'singleton not a string'     => [function (array &$t) { $t['nodes']['emitente']['singleton'] = true; }, 'singleton'],
+            'singleton not a string'       => [function (array &$t) { $t['nodes']['emitente']['singleton'] = true; }, 'singleton'],
             'empty binding key'            => [function (array &$t) { $t['bindings'][] = ['key' => '', 'label' => 'x', 'type' => 'text']; }, 'no key'],
             'singleton method missing'     => [function (array &$t) { $t['nodes']['emitente']['model'] = \Controlink\Templates\Tests\TestCase::class; $t['nodes']['emitente']['singleton'] = 'nope'; }, 'singleton'],
             'every_page field not in header or footer of the initial layout' => [function (array &$t) { $t['initial_layout']['html'] = str_replace('id="tpl-atcud"', 'id="tpl-atcud" data-moved="1"', preg_replace('/<div class="block block--field"[^>]*data-tpl-binding="documento.atcud"[^>]*>.*?<\/div>/s', '', $t['initial_layout']['html'])); }, 'every_page'],

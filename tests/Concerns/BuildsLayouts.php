@@ -259,7 +259,14 @@ trait BuildsLayouts
                     ? '{{ '.$block['binding'].'|'.$block['format'].' }}'
                     : '{{ '.$block['binding'].' }}');
 
-                $markup[$zone] .= '<div id="'.$id.'" class="block block--field" data-tpl-type="data-field">'.$expression.'</div>';
+                // A formula field exports its binding and source (CGE-37): the compositor
+                // evaluates what the markup carries, and layer 1 checks the two agree.
+                $formula = isset($block['field_attributes']['data-tpl-formula'])
+                    ? ' data-tpl-binding="'.htmlspecialchars((string) $block['binding'], ENT_QUOTES).'"'
+                        .' data-tpl-formula="'.htmlspecialchars((string) $block['field_attributes']['data-tpl-formula'], ENT_QUOTES).'"'
+                    : '';
+
+                $markup[$zone] .= '<div id="'.$id.'" class="block block--field" data-tpl-type="data-field"'.$formula.'>'.$expression.'</div>';
             } else {
                 $attributes = array_merge(
                     ['id' => $id, 'data-tpl-type' => $block['type']],
