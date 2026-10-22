@@ -354,6 +354,12 @@ function registerColumnsTrait(editor, config) {
                     wrapper.append(columnCard(component, column, index, config, redraw, reorder));
                 });
 
+                // A formula column belongs to a collection (V-19 refuses one in a table
+                // with none, e.g. on a label): no collection, nothing to add.
+                if (component.collectionKey() === '') {
+                    return;
+                }
+
                 const add = document.createElement('button');
                 add.type = 'button';
                 add.className = 'tpl-btn tpl-btn--secondary tpl-btn--sm tpl-columns__add';
