@@ -2130,12 +2130,28 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         bindFrameWheel();
     });
 
+    // Set when a drag starts from a row's move handle in the Layers panel (see below).
+    let layerDrag = false;
+
+    chrome.layers?.addEventListener('pointerdown', (event) => {
+        layerDrag = Boolean(event.target.closest?.('[data-toggle-move]'));
+    }, true);
+
     // The tree has to follow the geometry; see `reparentToZone`. A roll has no bands, and
     // flow mode reorders in the tree already, so there is nothing to reparent. A label has
     // no bands either — a header plus footer would exceed its height and scatter blocks.
     // The mode is checked when the drag ends, not when the handler is registered: a format
     // tab can turn the sheet into a roll (and back) after mount.
     editor.on('component:drag:end', ({ target }) => {
+        // A reorder in the Layers panel fires the same event, but moves nothing on the
+        // sheet: settling it "into the band it shows in" re-appended it at the end of its
+        // band, undoing the reorder — the drag looked like it did nothing.
+        if (layerDrag) {
+            layerDrag = false;
+
+            return;
+        }
+
         if (rollMode) {
             return;
         }
