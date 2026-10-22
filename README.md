@@ -303,6 +303,16 @@ toast, a dialog). Turn it on only where the host actually listens, or the messag
 The existing `templates:saved`/`templates:validation-failed`/`templates:activated` events
 still fire alongside it, unchanged.
 
+| Event (cancelable) | When |
+|---|---|
+| `templates:confirm` | The editor needs a yes/no answer (`detail.message`, `detail.confirmLabel`, `detail.cancelLabel`, `detail.respond(boolean)`). |
+| `templates:alert` | The editor needs to tell the user something (`detail.message`, `detail.closeLabel`, `detail.respond()`). |
+
+These let the host show the editor's dialogs in its own style. A host that will answer
+calls `event.preventDefault()` and later `event.detail.respond(...)` (only the first call
+counts; anything but `true` is a "no"). If nobody claims the event, the editor opens its
+own dialog, so no flag is needed and a confirmation is never left unanswered.
+
 `templates:refresh`, dispatched *at* `document`, makes every mounted editor pane remount —
 useful after injecting a pane into the DOM once the bundle already evaluated.
 

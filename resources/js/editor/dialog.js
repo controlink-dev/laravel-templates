@@ -7,7 +7,43 @@
  * every later event. Both return a Promise, so the caller can `await` the answer.
  *
  * Styled by `tpl-dialog` rules in editor.css. No dependencies, no host globals.
+ *
+ * A host that would rather show these in its own style can (CGE-57): each dialog is
+ * first announced as a cancelable `templates:confirm` / `templates:alert` event that
+ * bubbles from the editor root. A host that will answer claims it with preventDefault()
+ * and replies through `detail.respond`. Unclaimed, the editor's own dialog opens as
+ * before. No flag is involved, unlike `templates:message`: a lost message is harmless,
+ * but a lost confirmation would leave the editor waiting forever.
  */
+
+/**
+ * Hand a dialog to the host, if one claims it.
+ *
+ * @param {EventTarget} target  where the event is fired (it bubbles from there)
+ * @param {string} name  `templates:confirm` or `templates:alert`
+ * @param {object} detail  what the host needs to show; `respond` is added
+ * @returns {Promise<any>|null}  the host's first answer, or null when no host claimed it
+ */
+export function askHost(target, name, detail) {
+    let respond;
+    const answer = new Promise((resolve) => {
+        let answered = false;
+        respond = (value) => {
+            if (!answered) {
+                answered = true;
+                resolve(value);
+            }
+        };
+    });
+
+    const claimed = !target.dispatchEvent(new CustomEvent(name, {
+        detail: { ...detail, respond },
+        bubbles: true,
+        cancelable: true,
+    }));
+
+    return claimed ? answer : null;
+}
 
 function mount(root, { message, buttons }) {
     const host = root ?? document.body;
@@ -42,6 +78,12 @@ function mount(root, { message, buttons }) {
  * @returns {Promise<boolean>}
  */
 export function confirmDialog(message, { root, confirmLabel = 'OK', cancelLabel = 'Cancel' } = {}) {
+    const hosted = askHost(root ?? document, 'templates:confirm', { message, confirmLabel, cancelLabel });
+
+    if (hosted) {
+        return hosted.then((value) => value === true);
+    }
+
     return new Promise((resolve) => {
         const { overlay, box, actions } = mount(root, { message, buttons: 2 });
         const previousFocus = document.activeElement;
@@ -103,6 +145,12 @@ export function confirmDialog(message, { root, confirmLabel = 'OK', cancelLabel 
  * @returns {Promise<void>}
  */
 export function alertDialog(message, { root, closeLabel = 'OK' } = {}) {
+    const hosted = askHost(root ?? document, 'templates:alert', { message, closeLabel });
+
+    if (hosted) {
+        return hosted.then(() => undefined);
+    }
+
     return new Promise((resolve) => {
         const { overlay, actions } = mount(root, { message, buttons: 1 });
         const previousFocus = document.activeElement;
