@@ -303,7 +303,7 @@ function columnKind(column, collection, config) {
         ?.columns?.find((entry) => entry.key === column.key)?.default_format ?? '';
     const format = column.format || declared || '';
 
-    if (NUMERIC_FORMATS.has(format) || NUMERIC_FORMATS.has(declared)) {
+    if (NUMERIC_FORMATS.has(format)) {
         return 'number';
     }
 
@@ -341,7 +341,7 @@ export function columnQuickExamples(column, collection, config) {
         case 'number':
             return [
                 { id: 'round', label: label('round', 'Round'), source: `ROUND(${field}, 2)` },
-                { id: 'share', label: label('share', '% of the total'), source: `${field} / SUM(${field}) * 100` },
+                { id: 'share', label: label('share', '% of the total'), source: `IF(SUM(${field}) = 0, "", ${field} / SUM(${field}) * 100)` },
                 { id: 'zero_blank', label: label('zero_blank', 'Blank when zero'), source: `IF(${field} = 0, "", ${field})` },
             ];
         default:

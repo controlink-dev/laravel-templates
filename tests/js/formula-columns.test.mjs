@@ -219,7 +219,7 @@ const catalogue = [
 
     const numeric = [
         ['round', 'Arredondar', 'ROUND(lines.amount, 2)'],
-        ['share', '% do total', 'lines.amount / SUM(lines.amount) * 100'],
+        ['share', '% do total', 'IF(SUM(lines.amount) = 0, "", lines.amount / SUM(lines.amount) * 100)'],
         ['zero_blank', 'Vazio quando é zero', 'IF(lines.amount = 0, "", lines.amount)'],
     ];
     assert.deepEqual(sources({ key: 'amount', format: 'money' }), numeric);
@@ -232,6 +232,8 @@ const catalogue = [
 
     assert.deepEqual(sources({ key: 'issued', format: 'date' }), [], 'a date column: neither');
     assert.deepEqual(sources({ key: 'issued', format: '' }), [], 'a date by the catalogue: neither');
+    assert.deepEqual(sources({ key: 'quantity', format: 'date' }), [], 'a numeric column switched to date: the chosen format wins');
+    assert.deepEqual(sources({ key: 'issued', format: 'money' }).map(([id]) => id), ['round', 'share', 'zero_blank'], 'a date column switched to money gets numeric examples');
     assert.deepEqual(sources(addFormulaColumn([], 'F', () => 'aaaaaaaa')[0]), [], 'a calculated column has no field');
     assert.deepEqual(sources({ key: 'formula_bbbbbbbb', formula: '1' }), [], 'nor a column saved before formulaKey');
     assert.deepEqual(columnQuickExamples({ key: 'description' }, '', exampleConfig), [], 'no collection: nothing to name');

@@ -319,8 +319,8 @@ return [
     'formula' => [
         'label'        => 'Fórmula',
         'toggle'       => 'Calcular com uma fórmula',
-        'legal_locked' => 'Um campo legal não pode ser uma fórmula: o documento perderia o campo que a lei exige.',
-        'mandatory_locked' => 'Um campo obrigatório não pode ser uma fórmula: o documento perderia um campo que este tipo de documento exige.',
+        'legal_locked' => 'É o único bloco com este campo legal: não pode passar a fórmula. Junte outra cópia do campo se precisar de uma fórmula aqui.',
+        'mandatory_locked' => 'É o único bloco com este campo obrigatório: não pode passar a fórmula. Junte outra cópia do campo se precisar de uma fórmula aqui.',
         'source'       => 'Fórmula',
         'placeholder'  => 'ex.: totals.total_due * 2',
         'calculating'  => 'A calcular…',

@@ -1932,10 +1932,6 @@ select.tpl-pf-input {
  * The formula box's assistance (CGE-37): the suggestions right under the box, in the flow,
  * so the narrow panel never clips them.
  */
-.tpl-editor-root .tpl-formula-input {
-    position: relative;
-}
-
 .tpl-editor-root .tpl-formula-input textarea.tpl-formula-source {
     width: 100%;
     box-sizing: border-box;

@@ -253,7 +253,7 @@ class EditorComponentTest extends TestCase
             // The column examples (`columnQuickExamples` in formula-names.js), in the shapes the
             // bundle builds them, are formulas the server accepts in a column of that table.
             foreach (['UPPER(lines.description)', 'LEFT(lines.description, 40)', 'ROUND(lines.amount, 2)',
-                'lines.amount / SUM(lines.amount) * 100', 'IF(lines.amount = 0, "", lines.amount)'] as $example) {
+                'IF(SUM(lines.amount) = 0, "", lines.amount / SUM(lines.amount) * 100)', 'IF(lines.amount = 0, "", lines.amount)'] as $example) {
                 $this->assertNull(Formula::check($example, self::INVOICE_SINGULAR_KEYS, self::INVOICE_COLLECTIONS, 'lines'), $example);
             }
 
