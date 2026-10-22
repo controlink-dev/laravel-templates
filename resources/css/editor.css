@@ -2130,7 +2130,6 @@ select.tpl-pf-input {
 .tpl-editor-root .tpl-formula-library__field:hover,
 .tpl-editor-root .tpl-formula-library__function:hover {
     background: var(--tpl-surface-raised, #fff);
-    box-shadow: inset 2px 0 0 var(--tpl-primary, #4f46e5);
 }
 
 .tpl-editor-root .tpl-formula-library__field:focus-visible,
