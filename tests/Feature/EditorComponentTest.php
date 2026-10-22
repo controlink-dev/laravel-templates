@@ -175,16 +175,19 @@ class EditorComponentTest extends TestCase
 
         $strings = (new Editor($template, $version))->strings();
 
-        foreach (['label', 'toggle', 'legal_locked', 'source', 'placeholder', 'calculating', 'result', 'blank', 'functions',
-            'column_label', 'add_column', 'remove_column', 'column_placeholder', 'column_help', 'columns_overflow'] as $key) {
+        foreach (['label', 'toggle', 'legal_locked', 'source', 'placeholder', 'calculating', 'result', 'blank',
+            'column_label', 'add_column', 'remove_column', 'column_calculated', 'column_placeholder', 'column_help', 'columns_overflow'] as $key) {
             $this->assertArrayHasKey('formula.'.$key, $strings);
             $this->assertStringNotContainsString('templates::editor.', $strings['formula.'.$key], "formula.{$key} reached the browser as a translation key.");
         }
 
         // Filled in by the bundle, so the placeholders must survive translation.
         $this->assertStringContainsString(':value', $strings['formula.result']);
-        $this->assertStringContainsString(':list', $strings['formula.functions']);
-        $this->assertStringContainsString(':collection', $strings['formula.column_help']);
+
+        // The ƒx reference and its strings are gone: the "Campos e funções" library says it all.
+        foreach (['functions', 'reference_toggle', 'reference_heading', 'reference_note'] as $key) {
+            $this->assertArrayNotHasKey('formula.'.$key, $strings);
+        }
     }
 
     /**
@@ -242,6 +245,9 @@ class EditorComponentTest extends TestCase
             }
 
             $this->assertStringContainsString(':name', $strings['formula.unknown_field']);
+
+            // The line table's button (spec §6.2), word for word.
+            $this->assertSame(['en' => '+ Calculated column', 'pt_PT' => '+ Coluna calculada'][$locale], $strings['formula.add_column']);
             $this->assertStringContainsString(':field', $strings['formula.quick.text_source']);
 
             // The text example, filled with a field, is a formula the parser accepts.
@@ -262,9 +268,6 @@ class EditorComponentTest extends TestCase
 
             $this->assertStringContainsString(':example', $strings['formula.library.example']);
 
-            $this->assertStringNotContainsString('templates::editor.', $strings['formula.reference_note']);
-            $this->assertStringNotContainsString('templates::editor.', $strings['formula.reference_toggle']);
-            $this->assertStringNotContainsString('templates::editor.', $strings['formula.reference_heading']);
             $this->assertStringNotContainsString('templates::editor.', $strings['formula.functions_group']);
         }
     }

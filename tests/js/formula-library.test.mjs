@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { exampleLine, filterLibrary, functionGroups } from '../../resources/js/editor/formula-library.js';
+import { createFormulaLibrary, exampleLine, filterLibrary, functionGroups } from '../../resources/js/editor/formula-library.js';
 
 /*
  * The "Campos e funções" library (CGE-37, spec §6.3): the pure parts — what the search
@@ -99,5 +99,113 @@ describe('exampleLine', () => {
         assert.equal(exampleLine('ex.: :example', 'SUM([Linhas · Valor])'), 'ex.: SUM([Linhas · Valor])');
         assert.equal(exampleLine('ex.: :example', `"$&" & "$'" & "$1"`), `ex.: "$&" & "$'" & "$1"`);
         assert.equal(exampleLine(undefined, 'A'), 'A');
+    });
+});
+
+/*
+ * The library controller over a minimal stand-in DOM (no DOM in node): only what
+ * `createFormulaLibrary` touches. A click on a field inserts into the box; a box drawn
+ * again for the same owner is followed (`adopt`); a box gone with nothing in its place
+ * closes the library instead of inserting into a textarea no one sees.
+ */
+describe('createFormulaLibrary', () => {
+    class FakeElement {
+        constructor(tag) {
+            this.tagName = tag.toUpperCase();
+            this.children = [];
+            this.listeners = {};
+            this.dataset = {};
+            this.attributes = {};
+            this.className = '';
+            this.textContent = '';
+            this.value = '';
+            this.parent = null;
+            const classes = new Set();
+            this.classList = {
+                add: (name) => classes.add(name),
+                remove: (name) => classes.delete(name),
+                toggle: (name, on) => (on ?? !classes.has(name) ? classes.add(name) : classes.delete(name)),
+                contains: (name) => classes.has(name),
+            };
+        }
+
+        setAttribute(name, value) { this.attributes[name] = String(value); }
+        addEventListener(event, handler) { (this.listeners[event] ??= []).push(handler); }
+        append(...nodes) { nodes.forEach((node) => { node.parent = this; this.children.push(node); }); }
+        replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+        remove() { if (this.parent) { this.parent.children = this.parent.children.filter((node) => node !== this); this.parent = null; } }
+        contains(node) { return node === this || this.children.some((child) => child.contains(node)); }
+        closest() { return null; }
+        querySelectorAll() { return []; }
+        find(className) { return this.className === className ? this : this.children.map((child) => child.find(className)).find(Boolean) ?? null; }
+        fire(event) { (this.listeners[event] ?? []).forEach((handler) => handler({ preventDefault() {} })); }
+    }
+
+    const box = (owner, connected = true) => ({
+        isConnected: connected,
+        dataset: { formulaOwner: owner },
+        value: '',
+        selectionStart: 0,
+        selectionEnd: 0,
+        inputs: 0,
+        setRangeText(text) { this.value += text; },
+        focus() {},
+        dispatchEvent() { this.inputs++; },
+    });
+
+    const setUp = () => {
+        globalThis.document = { createElement: (tag) => new FakeElement(tag) };
+        const rail = new FakeElement('div');
+        const config = {
+            strings: {},
+            bindings: [{ key: 'lines', label: 'Linhas', type: 'collection', columns: [{ key: 'quantity', label: 'Quantidade' }] }],
+            nodes: [],
+        };
+
+        return { rail, library: createFormulaLibrary({ rail, config }) };
+    };
+
+    it('inserts into the box it was opened for', () => {
+        const { rail, library } = setUp();
+        const target = box('t1:formula_aaaaaaaa');
+
+        library.open({ target, rowCollection: 'lines' });
+        rail.find('tpl-formula-library__field').fire('click');
+
+        assert.equal(target.value, '[Quantidade]');
+        assert.equal(target.inputs, 1);
+    });
+
+    it('follows a box drawn again for the same owner, and only that', () => {
+        const { rail, library } = setUp();
+        const old = box('t1:formula_aaaaaaaa');
+        const other = box('t2:formula_bbbbbbbb');
+        const again = box('t1:formula_aaaaaaaa');
+
+        library.open({ target: old, rowCollection: 'lines' });
+        library.adopt(other);
+        assert.equal(library.target(), old, 'another owner is not followed');
+
+        old.isConnected = false;
+        library.adopt(again);
+        assert.equal(library.target(), again);
+
+        rail.find('tpl-formula-library__field').fire('click');
+        assert.equal(again.value, '[Quantidade]');
+        assert.equal(old.value, '');
+    });
+
+    it('closes instead of inserting into a box that is gone', () => {
+        const { rail, library } = setUp();
+        const target = box('t1:formula_aaaaaaaa');
+
+        library.open({ target, rowCollection: 'lines' });
+        target.isConnected = false;
+        rail.find('tpl-formula-library__field').fire('click');
+
+        assert.equal(target.value, '');
+        assert.equal(library.isOpen(), false);
+        assert.equal(library.target(), null);
+        assert.equal(rail.find('tpl-formula-library'), null, 'the library left the rail');
     });
 });

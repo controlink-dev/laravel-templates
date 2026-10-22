@@ -316,7 +316,6 @@ return [
         'calculating'  => 'Calculating…',
         'result'       => 'Result: :value',
         'blank'        => 'No value: prints empty.',
-        'functions'    => 'Functions: :list',
 
         // The data field's "Value: Field | Formula" and its formula box (spec §6.1, §6.4).
         // `:name` and `:field` are filled in JS.
@@ -333,11 +332,8 @@ return [
             'total'       => 'Table total',
         ],
 
-        // The autocomplete under the formula box and the ƒx function reference.
+        // The functions' group in the suggestions under the formula box.
         'functions_group'   => 'Functions',
-        'reference_toggle'  => 'Function reference',
-        'reference_heading' => 'Functions',
-        'reference_note'    => 'Decimals with a dot (0.23), arguments separated by commas. Text in double quotes.',
 
         // One per function the parser accepts (Formulas\Parser::FUNCTIONS); the bundle reads
         // the function list from these keys, so a function added there needs both here.
@@ -441,12 +437,14 @@ return [
             'TEXT'   => '"Total: " & TEXT(totals.total_due, "money")',
         ],
 
-        // A formula column of the line table: computed for each line.
+        // Line-table columns in Formula and calculated columns: computed for each line. The
+        // placeholder's example is written with keys and shown with readable names.
         'column_label'       => 'Formula',
-        'add_column'         => '+ Formula column',
-        'remove_column'      => 'Remove formula column',
+        'add_column'         => '+ Calculated column',
+        'remove_column'      => 'Remove calculated column',
+        'column_calculated'  => 'A calculated column is always a formula; to drop it, delete it.',
         'column_placeholder' => 'e.g. lines.quantity * lines.unit_price',
-        'column_help'        => 'Here :collection.<column> is the value of this line; SUM(:collection.<column>) adds up every line. The result shown is for the first line.',
+        'column_help'        => 'The result shown is for the first line.',
         'columns_overflow'   => 'The columns take more than the width of the table; make one narrower or hide one.',
     ],
 

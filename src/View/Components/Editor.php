@@ -198,7 +198,7 @@ class Editor extends Component
 
             'format.none' => __('templates::editor.formats.none'),
 
-            // Formula mode of a data field (CGE-37). `:value` and `:list` are filled in JS.
+            // Formula mode of a data field (CGE-37). `:value` is filled in JS.
             'formula.label'        => __('templates::editor.formula.label'),
             'formula.toggle'       => __('templates::editor.formula.toggle'),
             'formula.legal_locked' => __('templates::editor.formula.legal_locked'),
@@ -208,7 +208,6 @@ class Editor extends Component
             'formula.calculating'  => __('templates::editor.formula.calculating'),
             'formula.result'       => __('templates::editor.formula.result', ['value' => ':value']),
             'formula.blank'        => __('templates::editor.formula.blank'),
-            'formula.functions'    => __('templates::editor.formula.functions', ['list' => ':list']),
 
             // "Valor: Campo | Fórmula" and the box (CGE-37). `:name`/`:field` are filled in JS.
             'formula.value'             => __('templates::editor.formula.value'),
@@ -222,18 +221,16 @@ class Editor extends Component
             'formula.quick.upper'       => __('templates::editor.formula.quick.upper'),
             'formula.quick.total'       => __('templates::editor.formula.quick.total'),
 
-            // The autocomplete and the ƒx function reference (CGE-37).
+            // The autocomplete under the formula box (CGE-37).
             'formula.functions_group'   => __('templates::editor.formula.functions_group'),
-            'formula.reference_toggle'  => __('templates::editor.formula.reference_toggle'),
-            'formula.reference_heading' => __('templates::editor.formula.reference_heading'),
-            'formula.reference_note'    => __('templates::editor.formula.reference_note'),
 
-            // Formula columns of the line table (CGE-37). `:collection` is filled in JS.
+            // Formula and calculated columns of the line table (CGE-37).
             'formula.column_label'       => __('templates::editor.formula.column_label'),
             'formula.add_column'         => __('templates::editor.formula.add_column'),
             'formula.remove_column'      => __('templates::editor.formula.remove_column'),
+            'formula.column_calculated'  => __('templates::editor.formula.column_calculated'),
             'formula.column_placeholder' => __('templates::editor.formula.column_placeholder'),
-            'formula.column_help'        => __('templates::editor.formula.column_help', ['collection' => ':collection']),
+            'formula.column_help'        => __('templates::editor.formula.column_help'),
             'formula.columns_overflow'   => __('templates::editor.formula.columns_overflow'),
 
             // The "Campos e funções" library in the Blocks rail (CGE-37). `:example` is filled in JS.

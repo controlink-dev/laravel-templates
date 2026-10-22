@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
-    addFormulaColumn, columnsOverflow, freshFormulaColumns, isFormulaColumn, removeColumn,
+    addFormulaColumn, columnsOverflow, freshFormulaColumns, isCalculatedColumn, isFormulaColumn, printedKeyOf,
+    removeColumn, setColumnFormulaMode,
 } from '../../resources/js/editor/formula-columns.js';
 import { registerComponents } from '../../resources/js/editor/components.js';
 import { registerTableAndSlot } from '../../resources/js/editor/table.js';
@@ -20,12 +21,15 @@ globalThis.document ??= {
 };
 
 const KEY = /^formula_[a-z][a-z0-9]{7}$/;
+// The server's `FormulaSet::COLUMN_KEY`: what a `formulaKey` must look like.
+const SERVER_KEY = /^formula_[a-z][a-z0-9]{5,11}$/;
 const catalogue = [
     { key: 'quantity', label: 'Qty', format: 'number', formatArgs: {}, align: 'right', width: '' },
     { key: 'unit_price', label: 'Price', format: 'money', formatArgs: {}, align: 'right', width: '' },
 ];
 
-// 1. Adding: a fresh `formula_<id>` column at the end, the default shape, input untouched.
+// 1. Adding a calculated column: a fresh `formula_<id>` at the end, printed under itself
+// (`key === formulaKey`), the default shape, input untouched.
 {
     const before = structuredClone(catalogue);
     const columns = addFormulaColumn(catalogue, 'Fórmula');
@@ -37,10 +41,13 @@ const catalogue = [
     const added = columns[2];
 
     assert.match(added.key, KEY);
-    assert.deepEqual({ ...added, key: 'x' }, {
-        key: 'x', label: 'Fórmula', formula: '', format: '', formatArgs: {}, align: 'right', width: '20mm',
+    assert.equal(added.formulaKey, added.key);
+    assert.deepEqual({ ...added, key: 'x', formulaKey: 'x' }, {
+        key: 'x', formulaKey: 'x', label: 'Fórmula', formula: '', format: '', formatArgs: {}, align: 'right', width: '20mm',
     });
     assert.ok(isFormulaColumn(added));
+    assert.ok(isCalculatedColumn(added));
+    assert.ok(!isCalculatedColumn(catalogue[0]));
     assert.ok(!isFormulaColumn(catalogue[0]));
     assert.ok(!isFormulaColumn(null));
 }
@@ -72,6 +79,71 @@ const catalogue = [
     const columns = addFormulaColumn(existing, 'F', () => ids.shift());
 
     assert.equal(columns.at(-1).key, 'formula_bbbbbbbb');
+
+    // A catalogue column's `formulaKey` is taken too.
+    const taken = [{ key: 'quantity', formula: 'lines.quantity', formulaKey: 'formula_aaaaaaaa' }];
+    const more = ['aaaaaaaa', 'cccccccc'];
+    assert.equal(addFormulaColumn(taken, 'F', () => more.shift()).at(-1).key, 'formula_cccccccc');
+}
+
+// 2b. "Valor: Campo | Fórmula" on a catalogue column (spec §6.2). On: the source starts as
+// the row's own value, a fresh `formulaKey` the server accepts, the rest kept. Off: the
+// column is again byte for byte what it was (Review Focus 3): no `formulaKey: null`.
+{
+    const original = [
+        { key: 'description', label: 'Descrição', width: '80mm', align: 'left', format: '', formatArgs: {} },
+        { key: 'amount', label: 'Valor', width: '', align: 'right', format: 'money', formatArgs: { decimals: 2 } },
+    ];
+    const json = JSON.stringify(original);
+
+    const on = setColumnFormulaMode(original, 0, true, () => 'dsc12345', 'lines');
+
+    assert.equal(JSON.stringify(original), json, 'the given columns are not changed in place');
+    assert.equal(on[0].formula, 'lines.description');
+    assert.equal(on[0].formulaKey, 'formula_dsc12345');
+    assert.match(on[0].formulaKey, SERVER_KEY);
+    assert.equal(on[0].key, 'description', 'the column keeps its own key');
+    assert.deepEqual({ ...on[0], formula: undefined, formulaKey: undefined }, { ...original[0], formula: undefined, formulaKey: undefined },
+        'label, width, alignment and format stay');
+    assert.equal(on[1], original[1]);
+    assert.ok(isFormulaColumn(on[0]));
+    assert.ok(!isCalculatedColumn(on[0]), 'a catalogue column in Formula is not removable');
+    assert.equal(printedKeyOf(on[0]), 'formula_dsc12345');
+    assert.equal(printedKeyOf(on[1]), 'amount');
+
+    // Keeps its format in Formula (spec §8.1): only the two properties are added.
+    const money = setColumnFormulaMode(original, 1, true, () => 'amt12345', 'lines');
+    assert.equal(money[1].format, 'money');
+    assert.deepEqual(money[1].formatArgs, { decimals: 2 });
+
+    // Already on: nothing new — no fresh id, the source the user typed is kept.
+    const typed = [{ ...on[0], formula: 'UPPER(lines.description)' }, on[1]];
+    assert.equal(setColumnFormulaMode(typed, 0, true, () => 'zzzzzzzz', 'lines'), typed);
+
+    // Off: exactly the original JSON, whatever the formula became.
+    const off = setColumnFormulaMode(typed, 0, false);
+    assert.equal(JSON.stringify(off), json);
+    assert.ok(!('formulaKey' in off[0]) && !('formula' in off[0]));
+    assert.equal(setColumnFormulaMode(original, 0, false), original, 'already a field: the same array');
+
+    // The fresh key collides with nothing in the table.
+    const ids = ['aaaaaaaa', 'bbbbbbbb'];
+    const withCalc = [...original, { key: 'formula_aaaaaaaa', formulaKey: 'formula_aaaaaaaa', formula: '1' }];
+    assert.equal(setColumnFormulaMode(withCalc, 0, true, () => ids.shift(), 'lines')[0].formulaKey, 'formula_bbbbbbbb');
+
+    // A calculated column is always a formula: off changes nothing; so does a bad index.
+    const calculated = addFormulaColumn(original, 'F', () => 'cccccccc');
+    assert.equal(setColumnFormulaMode(calculated, 2, false), calculated);
+    assert.equal(setColumnFormulaMode(calculated, 9, true), calculated);
+    const legacy = [{ key: 'formula_dddddddd', formula: '1' }];
+    assert.equal(setColumnFormulaMode(legacy, 0, false), legacy);
+    assert.ok(isCalculatedColumn(legacy[0]), 'a column saved before formulaKey is calculated');
+    assert.equal(printedKeyOf(legacy[0]), 'formula_dddddddd');
+
+    // Hiding keeps the formula (spec §8.1): `hidden` is just another property.
+    const hidden = [{ ...on[0], hidden: true }];
+    assert.equal(hidden[0].formula, 'lines.description');
+    assert.ok(isFormulaColumn(hidden[0]));
 }
 
 // 3. Removing: only a formula column goes; a catalogue column or a bad index changes nothing.
@@ -81,6 +153,12 @@ const catalogue = [
     assert.deepEqual(removeColumn(columns, 2), catalogue);
     assert.equal(columns.length, 3, 'the given columns are not changed in place');
     assert.deepEqual(removeColumn(columns, 0), columns, 'a catalogue column is only hidden, never removed');
+
+    const inFormula = setColumnFormulaMode(columns, 0, true, () => 'qty12345', 'lines');
+    assert.deepEqual(removeColumn(inFormula, 0), inFormula, 'not even in Formula');
+
+    const calculated = addFormulaColumn(catalogue, 'F', () => 'eeeeeeee');
+    assert.deepEqual(removeColumn(calculated, 2), catalogue);
     assert.deepEqual(removeColumn(columns, 7), columns);
     assert.deepEqual(removeColumn(columns, -1), columns);
 }
@@ -99,6 +177,21 @@ const catalogue = [
     assert.equal(renamed[2].formula, '1', 'only the key changes');
     assert.equal(columns[2].key, 'formula_aaaaaaaa', 'the given columns are not changed in place');
     assert.equal(freshFormulaColumns(columns, ['quantity']), columns, 'nothing to rename: the same array');
+
+    // A calculated column renames key and formulaKey together; a catalogue column in
+    // Formula only its formulaKey (its key is its field, shared by every copy).
+    const modern = [
+        { key: 'quantity', label: 'Qty', formula: 'lines.quantity', formulaKey: 'formula_aaaaaaaa' },
+        { key: 'formula_bbbbbbbb', formulaKey: 'formula_bbbbbbbb', label: 'B', formula: '2' },
+        { key: 'unit_price', label: 'Price' },
+    ];
+    const next = ['ffffffff', 'gggggggg'];
+    const copy = freshFormulaColumns(modern, ['formula_aaaaaaaa', 'formula_bbbbbbbb', 'quantity'], () => next.shift());
+
+    assert.deepEqual(copy[0], { ...modern[0], formulaKey: 'formula_ffffffff' });
+    assert.deepEqual(copy[1], { ...modern[1], key: 'formula_gggggggg', formulaKey: 'formula_gggggggg' });
+    assert.equal(copy[2], modern[2]);
+    assert.equal(freshFormulaColumns(modern, ['quantity', 'unit_price']), modern, 'a shared field key is no collision');
 }
 
 /* --------------------------------------------------------------- the line table */
@@ -114,7 +207,7 @@ const editor = {
     TraitManager: { addType() {} },
 };
 
-const strings = new Proxy({ 'formula.label': 'Fórmula', 'formula.column_label': 'Fórmula' }, {
+const strings = new Proxy({ 'formula.label': 'Fórmula', 'formula.column_label': 'Fórmula', 'formula.unknown_field': 'Campo desconhecido: :name' }, {
     get: (target, key) => target[key] ?? String(key),
 });
 
@@ -165,6 +258,7 @@ function make(attributes = {}) {
         on(event, handler) { (listeners[event] ??= []).push(handler.bind(this)); },
         trigger(event) { (listeners[event] ?? []).forEach((handler) => handler()); },
         getAttributes() { return { ...this.attrs }; },
+        getAttrToHTML() { return { ...this.attrs }; },
         addAttributes(more) {
             const before = this.attrs;
             this.attrs = { ...this.attrs, ...more };
@@ -287,6 +381,123 @@ const cells = (html) => [...html.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((match) 
     const before = alone.getAttributes()['data-tpl-columns'];
     handlers['component:clone'].forEach((handler) => handler(alone));
     assert.equal(alone.getAttributes()['data-tpl-columns'], before);
+    sheet.length = 0;
+}
+
+// 15. A catalogue column in Formula on the canvas: the result in place of the value on the
+// first row, `…` on the others, asked under its formulaKey; the saved example never asks.
+{
+    const table = make();
+    lines = [{ quantity: 2, unit_price: 5 }, { quantity: 3, unit_price: 1 }];
+    table.setColumnFormulaMode(0, true);
+
+    const column = table.columns()[0];
+    assert.equal(column.key, 'quantity');
+    assert.equal(column.formula, 'lines.quantity');
+    assert.match(column.formulaKey, SERVER_KEY);
+
+    answers['lines.quantity'] = { value: 42, error: null };
+    asked.length = 0;
+    table.syncPreview();
+
+    assert.deepEqual(asked.at(-1), ['lines.quantity', 'lines', table.cid + ':' + column.formulaKey]);
+    const all = cells(table.get('content'));
+    assert.equal(all[0], 'number(42)', 'the result, in the column\'s own format');
+    assert.equal(all[2], '<span class="tpl-formula-more">…</span>');
+    assert.equal(all[1], 'money(5)', 'the other columns keep their values');
+
+    asked.length = 0;
+    assert.equal(cells(table.previewContent(true))[0], 'Qty');
+    assert.equal(asked.length, 0);
+
+    // 16. toHTML prints `linha.<formulaKey>` for the column in Formula, `linha.<key>` for
+    // the others, and a hidden one not at all (its formula is kept).
+    let html = table.toHTML();
+    assert.ok(html.includes('{{ linha.' + column.formulaKey + '|number'), html);
+    assert.ok(!html.includes('{{ linha.quantity'), html);
+    assert.ok(html.includes('{{ linha.unit_price'), html);
+
+    table.setColumns(addFormulaColumn(table.columns(), 'Fórmula', () => 'hhhhhhhh'));
+    assert.ok(table.toHTML().includes('{{ linha.formula_hhhhhhhh }}'));
+
+    const hidden = table.columns().map((entry, at) => (at === 0 ? { ...entry, hidden: true } : entry));
+    table.setColumns(hidden);
+    html = table.toHTML();
+    assert.ok(!html.includes(column.formulaKey + '|'), 'a hidden column does not print');
+    assert.equal(table.columns()[0].formula, 'lines.quantity', 'but keeps its formula');
+
+    // 17. Back to Field: the column as it was, printed from its own key.
+    table.setColumns(hidden.map((entry, at) => {
+        if (at !== 0) {
+            return entry;
+        }
+
+        const { hidden: _hidden, ...rest } = entry;
+
+        return rest;
+    }));
+    table.setColumnFormulaMode(0, false);
+    assert.equal(JSON.stringify(table.columns()[0]), JSON.stringify(table.defaultColumns()[0]));
+    assert.ok(table.toHTML().includes('{{ linha.quantity|number'));
+    lines = [{ quantity: 2, unit_price: 5 }];
+}
+
+// 18. The box shows readable names and stores keys; a name that matches nothing is kept as
+// typed and said locally, without asking the server (spec §5).
+{
+    const table = make();
+    table.setColumns(addFormulaColumn(table.columns(), 'Fórmula', () => 'iiiiiiii'));
+
+    table.setColumnFormulaDisplay(2, '[Qty] * [Price] + SUM([Lines · Price])');
+    assert.equal(table.columns()[2].formula, 'lines.quantity * lines.unit_price + SUM(lines.unit_price)');
+    assert.equal(table.columnFormulaDisplay(table.columns()[2]), '[Qty] * [Price] + SUM([Lines · Price])');
+    assert.ok(!table.getAttributes()['data-tpl-columns'].includes('[Qty]'));
+
+    asked.length = 0;
+    table.setColumnFormulaDisplay(2, '[Nada] * 2');
+    assert.equal(table.columns()[2].formula, '[Nada] * 2');
+    assert.deepEqual(table.formulaColumnStatus(table.columns()[2]), { state: 'error', text: 'Campo desconhecido: [Nada]' });
+    assert.equal(asked.length, 0, 'never asked');
+
+    // The same text again writes nothing.
+    const before = table.getAttributes()['data-tpl-columns'];
+    let writes = 0;
+    table.on('change:attributes:data-tpl-columns', () => writes++);
+    table.setColumnFormulaDisplay(2, '[Nada] * 2');
+    assert.equal(writes, 0);
+    assert.equal(table.getAttributes()['data-tpl-columns'], before);
+}
+
+// 19. Opening a saved table with formula columns rewrites nothing (Review Focus 5): a
+// catalogue column in Formula and a column saved before formulaKey existed.
+{
+    const saved = JSON.stringify([
+        { key: 'quantity', label: 'Qty', width: '', align: 'right', format: 'number', formatArgs: {}, formula: 'lines.quantity * 2', formulaKey: 'formula_qqqqqqqq' },
+        { key: 'formula_llllllll', label: 'Old', formula: 'lines.unit_price', format: '', formatArgs: {}, align: 'right', width: '20mm' },
+    ]);
+    const table = make({ 'data-tpl-columns': saved });
+
+    assert.equal(table.getAttributes()['data-tpl-columns'], saved);
+    asked.length = 0;
+    const example = table.previewContent(true);
+    assert.equal(asked.length, 0);
+    assert.deepEqual(cells(example), ['Qty', 'Old']);
+    assert.ok(table.toHTML().includes('{{ linha.formula_qqqqqqqq|number'));
+    assert.ok(table.toHTML().includes('{{ linha.formula_llllllll }}'));
+}
+
+// 20. A copied table with a catalogue column in Formula: its formulaKey is renamed, its key kept.
+{
+    const original = make();
+    original.setColumnFormulaMode(1, true);
+    sheet.push(original);
+
+    const copy = make({ 'data-tpl-columns': original.getAttributes()['data-tpl-columns'] });
+    handlers['component:clone'].forEach((handler) => handler(copy));
+
+    assert.equal(copy.columns()[1].key, 'unit_price');
+    assert.match(copy.columns()[1].formulaKey, SERVER_KEY);
+    assert.notEqual(copy.columns()[1].formulaKey, original.columns()[1].formulaKey);
     sheet.length = 0;
 }
 

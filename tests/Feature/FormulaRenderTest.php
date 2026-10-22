@@ -361,6 +361,55 @@ class FormulaRenderTest extends TestCase
         );
     }
 
+    /**
+     * The result goes under the `formulaKey`, never over the row's own value: a second,
+     * plain column on the same field prints the raw value on every sheet, and another
+     * formula reading `linhas.descricao` sees the raw value too, not the first one's result.
+     */
+    public function test_a_catalogue_column_in_formula_leaves_the_raw_value_to_other_columns(): void
+    {
+        $dataset = $this->fixtureDataset($this->invoice());
+        $html    = preg_replace_callback(
+            '/data-tpl-columns="([^"]*)"/',
+            function (array $m): string {
+                $columns = json_decode(html_entity_decode($m[1], ENT_QUOTES), true);
+
+                foreach ($columns as &$column) {
+                    if ($column['key'] === 'descricao') {
+                        $column += ['formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_dsc12345'];
+                    }
+                }
+                unset($column);
+
+                $columns[] = ['key' => 'descricao', 'label' => 'Raw', 'format' => '', 'formatArgs' => [], 'align' => 'left', 'width' => ''];
+                $columns[] = ['key' => 'formula_raw00001', 'formulaKey' => 'formula_raw00001', 'label' => 'Again', 'formula' => 'linhas.descricao & "!"', 'format' => '', 'formatArgs' => [], 'align' => 'left', 'width' => ''];
+
+                return 'data-tpl-columns="'.htmlspecialchars(json_encode($columns, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES).'"';
+            },
+            $this->invoice()->initialLayout['html'],
+            1,
+        );
+        $html = str_replace('<td style="text-align:left">{{ linha.descricao }}</td>', '<td class="t-dsc">{{ linha.formula_dsc12345 }}</td>', $html, $count);
+        $this->assertSame(1, $count);
+        $html = str_replace('</tr></thead>', '<th>Raw</th><th>Again</th></tr></thead>', $html);
+        $html = str_replace('</tr>{% endfor %}', '<td class="t-raw">{{ linha.descricao }}</td><td class="t-again">{{ linha.formula_raw00001 }}</td></tr>{% endfor %}', $html);
+
+        $document = $this->compose($html, $dataset);
+
+        $this->assertGreaterThan(1, substr_count($document, '<div class="page">'));
+
+        $escape = fn (string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE);
+        $cells  = function (string $class) use ($document): array {
+            preg_match_all('/<td class="'.$class.'">(.*?)<\/td>/s', $document, $matches);
+
+            return $matches[1];
+        };
+
+        $this->assertSame(array_map(fn (array $row): string => $escape(mb_strtoupper($row['descricao'])), $dataset['linhas']), $cells('t-dsc'));
+        $this->assertSame(array_map(fn (array $row): string => $escape($row['descricao']), $dataset['linhas']), $cells('t-raw'));
+        $this->assertSame(array_map(fn (array $row): string => $escape($row['descricao'].'!'), $dataset['linhas']), $cells('t-again'));
+    }
+
     /* -----------------------------------------------------------------------
      * FormulaSet
      * -------------------------------------------------------------------- */

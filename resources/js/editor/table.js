@@ -15,8 +15,11 @@ function columnFormatOf(spec) {
 }
 import { icons } from './icons.js';
 import { previewRows } from './preview-filter.js';
-import { addFormulaColumn, columnsOverflow, isFormulaColumn, removeColumn } from './formula-columns.js';
-import { formulaAssist, paintFormulaStatus } from './formula.js';
+import {
+    addFormulaColumn, columnsOverflow, isCalculatedColumn, isFormulaColumn, printedKeyOf, removeColumn, setColumnFormulaMode,
+} from './formula-columns.js';
+import { formulaAssist, newFormulaId, paintFormulaStatus } from './formula.js';
+import { scopedCatalogue, toDisplay, toSource } from './formula-names.js';
 
 /**
  * @param {object} editor  GrapesJS instance
@@ -104,6 +107,60 @@ function registerLineTable(editor, config) {
             },
 
             /**
+             * What a column formula of this table may name, with the readable names
+             * (spec §4/§5): this table's own columns short (`[Quantidade]`), then the
+             * models' fields and the table totals. Built once per collection — the
+             * catalogue does not change while the editor is open.
+             */
+            columnNames() {
+                const collection = this.collectionKey();
+                const cache = (this.__pfColumnNames ??= new Map());
+
+                if (!cache.has(collection)) {
+                    cache.set(collection, scopedCatalogue(config, collection));
+                }
+
+                return cache.get(collection);
+            },
+
+            /** A column's source as its box shows it: keys by name. */
+            columnFormulaDisplay(column) {
+                return toDisplay(column?.formula ?? '', this.columnNames());
+            },
+
+            /**
+             * The box of the column at `index` was edited: its text, names turned into
+             * keys, is the column's source. A name that matches nothing is kept as typed
+             * (spec §5): `formulaColumnStatus` says so without asking the server, and the
+             * save refuses it (V-19). Nothing is written when the source is the same.
+             */
+            setColumnFormulaDisplay(index, display) {
+                const columns = this.columns();
+                const column = columns[index];
+
+                if (!isFormulaColumn(column)) {
+                    return;
+                }
+
+                const source = toSource(display, this.columnNames()).source;
+
+                if (source !== (column.formula ?? '')) {
+                    columns[index] = { ...column, formula: source };
+                    this.setColumns(columns);
+                }
+            },
+
+            /** "Valor: Campo | Fórmula" of the column at `index` (`setColumnFormulaMode`). One write. */
+            setColumnFormulaMode(index, on) {
+                const columns = this.columns();
+                const next = setColumnFormulaMode(columns, index, on, newFormulaId, this.collectionKey());
+
+                if (next !== columns) {
+                    this.setColumns(next);
+                }
+            },
+
+            /**
              * Every column the catalogue declares for the collection, in its order.
              * A table that starts empty is a table the user has to build twice.
              */
@@ -171,7 +228,20 @@ function registerLineTable(editor, config) {
                     return { state: 'empty', text: '' };
                 }
 
-                const result = config.formulaPreview?.result(source, this.collectionKey(), this.cid + ':' + column.key) ?? null;
+                // A name that matches no field: said here, the server never asked (spec §5).
+                const unknown = toSource(source, this.columnNames()).unknown;
+
+                if (unknown.length) {
+                    return {
+                        state: 'error',
+                        text: (config.strings['formula.unknown_field'] ?? 'Unknown field: :name')
+                            .replace(':name', () => unknown.join(', ')),
+                    };
+                }
+
+                // One slot per printed key: two columns on one field, one of them in
+                // Formula, are still two answers.
+                const result = config.formulaPreview?.result(source, this.collectionKey(), this.cid + ':' + printedKeyOf(column)) ?? null;
 
                 if (result === null) {
                     return { state: 'pending', text: '' };
@@ -198,9 +268,10 @@ function registerLineTable(editor, config) {
             formulaCell(column) {
                 const status = this.formulaColumnStatus(column);
                 const previous = (this.__pfFormulaCells ??= new Map());
+                const key = printedKeyOf(column);
 
-                if (status.state === 'pending' && previous.has(column.key)) {
-                    return previous.get(column.key);
+                if (status.state === 'pending' && previous.has(key)) {
+                    return previous.get(key);
                 }
 
                 const html = status.state === 'error'
@@ -208,7 +279,7 @@ function registerLineTable(editor, config) {
                     : escapeText(status.state === 'result' ? status.text : String(column.label ?? ''));
 
                 if (status.state !== 'pending') {
-                    previous.set(column.key, html);
+                    previous.set(key, html);
                 }
 
                 return html;
@@ -250,7 +321,8 @@ function registerLineTable(editor, config) {
                 // (CGE-49); the example a saved version carries stays raw. Markup, escaped.
                 const cell = (row, column, index) => {
                     /*
-                     * A formula column (CGE-37). The saved text is its label, always, and
+                     * A formula column (CGE-37): a calculated one, or a catalogue column in
+                     * Formula, whose result takes its value's place. The saved text is its label, always, and
                      * the example read never asks the server: `plainProjectData` makes
                      * that read on every dirty check, and an answer arriving would otherwise
                      * change the saved layout. Live, the server's result goes on the first
@@ -307,7 +379,9 @@ function registerLineTable(editor, config) {
 
                 const cells = columns
                     .map((column) => {
-                        const value = expression(`${item}.${column.key}`, specFromColumn(column));
+                        // A column in Formula prints its result, under its `formulaKey`; it
+                        // keeps its format (spec §8.1).
+                        const value = expression(`${item}.${printedKeyOf(column)}`, specFromColumn(column));
 
                         return `<td style="text-align:${column.align || 'left'}">${value}</td>`;
                     })
@@ -335,9 +409,10 @@ function registerLineTable(editor, config) {
  * GrapesJS has no repeatable trait, so this is a small table of its own: one row per
  * column, with the label, width, alignment and format the user can change. The set of
  * columns itself comes from the catalogue and cannot be invented here — a column bound
- * to nothing would render as an empty cell on every line. The one exception is a formula
- * column (CGE-37): bound to its own source, computed per line by the compositor, added
- * with the button under the cards and removed with its own.
+ * to nothing would render as an empty cell on every line. Any column can print a formula
+ * instead of its value ("Valor: Campo | Fórmula", CGE-37), and a calculated column — bound
+ * to its own formula only, computed per line by the compositor — is added with the button
+ * under the cards and removed with its own.
  */
 function registerColumnsTrait(editor, config) {
     editor.TraitManager.addType('tpl-columns', {
@@ -367,12 +442,24 @@ function registerColumnsTrait(editor, config) {
             component.on('change:attributes:data-tpl-columns', paintNotice);
 
             const redraw = () => {
+                // "Campos e funções" may be inserting into a box of this panel. A box drawn
+                // again for the same column takes its place (`adopt`, in `formulaBox`); one
+                // that is gone for good — the column back to Field, removed, another
+                // collection — closes the library with it.
+                const library = config.formulaLibrary;
+                const held = library?.target?.() ?? null;
+                const ours = held !== null && wrapper.contains(held);
+
                 wrapper.replaceChildren(notice);
                 paintNotice();
 
                 component.columns().forEach((column, index) => {
                     wrapper.append(columnCard(component, column, index, config, redraw, reorder));
                 });
+
+                if (ours && !wrapper.contains(library.target?.())) {
+                    library.close();
+                }
 
                 // A formula column belongs to a collection (V-19 refuses one in a table
                 // with none, e.g. on a label): no collection, nothing to add.
@@ -401,7 +488,7 @@ function registerColumnsTrait(editor, config) {
                 const columns = component.columns();
 
                 wrapper.querySelectorAll('.tpl-formula[data-column]').forEach((box) => {
-                    const column = columns.find((entry) => entry.key === box.dataset.column);
+                    const column = columns.find((entry) => printedKeyOf(entry) === box.dataset.column);
 
                     if (column) {
                         paintFormulaStatus(box, component.formulaColumnStatus(column), config.strings);
@@ -449,6 +536,7 @@ function columnCard(component, column, index, config, redraw, reorder) {
 
     const isHidden = column.hidden === true;
     const isFormula = isFormulaColumn(column);
+    const isCalculated = isCalculatedColumn(column);
 
     if (isHidden) {
         card.classList.add('tpl-col--hidden');
@@ -508,7 +596,8 @@ function columnCard(component, column, index, config, redraw, reorder) {
         redraw();
     });
 
-    // A formula column is the user's own, so it is removed, not hidden (CGE-37).
+    // A calculated column is the user's own, so it is removed, not hidden (CGE-37). A
+    // catalogue column in Formula is still the catalogue's: hidden, like the others.
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'tpl-col__toggle tpl-col__remove';
@@ -520,7 +609,7 @@ function columnCard(component, column, index, config, redraw, reorder) {
         redraw();
     });
 
-    head.append(grip, key, isFormula ? remove : toggle);
+    head.append(grip, key, isCalculated ? remove : toggle);
 
     const labelField = columnField(config.strings['trait.column_label']);
     const label = document.createElement('input');
@@ -642,23 +731,100 @@ function columnCard(component, column, index, config, redraw, reorder) {
     formatField.append(format);
     renderArgs();
 
-    card.append(head, labelField, ...(isFormula ? [formulaBox(component, column, index, config)] : []),
-        two, formatField, argsWrap);
+    card.append(head, valueModeField(component, column, index, config, redraw), labelField,
+        ...(isFormula ? [formulaBox(component, column, index, config)] : []), two, formatField, argsWrap);
 
     return card;
 }
 
 /**
- * A formula column's source box (CGE-37), with the same pieces and classes as the data
- * field's (`tpl-formula` trait): the source, then what is wrong with it or what it gives
- * on the first line, then the functions. The column is written on every keystroke, so a
- * save is never behind the box; only the server ask waits (`createFormulaPreview`).
+ * "Valor: Campo | Fórmula" of one column (spec §6.2), in the data field's markup — GrapesJS's
+ * radio items, drawn segmented by `.gjs-radio-items` — so the same gesture looks the same in
+ * both places. Its state is read from the column, never stored. A calculated column is
+ * always a formula: the switch shows it and cannot be changed (its delete button is the
+ * way out).
+ */
+function valueModeField(component, column, index, config, redraw) {
+    const strings = config.strings;
+    const field = columnField(strings['formula.value'] ?? 'Value');
+    const formula = isFormulaColumn(column);
+    const fixed = isCalculatedColumn(column);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'tpl-value-mode' + (fixed ? ' is-locked' : '');
+    wrap.title = fixed ? strings['formula.column_calculated'] ?? '' : strings['formula.toggle'] ?? '';
+
+    const items = document.createElement('div');
+    items.className = 'gjs-radio-items';
+    items.setAttribute('role', 'radiogroup');
+    items.setAttribute('aria-label', strings['formula.value'] ?? 'Value');
+
+    // Its own group per card: the cards are drawn again on every structural change.
+    const group = `tpl-col-mode-${component.cid}-${index}`;
+
+    [['field', 'formula.value_field', 'Field'], ['formula', 'formula.value_formula', 'Formula']]
+        .forEach(([value, key, fallback]) => {
+            const item = document.createElement('div');
+            item.className = 'gjs-radio-item';
+
+            const input = document.createElement('input');
+            input.type = 'radio';
+            input.className = 'gjs-sm-radio';
+            input.name = group;
+            input.id = `${group}-${value}`;
+            input.value = value;
+            input.checked = (value === 'formula') === formula;
+            input.disabled = fixed;
+
+            // Not bubbling to the trait: GrapesJS's own `change` handler would copy the
+            // wrapper's stale `value` into `data-tpl-columns`.
+            input.addEventListener('input', (event) => event.stopPropagation());
+            input.addEventListener('change', (event) => {
+                event.stopPropagation();
+
+                if (!input.checked) {
+                    return;
+                }
+
+                // Read now, not from the column this card was drawn with.
+                if (printedKeyOf(component.columns()[index]) === printedKeyOf(column)) {
+                    component.setColumnFormulaMode(index, value === 'formula');
+                }
+
+                redraw();
+            });
+
+            const label = document.createElement('label');
+            label.className = 'gjs-radio-item-label';
+            label.htmlFor = input.id;
+            label.textContent = strings[key] ?? fallback;
+
+            item.append(input, label);
+            items.append(item);
+        });
+
+    wrap.append(items);
+    field.append(wrap);
+
+    return field;
+}
+
+/**
+ * A column's formula box (CGE-37), the data field's box in a card: the formula with
+ * readable names (`[Quantidade]` for this line, `[Cliente · Nome]`), what is wrong with it
+ * or what it gives on the first line, and "Concluir". The column holds the technical
+ * source and is written on every keystroke, so a save is never behind the box; only the
+ * server ask waits (`createFormulaPreview`). The readable text lives in the box only.
+ *
+ * Focusing the box opens "Campos e funções" over the Blocks rail with this table's
+ * collection as "this line" (spec §6.3); "Concluir" closes it.
  */
 function formulaBox(component, column, index, config) {
     const strings = config.strings;
+    const printed = printedKeyOf(column);
     const box = document.createElement('div');
     box.className = 'tpl-formula tpl-col__field';
-    box.dataset.column = column.key;
+    box.dataset.column = printed;
 
     const caption = document.createElement('label');
     caption.className = 'tpl-col__label';
@@ -668,24 +834,28 @@ function formulaBox(component, column, index, config) {
     input.rows = 3;
     input.className = 'tpl-textarea tpl-formula-source';
     input.spellcheck = false;
-    input.placeholder = strings['formula.column_placeholder'] ?? '';
-    input.value = column.formula ?? '';
+    input.setAttribute('aria-label', strings['formula.source'] ?? 'Formula');
+    // The example in the placeholder is written with keys; shown by name like the rest.
+    input.placeholder = toDisplay(strings['formula.column_placeholder'] ?? '', component.columnNames());
+    input.value = component.columnFormulaDisplay(column);
+    // Who this box is for, so the library follows a redrawn copy of it (`adopt`).
+    input.dataset.formulaOwner = component.cid + ':' + printed;
 
     // Read from the current columns at the moment of typing, never from the `column` this
     // card was drawn with: its label or format may have changed since.
     input.addEventListener('input', (event) => {
         event.stopPropagation();
 
-        const columns = component.columns();
-
-        if (columns[index]?.key === column.key) {
-            columns[index] = { ...columns[index], formula: input.value };
-            component.setColumns(columns);
+        if (printedKeyOf(component.columns()[index]) === printed) {
+            component.setColumnFormulaDisplay(index, input.value);
         }
     });
     // Kept from the trait's default handler: GrapesJS copies the wrapper's `value` into the
     // attribute on a bubbling `change` (the blur after typing), and that copy can be stale.
     input.addEventListener('change', (event) => event.stopPropagation());
+    input.addEventListener('focus', () => {
+        config.formulaLibrary?.open({ target: input, rowCollection: component.collectionKey() || null });
+    });
 
     const status = document.createElement('p');
     status.className = 'tpl-formula-status';
@@ -693,14 +863,26 @@ function formulaBox(component, column, index, config) {
 
     const help = document.createElement('p');
     help.className = 'tpl-formula-help';
-    help.textContent = (strings['formula.column_help'] ?? '').replaceAll(':collection', component.collectionKey())
-        + ' ' + (strings['formula.functions'] ?? ':list')
-            .replace(':list', (config.formulaFunctions ?? []).join(', '));
+    help.textContent = strings['formula.column_help'] ?? '';
 
-    const assist = formulaAssist(input, config);
+    const assist = formulaAssist(input, config, { catalogue: () => component.columnNames() });
 
-    box.append(caption, assist.field, assist.suggestions, status, help, assist.reference);
+    const actions = document.createElement('div');
+    actions.className = 'tpl-formula-actions';
+
+    const done = document.createElement('button');
+    done.type = 'button';
+    done.className = 'tpl-btn tpl-btn--primary tpl-btn--sm tpl-formula-done';
+    done.textContent = strings['formula.done'] ?? 'Done';
+    done.addEventListener('click', () => {
+        config.formulaLibrary?.close();
+        input.blur();
+    });
+    actions.append(done);
+
+    box.append(caption, assist.field, assist.suggestions, status, help, actions);
     paintFormulaStatus(box, component.formulaColumnStatus?.(column), strings);
+    config.formulaLibrary?.adopt?.(input);
 
     return box;
 }

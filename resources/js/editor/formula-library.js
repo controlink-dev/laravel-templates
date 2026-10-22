@@ -99,6 +99,8 @@ const FALLBACK = {
  *   a column of the table over `rowCollection`, or of a field (null). Called again while
  *   open, it only retargets: the new box, the new catalogue, the same tab and search.
  * - `close()` gives the rail its blocks and its heading back; calling it again does nothing.
+ * - `adopt(textarea)` retargets to a box drawn again for the same owner; `target()` is the
+ *   box it inserts into (null when closed).
  *
  * A click inserts the item (`item.insert`, or `NAME(` for a function) over the box's
  * selection, puts the caret after it, gives the box its focus back and fires a bubbling
@@ -163,6 +165,15 @@ export function createFormulaLibrary({ rail, config }) {
         const target = state?.target;
 
         if (!target) {
+            return;
+        }
+
+        // The box was drawn again (a format change re-creates the traits) or went away
+        // (the column switched to Field) and nothing took its place: inserting into a
+        // textarea no one sees would be a change no one can see either.
+        if (target.isConnected === false) {
+            close();
+
             return;
         }
 
@@ -326,5 +337,19 @@ export function createFormulaLibrary({ rail, config }) {
         state = null;
     }
 
-    return { open, close, isOpen: () => state !== null };
+    /**
+     * A formula box was drawn (again): when it stands for the box the library inserts into
+     * — the same `data-formula-owner`, a field's or a column's — the library follows it,
+     * keeping its tab and search. A redraw of the panel (a format change, a column card
+     * redrawn) then never leaves the library pointing at a textarea that is gone.
+     */
+    function adopt(input) {
+        const owner = input?.dataset?.formulaOwner;
+
+        if (state && owner && state.target !== input && state.target?.dataset?.formulaOwner === owner) {
+            state.target = input;
+        }
+    }
+
+    return { open, close, adopt, isOpen: () => state !== null, target: () => state?.target ?? null };
 }

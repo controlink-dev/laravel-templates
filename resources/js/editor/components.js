@@ -20,7 +20,7 @@ import {
     refreshFormulaTraits, registerFormula,
 } from './formula.js';
 import { quickExamples, scopedCatalogue, toDisplay, toSource } from './formula-names.js';
-import { freshFormulaColumns, isFormulaColumn } from './formula-columns.js';
+import { freshFormulaColumns, isFormulaColumn, printedKeyOf } from './formula-columns.js';
 import {
     DATE_PATTERNS, DECIMALS, SYMBOLS, defaultSpecFor, expression, specFromAttributes, specToAttributes,
 } from './formats.js';
@@ -450,8 +450,9 @@ function registerDataField(editor, config) {
     };
 
     /**
-     * Every formula column key (`formula_<id>`) of every line table on the sheet but
-     * `except`'s. V-19 refuses a column key shared across tables, so a copy checks them all.
+     * Every key a formula column prints under (`formula_<id>`, `printedKeyOf`) in every line
+     * table on the sheet but `except`'s. V-19 refuses one shared across tables, so a copy
+     * checks them all.
      */
     const formulaColumnKeysOnSheet = (except) => {
         const keys = [];
@@ -461,7 +462,7 @@ function registerDataField(editor, config) {
             }
 
             if (component !== except && component.get?.('type') === 'line-table' && typeof component.columns === 'function') {
-                component.columns().filter(isFormulaColumn).forEach((column) => keys.push(column.key));
+                component.columns().filter(isFormulaColumn).forEach((column) => keys.push(printedKeyOf(column)));
             }
 
             component.components?.().forEach(walk);

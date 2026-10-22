@@ -326,7 +326,6 @@ return [
         'calculating'  => 'A calcular…',
         'result'       => 'Resultado: :value',
         'blank'        => 'Sem valor: imprime vazio.',
-        'functions'    => 'Funções: :list',
 
         // "Valor: Campo | Fórmula" do campo de dados e a caixa da fórmula (spec §6.1, §6.4).
         // `:name` e `:field` são preenchidos no JS.
@@ -343,11 +342,8 @@ return [
             'total'       => 'Total da tabela',
         ],
 
-        // As sugestões sob a caixa da fórmula e a referência de funções ƒx.
+        // O grupo das funções nas sugestões sob a caixa da fórmula.
         'functions_group'   => 'Funções',
-        'reference_toggle'  => 'Referência de funções',
-        'reference_heading' => 'Funções',
-        'reference_note'    => 'Decimais com ponto (0.23), argumentos separados por vírgula. Texto entre aspas.',
 
         // Uma por função que o parser aceita (Formulas\Parser::FUNCTIONS); o bundle lê a
         // lista de funções destas chaves, por isso uma função nova lá precisa das duas aqui.
@@ -452,12 +448,14 @@ return [
             'TEXT'   => '"Total: " & TEXT(totals.total_due, "money")',
         ],
 
-        // Coluna de fórmula da tabela de linhas: calculada para cada linha.
+        // Colunas da tabela de linhas em Fórmula e colunas calculadas: calculadas para cada
+        // linha. O exemplo do placeholder é escrito com chaves e mostrado com nomes legíveis.
         'column_label'       => 'Fórmula',
-        'add_column'         => '+ Coluna de fórmula',
-        'remove_column'      => 'Remover coluna de fórmula',
+        'add_column'         => '+ Coluna calculada',
+        'remove_column'      => 'Remover coluna calculada',
+        'column_calculated'  => 'Uma coluna calculada é sempre uma fórmula; para a tirar, apague-a.',
         'column_placeholder' => 'ex.: lines.quantity * lines.unit_price',
-        'column_help'        => 'Aqui :collection.<coluna> é o valor desta linha; SUM(:collection.<coluna>) soma todas as linhas. O resultado mostrado é o da primeira linha.',
+        'column_help'        => 'O resultado mostrado é o da primeira linha.',
         'columns_overflow'   => 'As colunas ocupam mais do que a largura da tabela; reduza ou esconda uma coluna.',
     ],
 

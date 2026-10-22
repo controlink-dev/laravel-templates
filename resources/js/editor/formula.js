@@ -20,7 +20,7 @@ const MAX_SUGGESTIONS = 20;
  * The functions of the language, in the server's order. There is no list in JS: the host
  * sends one signature per function the parser accepts (`Editor::strings()` walks
  * `Formula::functions()`), and the names are read off those keys — so the autocomplete
- * and the reference never offer a function the save would refuse, nor miss one.
+ * and the library never offer a function the save would refuse, nor miss one.
  */
 export function formulaFunctionsOf(strings) {
     return Object.keys(strings ?? {})
@@ -584,10 +584,10 @@ export function createFormulaPreview({
 /* ------------------------------------------------- the box's assistance */
 
 /**
- * The autocomplete and the ƒx reference of one formula box — the data field's and every
- * formula column's (CGE-37). Returns the pieces for the caller to place: `field` (the
- * textarea, moved into a wrapper with the ƒx button), `suggestions` (the list, right under
- * it) and `reference` (the panel the button opens).
+ * The autocomplete of one formula box — the data field's and every formula column's
+ * (CGE-37). Returns the pieces for the caller to place: `field` (the textarea, moved into
+ * a wrapper) and `suggestions` (the list, right under it). What every field and function
+ * is, with an example, is the "Campos e funções" library's to show (spec §6.3).
  *
  * Applying a suggestion writes the textarea and dispatches a bubbling `input`, so the
  * owner's own handler — the trait's `onEvent`, the column card's listener — stores the
@@ -597,14 +597,10 @@ export function createFormulaPreview({
  * selected block and must never fire while the user types a formula. Host chords such as
  * Ctrl+S still get through (see `keepsKeyInFormulaBox`).
  *
- * Options:
- * - `catalogue`: what to suggest — a function returning a `scopedCatalogue`, so the
- *   suggestions are readable names (the data field), or null for the flat key catalogue
- *   (the formula columns, until they read names too).
- * - `reference`: false leaves out the ƒx button and its panel — the data field has the
- *   "Campos e funções" library instead (spec §6.3); `reference` is then null.
+ * `catalogue`: what to suggest — a function returning a `scopedCatalogue`, so the
+ * suggestions are readable names; without one, the flat key catalogue.
  */
-export function formulaAssist(input, config, { catalogue = null, reference: withReference = true } = {}) {
+export function formulaAssist(input, config, { catalogue = null } = {}) {
     const strings = config.strings ?? {};
 
     const field = document.createElement('div');
@@ -615,28 +611,6 @@ export function formulaAssist(input, config, { catalogue = null, reference: with
     suggestions.className = 'tpl-formula-suggest';
     suggestions.setAttribute('role', 'listbox');
     suggestions.hidden = true;
-
-    let reference = null;
-
-    if (withReference) {
-        const fx = document.createElement('button');
-        fx.type = 'button';
-        fx.className = 'tpl-formula-fx';
-        fx.textContent = 'ƒx';
-        fx.title = strings['formula.reference_toggle'] ?? '';
-        fx.setAttribute('aria-label', fx.title);
-        fx.setAttribute('aria-expanded', 'false');
-        field.append(fx);
-
-        reference = formulaReference(config);
-        reference.hidden = true;
-
-        fx.addEventListener('click', () => {
-            reference.hidden = !reference.hidden;
-            fx.setAttribute('aria-expanded', String(!reference.hidden));
-            fx.classList.toggle('is-on', !reference.hidden);
-        });
-    }
 
     let items = [];
     let active = 0;
@@ -758,44 +732,7 @@ export function formulaAssist(input, config, { catalogue = null, reference: with
         }
     });
 
-    return { field, suggestions, reference };
-}
-
-/**
- * The ƒx panel: every function with its signature and one line on what it gives, then the
- * two rules people trip on (the decimal dot and the comma between arguments). Text only.
- */
-function formulaReference(config) {
-    const strings = config.strings ?? {};
-
-    const panel = document.createElement('div');
-    panel.className = 'tpl-formula-reference';
-
-    const heading = document.createElement('p');
-    heading.className = 'tpl-formula-reference__heading';
-    heading.textContent = strings['formula.reference_heading'] ?? '';
-
-    const list = document.createElement('dl');
-
-    (config.formulaFunctions ?? []).forEach((name) => {
-        const term = document.createElement('dt');
-        const code = document.createElement('code');
-        code.textContent = strings['formula.signature.' + name] ?? name + '()';
-        term.append(code);
-
-        const description = document.createElement('dd');
-        description.textContent = strings['formula.description.' + name] ?? '';
-
-        list.append(term, description);
-    });
-
-    const note = document.createElement('p');
-    note.className = 'tpl-formula-reference__note';
-    note.textContent = strings['formula.reference_note'] ?? '';
-
-    panel.append(heading, list, note);
-
-    return panel;
+    return { field, suggestions };
 }
 
 /* ---------------------------------------------------------------- traits */
@@ -904,6 +841,9 @@ export function registerFormula(editor, config) {
             input.placeholder = component.formulaDisplay?.(strings['formula.placeholder'] ?? '') ?? strings['formula.placeholder'] ?? '';
             input.setAttribute('aria-label', strings['formula.source'] ?? 'Formula');
             input.value = component.formulaDisplay?.() ?? component.getAttributes()[FORMULA_SOURCE_TRAIT] ?? '';
+            // Who this box is for: a format change draws the traits again, and the library
+            // follows the new box instead of inserting into the one taken away (`adopt`).
+            input.dataset.formulaOwner = String(component.cid);
 
             input.addEventListener('focus', () => {
                 config.formulaLibrary?.open({ target: input, rowCollection: null });
@@ -913,7 +853,7 @@ export function registerFormula(editor, config) {
             status.className = 'tpl-formula-status';
             status.setAttribute('aria-live', 'polite');
 
-            const assist = formulaAssist(input, config, { catalogue: () => component.formulaNames?.() ?? null, reference: false });
+            const assist = formulaAssist(input, config, { catalogue: () => component.formulaNames?.() ?? null });
 
             wrap.append(assist.field, assist.suggestions, status);
 
@@ -965,6 +905,7 @@ export function registerFormula(editor, config) {
             wrap.append(actions);
 
             paintFormulaStatus(wrap, component.formulaStatus?.(), strings);
+            config.formulaLibrary?.adopt?.(input);
 
             return wrap;
         },
