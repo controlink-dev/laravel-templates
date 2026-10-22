@@ -330,6 +330,11 @@ return [
             'text_source' => '"Text before " & :field & " text after"',
             'upper'       => 'Capitals',
             'total'       => 'Table total',
+            // The column box's, made from the column itself.
+            'left'        => 'First 40 characters',
+            'round'       => 'Round',
+            'share'       => '% of the total',
+            'zero_blank'  => 'Blank when zero',
         ],
 
         // The functions' group in the suggestions under the formula box.
@@ -438,12 +443,13 @@ return [
         ],
 
         // Line-table columns in Formula and calculated columns: computed for each line. The
-        // placeholder's example is written with keys and shown with readable names.
+        // placeholder's `:example` is the column's own first quick example, by name.
         'column_label'       => 'Formula',
         'add_column'         => '+ Calculated column',
         'remove_column'      => 'Remove calculated column',
         'column_calculated'  => 'A calculated column is always a formula; to drop it, delete it.',
-        'column_placeholder' => 'e.g. lines.quantity * lines.unit_price',
+        'column_no_collection' => 'A table with no collection has no lines for a formula to read.',
+        'column_placeholder' => 'e.g. :example',
         'column_help'        => 'The result shown is for the first line.',
         'columns_overflow'   => 'The columns take more than the width of the table; make one narrower or hide one.',
     ],

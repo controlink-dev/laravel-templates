@@ -340,6 +340,11 @@ return [
             'text_source' => '"Texto antes " & :field & " texto depois"',
             'upper'       => 'Maiúsculas',
             'total'       => 'Total da tabela',
+            // Os da caixa de uma coluna, feitos a partir da própria coluna.
+            'left'        => 'Primeiros 40 caracteres',
+            'round'       => 'Arredondar',
+            'share'       => '% do total',
+            'zero_blank'  => 'Vazio quando é zero',
         ],
 
         // O grupo das funções nas sugestões sob a caixa da fórmula.
@@ -449,12 +454,13 @@ return [
         ],
 
         // Colunas da tabela de linhas em Fórmula e colunas calculadas: calculadas para cada
-        // linha. O exemplo do placeholder é escrito com chaves e mostrado com nomes legíveis.
+        // linha. `:example` é o 1.º exemplo rápido da própria coluna, com nomes legíveis.
         'column_label'       => 'Fórmula',
         'add_column'         => '+ Coluna calculada',
         'remove_column'      => 'Remover coluna calculada',
         'column_calculated'  => 'Uma coluna calculada é sempre uma fórmula; para a tirar, apague-a.',
-        'column_placeholder' => 'ex.: lines.quantity * lines.unit_price',
+        'column_no_collection' => 'Uma tabela sem coleção não tem linhas para uma fórmula ler.',
+        'column_placeholder' => 'ex.: :example',
         'column_help'        => 'O resultado mostrado é o da primeira linha.',
         'columns_overflow'   => 'As colunas ocupam mais do que a largura da tabela; reduza ou esconda uma coluna.',
     ],

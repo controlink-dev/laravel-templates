@@ -239,12 +239,23 @@ class EditorComponentTest extends TestCase
 
             // The data field's "Valor: Campo | Fórmula", its box and its quick examples.
             foreach (['value', 'value_field', 'value_formula', 'done', 'unknown_field',
-                'quick.heading', 'quick.text', 'quick.text_source', 'quick.upper', 'quick.total'] as $key) {
+                'quick.heading', 'quick.text', 'quick.text_source', 'quick.upper', 'quick.total',
+                'quick.left', 'quick.round', 'quick.share', 'quick.zero_blank', 'column_no_collection'] as $key) {
                 $this->assertNotSame('', $strings['formula.'.$key] ?? '', "{$locale}: formula.{$key}");
                 $this->assertStringNotContainsString('templates::editor.', $strings['formula.'.$key], "{$locale}: formula.{$key}");
             }
 
             $this->assertStringContainsString(':name', $strings['formula.unknown_field']);
+
+            // The column box's placeholder is filled with the column's own first example.
+            $this->assertStringContainsString(':example', $strings['formula.column_placeholder']);
+
+            // The column examples (`columnQuickExamples` in formula-names.js), in the shapes the
+            // bundle builds them, are formulas the server accepts in a column of that table.
+            foreach (['UPPER(lines.description)', 'LEFT(lines.description, 40)', 'ROUND(lines.amount, 2)',
+                'lines.amount / SUM(lines.amount) * 100', 'IF(lines.amount = 0, "", lines.amount)'] as $example) {
+                $this->assertNull(Formula::check($example, self::INVOICE_SINGULAR_KEYS, self::INVOICE_COLLECTIONS, 'lines'), $example);
+            }
 
             // The line table's button (spec §6.2), word for word.
             $this->assertSame(['en' => '+ Calculated column', 'pt_PT' => '+ Coluna calculada'][$locale], $strings['formula.add_column']);

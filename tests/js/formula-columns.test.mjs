@@ -4,6 +4,7 @@ import {
     removeColumn, setColumnFormulaMode,
 } from '../../resources/js/editor/formula-columns.js';
 import { registerComponents } from '../../resources/js/editor/components.js';
+import { columnQuickExamples } from '../../resources/js/editor/formula-names.js';
 import { registerTableAndSlot } from '../../resources/js/editor/table.js';
 
 /*
@@ -194,6 +195,48 @@ const catalogue = [
     assert.equal(freshFormulaColumns(modern, ['quantity', 'unit_price']), modern, 'a shared field key is no collision');
 }
 
+// 4b. The quick examples of a column box (spec §6.4, controller ruling): built from the
+// column itself, never from guessed roles. A text column: capitals and its first 40
+// characters; a numeric one (its format, or the catalogue's): rounded, share of the
+// total, blank when zero; a calculated column has no field of its own: none.
+{
+    const exampleConfig = {
+        strings: { 'formula.quick.upper': 'Maiúsculas', 'formula.quick.left': 'Primeiros 40', 'formula.quick.round': 'Arredondar',
+            'formula.quick.share': '% do total', 'formula.quick.zero_blank': 'Vazio quando é zero' },
+        bindings: [{ key: 'lines', type: 'collection', columns: [
+            { key: 'description', label: 'Descrição' },
+            { key: 'quantity', label: 'Qty', default_format: 'number' },
+            { key: 'issued', label: 'Data', default_format: 'date' },
+        ] }],
+    };
+    const sources = (column) => columnQuickExamples(column, 'lines', exampleConfig).map((example) => [example.id, example.label, example.source]);
+
+    assert.deepEqual(sources({ key: 'description', format: '' }), [
+        ['upper', 'Maiúsculas', 'UPPER(lines.description)'],
+        ['left', 'Primeiros 40', 'LEFT(lines.description, 40)'],
+    ]);
+    assert.deepEqual(sources({ key: 'description', format: 'text' }).map(([id]) => id), ['upper', 'left']);
+
+    const numeric = [
+        ['round', 'Arredondar', 'ROUND(lines.amount, 2)'],
+        ['share', '% do total', 'lines.amount / SUM(lines.amount) * 100'],
+        ['zero_blank', 'Vazio quando é zero', 'IF(lines.amount = 0, "", lines.amount)'],
+    ];
+    assert.deepEqual(sources({ key: 'amount', format: 'money' }), numeric);
+    assert.deepEqual(sources({ key: 'amount', format: 'number' }).map(([id]) => id), ['round', 'share', 'zero_blank']);
+    assert.deepEqual(sources({ key: 'quantity', format: '' }).map(([id]) => id), ['round', 'share', 'zero_blank'],
+        'numeric by the catalogue even with no format chosen');
+
+    // In Formula already: the examples still name the column's own field, not its formulaKey.
+    assert.deepEqual(sources({ key: 'amount', format: 'money', formula: 'x', formulaKey: 'formula_aaaaaaaa' }), numeric);
+
+    assert.deepEqual(sources({ key: 'issued', format: 'date' }), [], 'a date column: neither');
+    assert.deepEqual(sources({ key: 'issued', format: '' }), [], 'a date by the catalogue: neither');
+    assert.deepEqual(sources(addFormulaColumn([], 'F', () => 'aaaaaaaa')[0]), [], 'a calculated column has no field');
+    assert.deepEqual(sources({ key: 'formula_bbbbbbbb', formula: '1' }), [], 'nor a column saved before formulaKey');
+    assert.deepEqual(columnQuickExamples({ key: 'description' }, '', exampleConfig), [], 'no collection: nothing to name');
+}
+
 /* --------------------------------------------------------------- the line table */
 
 const types = {};
@@ -207,7 +250,7 @@ const editor = {
     TraitManager: { addType() {} },
 };
 
-const strings = new Proxy({ 'formula.label': 'Fórmula', 'formula.column_label': 'Fórmula', 'formula.unknown_field': 'Campo desconhecido: :name' }, {
+const strings = new Proxy({ 'formula.column_placeholder': 'ex.: :example', 'formula.label': 'Fórmula', 'formula.column_label': 'Fórmula', 'formula.unknown_field': 'Campo desconhecido: :name' }, {
     get: (target, key) => target[key] ?? String(key),
 });
 
@@ -466,6 +509,23 @@ const cells = (html) => [...html.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((match) 
     table.setColumnFormulaDisplay(2, '[Nada] * 2');
     assert.equal(writes, 0);
     assert.equal(table.getAttributes()['data-tpl-columns'], before);
+}
+
+// 18b. The box's placeholder is the column's own first example, by name; a table with no
+// collection has no switch to use (V-19 refuses a formula column there).
+{
+    const table = make();
+    const columns = table.columns();
+
+    assert.equal(table.columnPlaceholder(columns[0]), 'ex.: ROUND([Qty], 2)');
+    assert.equal(table.columnPlaceholder(addFormulaColumn(columns, 'F', () => 'jjjjjjjj')[2]), '');
+    assert.deepEqual(table.columnQuickExamples(columns[1]).map((example) => example.id), ['round', 'share', 'zero_blank']);
+
+    table.addAttributes({ 'data-tpl-collection': '' });
+    table.setColumns([{ key: 'name', label: 'Name', format: '' }]);
+    const before = table.getAttributes()['data-tpl-columns'];
+    table.setColumnFormulaMode(0, true);
+    assert.equal(table.getAttributes()['data-tpl-columns'], before, 'no collection: no formula');
 }
 
 // 19. Opening a saved table with formula columns rewrites nothing (Review Focus 5): a

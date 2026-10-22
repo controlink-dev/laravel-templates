@@ -19,7 +19,7 @@ import {
     addFormulaColumn, columnsOverflow, isCalculatedColumn, isFormulaColumn, printedKeyOf, removeColumn, setColumnFormulaMode,
 } from './formula-columns.js';
 import { formulaAssist, newFormulaId, paintFormulaStatus } from './formula.js';
-import { scopedCatalogue, toDisplay, toSource } from './formula-names.js';
+import { columnQuickExamples, scopedCatalogue, toDisplay, toSource } from './formula-names.js';
 
 /**
  * @param {object} editor  GrapesJS instance
@@ -150,8 +150,34 @@ function registerLineTable(editor, config) {
                 }
             },
 
-            /** "Valor: Campo | Fórmula" of the column at `index` (`setColumnFormulaMode`). One write. */
+            /** The quick examples under a column's box, built from the column itself (spec §6.4). */
+            columnQuickExamples(column) {
+                return columnQuickExamples(column, this.collectionKey(), config);
+            },
+
+            /**
+             * The box's placeholder: the column's own first example, by name
+             * (`ex.: ROUND([Valor], 2)`); none for a column with no example (a calculated one).
+             */
+            columnPlaceholder(column) {
+                const example = this.columnQuickExamples(column)[0];
+
+                return example
+                    ? String(config.strings['formula.column_placeholder'] ?? ':example')
+                        .replace(':example', () => toDisplay(example.source, this.columnNames()))
+                    : '';
+            },
+
+            /**
+             * "Valor: Campo | Fórmula" of the column at `index` (`setColumnFormulaMode`). One
+             * write. Never in a table with no collection: a formula column there is refused
+             * (V-19), and its source would have no row to read.
+             */
             setColumnFormulaMode(index, on) {
+                if (on && this.collectionKey() === '') {
+                    return;
+                }
+
                 const columns = this.columns();
                 const next = setColumnFormulaMode(columns, index, on, newFormulaId, this.collectionKey());
 
@@ -748,11 +774,15 @@ function valueModeField(component, column, index, config, redraw) {
     const strings = config.strings;
     const field = columnField(strings['formula.value'] ?? 'Value');
     const formula = isFormulaColumn(column);
-    const fixed = isCalculatedColumn(column);
+    // A table with no collection (a label) has no row for a formula to read (V-19).
+    const unbound = component.collectionKey() === '';
+    const fixed = isCalculatedColumn(column) || unbound;
 
     const wrap = document.createElement('div');
     wrap.className = 'tpl-value-mode' + (fixed ? ' is-locked' : '');
-    wrap.title = fixed ? strings['formula.column_calculated'] ?? '' : strings['formula.toggle'] ?? '';
+    wrap.title = strings[isCalculatedColumn(column)
+        ? 'formula.column_calculated'
+        : unbound ? 'formula.column_no_collection' : 'formula.toggle'] ?? '';
 
     const items = document.createElement('div');
     items.className = 'gjs-radio-items';
@@ -835,8 +865,8 @@ function formulaBox(component, column, index, config) {
     input.className = 'tpl-textarea tpl-formula-source';
     input.spellcheck = false;
     input.setAttribute('aria-label', strings['formula.source'] ?? 'Formula');
-    // The example in the placeholder is written with keys; shown by name like the rest.
-    input.placeholder = toDisplay(strings['formula.column_placeholder'] ?? '', component.columnNames());
+    // The column's own first example, by name (none on a calculated column).
+    input.placeholder = component.columnPlaceholder(column);
     input.value = component.columnFormulaDisplay(column);
     // Who this box is for, so the library follows a redrawn copy of it (`adopt`).
     input.dataset.formulaOwner = component.cid + ':' + printed;
@@ -880,7 +910,41 @@ function formulaBox(component, column, index, config) {
     });
     actions.append(done);
 
-    box.append(caption, assist.field, assist.suggestions, status, help, actions);
+    box.append(caption, assist.field, assist.suggestions, status, help);
+
+    // Quick examples built from this column (spec §6.4); a calculated column has none.
+    const examples = component.columnQuickExamples(column);
+
+    if (examples.length) {
+        const heading = document.createElement('p');
+        heading.className = 'tpl-formula-help';
+        heading.textContent = strings['formula.quick.heading'] ?? '';
+
+        const list = document.createElement('div');
+        list.className = 'tpl-formula-examples';
+
+        examples.forEach((example) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'tpl-btn tpl-btn--secondary tpl-btn--sm tpl-formula-example';
+            button.textContent = example.label;
+            button.title = toDisplay(example.source, component.columnNames());
+
+            // Fills the box and goes the way typing goes: the box's own `input` listener.
+            button.addEventListener('click', () => {
+                input.value = button.title;
+                input.focus();
+                input.setSelectionRange(input.value.length, input.value.length);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+
+            list.append(button);
+        });
+
+        box.append(heading, list);
+    }
+
+    box.append(actions);
     paintFormulaStatus(box, component.formulaColumnStatus?.(column), strings);
     config.formulaLibrary?.adopt?.(input);
 

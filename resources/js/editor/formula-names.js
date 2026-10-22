@@ -295,3 +295,56 @@ export function quickExamples(config, catalogue) {
 
     return examples;
 }
+
+/** A column's format, or the catalogue's default for it when none is chosen. */
+function columnKind(column, collection, config) {
+    const declared = (config?.bindings ?? [])
+        .find((binding) => binding.type === 'collection' && binding.key === collection)
+        ?.columns?.find((entry) => entry.key === column.key)?.default_format ?? '';
+    const format = column.format || declared || '';
+
+    if (NUMERIC_FORMATS.has(format) || NUMERIC_FORMATS.has(declared)) {
+        return 'number';
+    }
+
+    return format === '' || format === 'text' ? 'text' : null;
+}
+
+/**
+ * The quick examples under a column's formula box (spec §6.4, as the controller ruled
+ * it): built from THIS column, `<collection>.<key>`, never from roles guessed from the
+ * catalogue (which column is the VAT rate). A text column: capitals and its first 40
+ * characters; a numeric one (its format, or the catalogue's default): rounded, its share
+ * of the table's total, blank when zero. A calculated column has no field of its own, and
+ * a column of any other kind (a date) none that reads well: no examples. Technical
+ * sources; the box shows them by name.
+ *
+ * @returns {{id: string, label: string, source: string}[]}
+ */
+export function columnQuickExamples(column, collection, config) {
+    const strings = config?.strings ?? {};
+    const key = column?.key;
+
+    if (!collection || typeof key !== 'string' || key === '' || key.startsWith('formula_')) {
+        return [];
+    }
+
+    const field = `${collection}.${key}`;
+    const label = (name, fallback) => strings['formula.quick.' + name] ?? fallback;
+
+    switch (columnKind(column, collection, config)) {
+        case 'text':
+            return [
+                { id: 'upper', label: label('upper', 'Capitals'), source: `UPPER(${field})` },
+                { id: 'left', label: label('left', 'First 40 characters'), source: `LEFT(${field}, 40)` },
+            ];
+        case 'number':
+            return [
+                { id: 'round', label: label('round', 'Round'), source: `ROUND(${field}, 2)` },
+                { id: 'share', label: label('share', '% of the total'), source: `${field} / SUM(${field}) * 100` },
+                { id: 'zero_blank', label: label('zero_blank', 'Blank when zero'), source: `IF(${field} = 0, "", ${field})` },
+            ];
+        default:
+            return [];
+    }
+}

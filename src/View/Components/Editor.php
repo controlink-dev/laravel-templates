@@ -220,6 +220,10 @@ class Editor extends Component
             'formula.quick.text_source' => __('templates::editor.formula.quick.text_source', ['field' => ':field']),
             'formula.quick.upper'       => __('templates::editor.formula.quick.upper'),
             'formula.quick.total'       => __('templates::editor.formula.quick.total'),
+            'formula.quick.left'        => __('templates::editor.formula.quick.left'),
+            'formula.quick.round'       => __('templates::editor.formula.quick.round'),
+            'formula.quick.share'       => __('templates::editor.formula.quick.share'),
+            'formula.quick.zero_blank'  => __('templates::editor.formula.quick.zero_blank'),
 
             // The autocomplete under the formula box (CGE-37).
             'formula.functions_group'   => __('templates::editor.formula.functions_group'),
@@ -229,7 +233,8 @@ class Editor extends Component
             'formula.add_column'         => __('templates::editor.formula.add_column'),
             'formula.remove_column'      => __('templates::editor.formula.remove_column'),
             'formula.column_calculated'  => __('templates::editor.formula.column_calculated'),
-            'formula.column_placeholder' => __('templates::editor.formula.column_placeholder'),
+            'formula.column_no_collection' => __('templates::editor.formula.column_no_collection'),
+            'formula.column_placeholder' => __('templates::editor.formula.column_placeholder', ['example' => ':example']),
             'formula.column_help'        => __('templates::editor.formula.column_help'),
             'formula.columns_overflow'   => __('templates::editor.formula.columns_overflow'),
 
