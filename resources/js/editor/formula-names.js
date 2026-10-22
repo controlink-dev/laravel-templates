@@ -217,6 +217,29 @@ export function toDisplay(source, catalogue) {
 }
 
 /**
+ * The dotted keys a technical source refers to (`customer.name`, `lines.amount`), outside
+ * text literals, each once, in the order they first appear. Whole tokens only, as
+ * `toDisplay` reads them: `0.23` is a number and `IF` a function, neither a key.
+ */
+export function formulaReferences(source) {
+    const keys = [];
+
+    formulaSegments(String(source ?? '')).forEach((segment) => {
+        if (segment.type !== 'code') {
+            return;
+        }
+
+        (segment.text.match(/[A-Za-z0-9_.]+/g) ?? []).forEach((token) => {
+            if (/^[a-z_][a-z0-9_]*(\.[a-z0-9_]+)+$/.test(token) && !keys.includes(token)) {
+                keys.push(token);
+            }
+        });
+    });
+
+    return keys;
+}
+
+/**
  * The formula with its names turned back into keys, outside text literals, and the names
  * that match nothing — exactly, after trimming the spaces inside the brackets — in
  * `unknown`, left as they were (the editor says "Campo desconhecido" without asking the

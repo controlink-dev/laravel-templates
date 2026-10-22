@@ -18,6 +18,9 @@
  * - Nothing is persisted in the browser either.
  */
 
+import { FORMULA_SOURCE_TRAIT } from './formula.js';
+import { formulaReferences } from './formula-names.js';
+
 /** How many collection rows the canvas draws (the panel lists the same ones). */
 export const PREVIEW_ROW_LIMIT = 5;
 
@@ -179,6 +182,21 @@ export function plainProjectData(editor) {
 
 /* ------------------------------------------------------------------------ panel */
 
+/** A line table's `data-tpl-columns`, read as a list — none when absent or not JSON. */
+function columnsOf(json) {
+    if (!json) {
+        return [];
+    }
+
+    try {
+        const columns = JSON.parse(json);
+
+        return Array.isArray(columns) ? columns : [];
+    } catch {
+        return [];
+    }
+}
+
 const text = (config, key, fallback) => config.strings?.[`preview.${key}`] ?? fallback;
 
 const fill = (template, values) => Object.entries(values)
@@ -215,15 +233,42 @@ function el(tag, className, content) {
  * may, so the dot after the id is the boundary (mirrors the host's `substr(id)+1`) rather
  * than splitting on the first dot. Collection targets come only from `config.bindings`.
  *
+ * CGE-37: a formula uses records too, so its source counts as binding what it names. A
+ * data field in Formula is bound to `formula.<id>` (no node), and its source is in
+ * `data-tpl-formula`; a line table's formula columns keep theirs in the `formula` of
+ * their `data-tpl-columns` entry. The dotted keys those name outside text literals
+ * (`formulaReferences`) are read like a binding: one whose first segment is a collection
+ * binding's key (`SUM(lines.amount)`, a column's `lines.quantity`) marks that collection,
+ * any other its singular node by the same prefix rule.
+ *
  * Stable order: nodes in catalogue declaration order, then collection bindings in theirs,
  * filtered to those in use — the cards never reshuffle when blocks are moved around.
  */
-function collectTargets(config, editor) {
+export function collectTargets(config, editor) {
     const nodes = (config.nodes ?? []).filter((node) => !node.collection && node.reachable !== false);
     const bindings = config.bindings ?? [];
+    const collectionKeys = bindings.filter((binding) => binding.type === 'collection').map((binding) => binding.key);
 
     const usedNodeIds = new Set();
     const usedCollections = new Set();
+
+    const useNodeOf = (key) => {
+        const node = nodes.find((entry) => key === entry.id || key.startsWith(entry.id + '.'));
+
+        if (node) {
+            usedNodeIds.add(node.id);
+        }
+    };
+
+    const useReferencesOf = (source) => formulaReferences(source).forEach((key) => {
+        const collection = collectionKeys.find((entry) => key === entry || key.startsWith(entry + '.'));
+
+        if (collection !== undefined) {
+            usedCollections.add(collection);
+        } else {
+            useNodeOf(key);
+        }
+    });
 
     walk(editor.getWrapper(), (component) => {
         const attributes = component.getAttributes?.() ?? {};
@@ -231,11 +276,7 @@ function collectTargets(config, editor) {
         const binding = attributes['data-tpl-binding'] ?? '';
 
         if (binding !== '') {
-            const node = nodes.find((entry) => binding === entry.id || binding.startsWith(entry.id + '.'));
-
-            if (node) {
-                usedNodeIds.add(node.id);
-            }
+            useNodeOf(binding);
         }
 
         const collection = attributes['data-tpl-collection'] ?? '';
@@ -243,6 +284,9 @@ function collectTargets(config, editor) {
         if (collection !== '') {
             usedCollections.add(collection);
         }
+
+        useReferencesOf(attributes[FORMULA_SOURCE_TRAIT] ?? '');
+        columnsOf(attributes['data-tpl-columns']).forEach((column) => useReferencesOf(column?.formula ?? ''));
     });
 
     const targets = [];
