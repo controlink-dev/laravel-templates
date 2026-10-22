@@ -2130,12 +2130,20 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         bindFrameWheel();
     });
 
-    // Set when a drag starts from a row's move handle in the Layers panel (see below).
+    // Set when a drag starts from a row's move handle in the Layers panel (see below),
+    // with the band the block was in when it started.
     let layerDrag = false;
+    let layerFrom = null;
 
     chrome.layers?.addEventListener('pointerdown', (event) => {
         layerDrag = Boolean(event.target.closest?.('[data-toggle-move]'));
     }, true);
+
+    editor.on('component:drag:start', (data) => {
+        const target = data?.target;
+
+        layerFrom = layerDrag && target ? { zone: zoneOf(target), index: target.index() } : null;
+    });
 
     // The tree has to follow the geometry; see `reparentToZone`. A roll has no bands, and
     // flow mode reorders in the tree already, so there is nothing to reparent. A label has
@@ -2148,6 +2156,20 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         // band, undoing the reorder — the drag looked like it did nothing.
         if (layerDrag) {
             layerDrag = false;
+
+            // Dropped on another band's row: move it there the way the Zone picker does —
+            // its top carried over and kept inside the new band — instead of keeping the
+            // old band's coordinates, which made it jump across the sheet.
+            const zone = zoneOf(target);
+            const from = layerFrom;
+            const home = from && editor.getWrapper()?.find(`[data-tpl-zone="${from.zone}"]`)?.[0];
+
+            layerFrom = null;
+
+            if (home && zone && zone !== from.zone) {
+                home.append(target, { at: from.index });
+                moveToZone(editor, target, zone, { flow: rollMode });
+            }
 
             return;
         }

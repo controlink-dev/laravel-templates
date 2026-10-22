@@ -1872,3 +1872,9 @@ select.tpl-pf-input {
 .tpl-editor-root .gjs-layer-move:active {
     cursor: grabbing;
 }
+
+/* The Layers drop guide jumps to where the row will land; GrapesJS animates it over
+   0.2s, so it trailed the pointer and the drop seemed to land somewhere else. */
+.tpl-editor-root .gjs-layers .gjs-placeholder {
+    transition: none;
+}
