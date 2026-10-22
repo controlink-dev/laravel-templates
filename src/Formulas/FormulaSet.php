@@ -117,15 +117,23 @@ final class FormulaSet
      * collection, before the compositor slices it per sheet — so a SUM is the
      * document's total on every sheet, and no formula can see another's result.
      *
+     * Because it is all one dataset, each source is parsed once and each SUM/COUNT is
+     * computed once for the whole pass: a per-row column reading `SUM(...)` would
+     * otherwise rescan the collection on every line (O(n²) in the lines).
+     *
      * @param  array<string, mixed>  $dataset
+     * @param  AggregateCache|null  $aggregates  the pass's aggregate cache; a fresh one when null
      * @return array<string, mixed>
      */
-    public function inject(array $dataset): array
+    public function inject(array $dataset, ?AggregateCache $aggregates = null): array
     {
-        $original = $dataset;
+        $original   = $dataset;
+        $aggregates ??= new AggregateCache;
+        $compiled   = [];
 
         foreach ($this->fields as $key => $source) {
-            $dataset[$key] = Formula::evaluate($source, $original);
+            $compiled[$source] ??= Formula::compile($source);
+            $dataset[$key] = $compiled[$source]->evaluate($original, aggregates: $aggregates);
         }
 
         foreach ($this->columns as $column) {
@@ -136,13 +144,15 @@ final class FormulaSet
                 continue;
             }
 
+            $formula = $compiled[$column['source']] ??= Formula::compile($column['source']);
+
             foreach ($rows as $index => $row) {
                 if (is_array($row)) {
-                    $dataset[$column['collection']][$index][$column['key']] = Formula::evaluate(
-                        $column['source'],
+                    $dataset[$column['collection']][$index][$column['key']] = $formula->evaluate(
                         $original,
                         $row,
                         $column['collection'],
+                        aggregates: $aggregates,
                     );
                 }
             }

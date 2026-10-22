@@ -32,12 +32,14 @@ final class Evaluator
      * @param  array<string, mixed>  $dataset  flat map: 'customer.name' => ..., 'lines' => [[...], ...]
      * @param  array<string, mixed>|null  $row  current row when evaluating a per-row column
      * @param  callable(mixed, string, array): string|null  $format  how TEXT() formats; absent => TEXT is an error
+     * @param  AggregateCache|null  $aggregates  SUM/COUNT results shared with other evaluations over this same dataset
      */
     public function __construct(
         private readonly array $dataset,
         private readonly ?array $row = null,
         private readonly ?string $rowCollection = null,
         ?callable $format = null,
+        private readonly ?AggregateCache $aggregates = null,
     ) {
         $this->format = $format;
     }
@@ -244,6 +246,20 @@ final class Evaluator
 
         // Column keys may contain dots (`lines.entity.name`), so split on the first one only.
         [$collection, $column] = explode('.', $arg['key'], 2) + [1 => ''];
+
+        // Over the whole collection, so the same on every row: computed once per pass.
+        if ($this->aggregates !== null) {
+            return $this->aggregates->remember(
+                $name === 'COUNT' ? 'COUNT:'.$collection : 'SUM:'.$arg['key'],
+                fn (): int|float => $this->computeAggregate($name, $collection, $column),
+            );
+        }
+
+        return $this->computeAggregate($name, $collection, $column);
+    }
+
+    private function computeAggregate(string $name, string $collection, string $column): int|float
+    {
         $rows = $this->dataset[$collection] ?? null;
         if (! is_array($rows)) {
             throw new FormulaException('unknown_reference', "No collection {$collection}.");

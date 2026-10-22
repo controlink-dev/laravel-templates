@@ -3,7 +3,6 @@
 namespace Controlink\Templates\Formulas;
 
 use Controlink\Templates\Rendering\FormatSpec;
-use Controlink\Templates\Rendering\TemplateRenderer;
 use InvalidArgumentException;
 use Throwable;
 
@@ -99,25 +98,19 @@ final class Formula
      */
     public static function evaluate(string $source, array $dataset, ?array $row = null, ?string $rowCollection = null, ?callable $format = null): string|int|float
     {
+        return self::compile($source)->evaluate($dataset, $row, $rowCollection, $format);
+    }
+
+    /**
+     * The source parsed once, for evaluating many times (a per-row column, once per
+     * line). Never throws: a source that does not parse compiles to one that prints ''.
+     */
+    public static function compile(string $source): CompiledFormula
+    {
         try {
-            $format ??= static function (mixed $value, string $name, array $args): string {
-                return app(TemplateRenderer::class)->formatValue($value, $name, $args);
-            };
-            $value = (new Evaluator($dataset, $row, $rowCollection, $format))->evaluate(Parser::parse($source));
-
-            if ($value === null) {
-                return '';
-            }
-            if (is_bool($value)) {
-                return $value ? 'TRUE' : 'FALSE';
-            }
-            if (is_float($value) && ! is_finite($value)) {
-                return '';
-            }
-
-            return $value;
+            return new CompiledFormula(Parser::parse($source));
         } catch (Throwable) {
-            return '';
+            return new CompiledFormula(null);
         }
     }
 

@@ -3,6 +3,7 @@
 namespace Controlink\Templates\Tests\Feature;
 
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
+use Controlink\Templates\Formulas\AggregateCache;
 use Controlink\Templates\Formulas\FormulaSet;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Rendering\TemplateRenderer;
@@ -435,6 +436,34 @@ class FormulaRenderTest extends TestCase
             ini_set('pcre.jit', (string) $jit);
             ini_set('pcre.backtrack_limit', (string) $backtrack);
         }
+    }
+
+    /**
+     * A per-row column that divides by a SUM: the SUM is computed once per pass, not once
+     * per line (it was O(n²) in the number of lines), and a failing one is not retried.
+     */
+    public function test_inject_computes_each_aggregate_once_per_pass(): void
+    {
+        $html = $this->withField($this->invoice()->initialLayout['html'], 'header', 'tpl-a', 'formula.tot123', 'SUM(linhas.valor) + COUNT(linhas.valor)');
+        $html = $this->withRowColumn($html, 'formula_col123', 'ROUND(linhas.valor / SUM(linhas.valor) * 100, 2) & "/" & COUNT(linhas.valor)');
+
+        $rows       = array_map(fn (int $i): array => ['valor' => $i % 7 + 1], range(1, 5000));
+        $aggregates = new AggregateCache;
+        $out        = FormulaSet::fromHtml($html)->inject(['linhas' => $rows], $aggregates);
+
+        $sum = array_sum(array_column($rows, 'valor'));
+
+        $this->assertSame(2, $aggregates->computed(), 'one SUM(linhas.valor) and one COUNT(linhas), for 5000 rows');
+        $this->assertSame($sum + 5000, $out['formula.tot123']);
+        $this->assertSame(round(1 / $sum * 100, 2).'/5000', $out['linhas'][6]['formula_col123']);
+
+        // A SUM that fails (a non-numeric cell) fails on every row, and is computed once.
+        $html       = $this->withRowColumn($this->invoice()->initialLayout['html'], 'formula_bad123', 'linhas.valor + SUM(linhas.nome)');
+        $aggregates = new AggregateCache;
+        $out        = FormulaSet::fromHtml($html)->inject(['linhas' => array_fill(0, 500, ['valor' => 1, 'nome' => 'x'])], $aggregates);
+
+        $this->assertSame(1, $aggregates->computed());
+        $this->assertSame(array_fill(0, 500, ''), array_column($out['linhas'], 'formula_bad123'));
     }
 
     public function test_inject_evaluates_over_the_whole_dataset_and_skips_missing_collections(): void
