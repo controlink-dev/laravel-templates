@@ -1792,6 +1792,9 @@ select.tpl-pf-input {
 .tpl-geometry__field input {
     width: 100%;
     box-sizing: border-box;
+    padding: 0.3rem 0.45rem;
+    font-size: 0.75rem;
+    line-height: 1.2;
 }
 
 .tpl-geometry__error {

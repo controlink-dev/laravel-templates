@@ -1,4 +1,4 @@
-import { PX_PER_MM, lengthToMm, roundTo, switchAnchor } from './anchors.js';
+import { PX_PER_MM, lengthToMm, readAnchor, roundTo, switchAnchor } from './anchors.js';
 
 /**
  * The position and size the style panel shows are the block's real ones (CGE-51).
@@ -27,6 +27,46 @@ export function wirePositionPanel(editor, root) {
     });
     editor.on('component:drag:end', () => {
         dragging = false;
+    });
+
+    /*
+     * Where a drag starts from. GrapesJS reads it with `parseFloat(style.left)`, unit
+     * ignored, so a block at `120mm` started its drag as if at 120px and jumped away from
+     * the cursor; and a block pinned right kept its `right` while the drag wrote `left`,
+     * stretching its box back to where the drag began. The start is read from the
+     * element instead, and the block is moved onto left/top in pixels for the duration
+     * of the drag — the anchor it had is remembered and restored, in millimetres, when the
+     * drag ends (`dragToMillimetres` in editor.js).
+     */
+    editor.Commands.extend('core:component-drag', {
+        getPosition() {
+            const target = this.target;
+            const el = target?.getEl?.();
+
+            if (this.isTran || !el || !target.getAttributes()['data-tpl-type']) {
+                const style = target?.getStyle?.() ?? {};
+
+                return { x: parseFloat(style.left ?? '0') || 0, y: parseFloat(style.top ?? '0') || 0 };
+            }
+
+            const style = { ...target.getStyle() };
+
+            target.__pfDragAnchor = readAnchor(style);
+            delete style.right;
+            delete style.bottom;
+            style.left = el.offsetLeft + 'px';
+            style.top = el.offsetTop + 'px';
+
+            applying = true;
+
+            try {
+                target.setStyle(style);
+            } finally {
+                applying = false;
+            }
+
+            return { x: el.offsetLeft, y: el.offsetTop };
+        },
     });
 
     const apply = (component, set, remove) => {

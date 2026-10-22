@@ -3109,8 +3109,23 @@ function dragToMillimetres(component) {
         return;
     }
 
+    // The drag ran on left/top (position-panel.js); the side the block was anchored by
+    // before it is restored here, measured from the zone's far edge.
+    const anchor = component.__pfDragAnchor;
+    const before = { ...component.getStyle() };
+
+    delete component.__pfDragAnchor;
+
+    if (anchor?.x === 'right' && !before.right) {
+        before.right = '0mm';
+    }
+
+    if (anchor?.y === 'bottom' && !before.bottom) {
+        before.bottom = '0mm';
+    }
+
     const { set, remove } = dragResultToMm(
-        component.getStyle(),
+        before,
         measured,
         { width: el.offsetParent.clientWidth / PX_PER_MM, height: el.offsetParent.clientHeight / PX_PER_MM },
     );
