@@ -90,6 +90,12 @@ export function previewRows(config, key) {
 }
 
 function walk(component, callback) {
+    // No wrapper while GrapesJS swaps a format's project data in: the old page is gone
+    // and the new one not built yet, and `component:remove` still fires (dirty check).
+    if (!component) {
+        return;
+    }
+
     callback(component);
 
     component.components().forEach((child) => walk(child, callback));

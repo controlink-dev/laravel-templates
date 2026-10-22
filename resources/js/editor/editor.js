@@ -18,11 +18,15 @@ import { mountPreviewPanel, plainProjectData, refreshPreview } from './preview-f
 import { createFormatPreview } from './format-preview.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
+import { freeSpotForCopy } from './copy-offset.js';
+import { readSectors, writeSector } from './sector-memory.js';
 import { mountGeometryPanel } from './geometry-panel.js';
 import { icons } from './icons.js';
 import {
     checkLegalFieldsLocally,
     checkOffSheetLocally,
+    checkTextOverflowLocally,
+    checkMandatoryTablesLocally,
     restoreMissingLegalFields,
     snapIntoSheet,
     styleManagerSectors,
@@ -165,6 +169,16 @@ async function mountEditor(el) {
     // the tree) rather than the absolute drag the A4 sheet uses.
     const rollMode = config.geometry?.medium === 'roll';
 
+    // The style sections' open state, kept in this browser (CGE-53). Reading the property
+    // can itself throw where site data is blocked.
+    let sectorStorage = null;
+
+    try {
+        sectorStorage = window.localStorage;
+    } catch {
+        sectorStorage = null;
+    }
+
     const editor = grapesjs.init({
         container: el,
         height: '100%',
@@ -228,13 +242,17 @@ async function mountEditor(el) {
         canvasCss: `:root{--tpl-accent:${accent};--tpl-desk:${desk}}` + canvasDecorations(paper, rollMode, config.editable),
         blockManager: { appendTo: chrome.blocks },
         // Only the reduced set (spec 6.6): no flex, no grid, no transitions.
-        styleManager: { appendTo: chrome.styles, sectors: styleManagerSectors(config.strings) },
+        styleManager: { appendTo: chrome.styles, sectors: styleManagerSectors(config.strings, readSectors(sectorStorage)) },
         traitManager: { appendTo: chrome.traits },
         // No wrapper row: "Body" is not a layer of a printed document.
         layerManager: { appendTo: chrome.layers, showWrapper: false },
         // No font family selector: the catalogue holds exactly one family, and a
         // family the server has no file for would break every truncation measurement.
         selectorManager: { componentFirst: true },
+    });
+
+    editor.StyleManager.getSectors().forEach((sector) => {
+        sector.on('change:open', () => writeSector(sectorStorage, sector.getId(), sector.isOpen()));
     });
 
     /*
@@ -382,7 +400,12 @@ async function mountEditor(el) {
             }
 
             const local = config.editable
-                ? [...checkLegalFieldsLocally(editor, config), ...checkOffSheetLocally(editor, config)]
+                ? [
+                    ...checkLegalFieldsLocally(editor, config),
+                    ...checkOffSheetLocally(editor, config),
+                    ...checkTextOverflowLocally(editor, config),
+                    ...checkMandatoryTablesLocally(editor, config),
+                ]
                 : [];
             const problems = mergeProblems(serverProblems, local);
 
@@ -1015,6 +1038,11 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     // Set the moment the user picks a zoom of their own: from then on, fitting is
     // theirs to ask for and the pane resizing may not overrule it.
     let userChoseZoom = false;
+
+    // Set at the user's first touch of the layout (CGE-53). Until then the sheet keeps
+    // fitting while the pane settles; after it, the pane changing size — the validation
+    // strip growing, the tab maximised — never moves the zoom under the user's hand.
+    let layoutTouched = false;
 
     /** Air around the sheet when fitting, in pixels. Dead space is dead space. */
     const AIR = 12;
@@ -1777,7 +1805,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             return;
         }
 
-        const name = binding?.label ?? component.get('name') ?? component.getName?.() ?? '';
+        // getName() first: a fixed text is named after its own words (CGE-53).
+        const name = binding?.label ?? component.getName?.() ?? component.get('name') ?? '';
         const chip = attributes['data-tpl-legal'] === '1'
             ? `<span class="tpl-chip">${icons.shieldCheck} ${escapeHtml(config.strings['chrome.legal_chip'])}</span>`
             : '';
@@ -1792,6 +1821,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     };
 
     editor.on('component:selected component:deselected', renderSelection);
+    // A fixed text is named after its words (CGE-53): the header follows an edit.
+    editor.on('component:update:text', (component) => component === editor.getSelected() && renderSelection());
 
     /* ------------------------------------------------------------ zone picker */
 
@@ -2065,7 +2096,11 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
          * the sheet fitted at 59% inside a box that had room for 76%, leaving a
          * hundred-pixel ring of grey on every side.
          */
-        const observer = new ResizeObserver(() => (userChoseZoom ? drawRulers() : fitZoom()));
+        const observer = new ResizeObserver(() => (userChoseZoom || layoutTouched ? drawRulers() : fitZoom()));
+
+        editor.on('component:selected component:drag:start block:drag:start', () => {
+            layoutTouched = true;
+        });
 
         [chrome.canvas, canvasEl].forEach((element) => element && observer.observe(element));
 
@@ -2145,8 +2180,24 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         dropPoint = { x: event.clientX, y: event.clientY };
     });
 
+    /*
+     * The block just dropped is selected, with its Field tab open (CGE-53): it is the one
+     * the user is about to set up, and a small block is hard to click afterwards.
+     */
+    const selectDropped = (component) => {
+        editor.select(component);
+        root.querySelector('[data-tpl-tab="field"]')?.click();
+    };
+
     editor.on('block:drag:stop', (component) => {
-        if (!component || rollMode) {
+        if (!component) {
+            return;
+        }
+
+        // A roll flows: the sorter already placed the block, there is nothing to settle.
+        if (rollMode) {
+            selectDropped(component);
+
             return;
         }
 
@@ -2195,6 +2246,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
                 reparentToZone(editor, config, component);
             }
 
+            selectDropped(component);
+
             return;
         }
 
@@ -2216,6 +2269,49 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         const step = (rescueCascade++ % 6) * 4;
 
         component.addStyle({ left: round(2 + step) + 'mm', top: round(2 + step) + 'mm' });
+        selectDropped(component);
+    });
+
+    /*
+     * A copy (toolbar clone or Ctrl+C/V) is selected and set a few millimetres off the
+     * block it came from (CGE-53). GrapesJS puts it exactly on top and keeps the original
+     * selected, so a copy looked like nothing had happened. The copy's `#id` rule is a
+     * copy of the original's, which is where the offset is read from — never from the
+     * block selected when pasting, whose anchor may differ (a copy would then carry both
+     * `top` and `bottom` and stretch across its band). It steps past blocks already on
+     * that spot, so repeated or multi-block pastes make a staircase, not a stack.
+     */
+    let pasted = [];
+
+    editor.on('component:paste', (component) => {
+        if (!rollMode) {
+            const el = component.getEl?.();
+            const band = el?.offsetParent;
+            const box = measuredBox(el);
+            const taken = (component.parent?.()?.components() ?? [])
+                .filter((sibling) => sibling !== component)
+                .map((sibling) => sibling.getStyle());
+
+            if (box && band) {
+                component.addStyle(freeSpotForCopy(
+                    component.getStyle(),
+                    { width: box.width, height: box.height },
+                    { width: band.clientWidth / PX_PER_MM, height: band.clientHeight / PX_PER_MM },
+                    taken,
+                ));
+            }
+        }
+
+        // Selected once the paste is over: the command ends by refreshing the block it
+        // pasted from, and a paste of several blocks fires once per block.
+        if (!pasted.length) {
+            setTimeout(() => {
+                editor.select(pasted);
+                pasted = [];
+            });
+        }
+
+        pasted.push(component);
     });
 
     return { sync, drawRulers, fitZoom, attach };

@@ -44,6 +44,18 @@ html, body {
     white-space: nowrap;
 }
 
+/*
+ * "Várias linhas" (CGE-52): the text breaks at words inside the block's own width and
+ * height, keeping typed line breaks and repeated spaces; what does not fit is cut, the
+ * same on the canvas and in the PDF. A legal value cut here is no longer found whole in
+ * the PDF, which refuses the activation (R-02).
+ */
+.block[data-tpl-wrap="1"] {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+}
+
 .mark {
     position: absolute;
     background: #000;

@@ -10,6 +10,9 @@
  * ========================================================================= */
 
 import { icons } from './icons.js';
+import { staticTextName } from './layer-names.js';
+import { measuredBox } from './position-panel.js';
+import { PX_PER_MM, roundTo } from './anchors.js';
 import { alertDialog } from './dialog.js';
 import { previewValue } from './preview-filter.js';
 import {
@@ -71,6 +74,7 @@ const BLOCK_CATEGORY = { id: 'templates', label: '' };
  * @param {object} config  bindings, nodes, formats, fixture, ruleWidths and strings
  */
 export function registerComponents(editor, config) {
+    registerTextareaTrait(editor);
     registerZones(editor, config);
     registerStaticText(editor, config);
     registerDataField(editor, config);
@@ -254,7 +258,8 @@ function registerStaticText(editor, config) {
                 components: [{ type: 'textnode', content: config.strings['block.static_text_default'] }],
                 traits: [
                     {
-                        type: 'text',
+                        // A textarea: with "Várias linhas" on, typed line breaks print.
+                        type: 'tpl-textarea',
                         // NOT `content`: that is a reserved GrapesJS component property, and
                         // a changeProp trait sharing the name fought GrapesJS's own content
                         // handling and left the block empty when edited.
@@ -262,11 +267,14 @@ function registerStaticText(editor, config) {
                         label: config.strings['trait.content'],
                         changeProp: true,
                     },
+                    wrapTrait(config),
                 ],
                 stylable: TEXT_STYLES,
             },
 
             init() {
+                this.on('change:attributes:data-tpl-wrap', () => sizeForWrap(this, config));
+
                 // Seed the trait from the block's current text so the Field panel shows it,
                 // silently so merely opening a saved version is not marked as a change.
                 this.set(
@@ -276,6 +284,16 @@ function registerStaticText(editor, config) {
                 );
 
                 this.on('change:text', this.syncContent);
+                // Layers and the selection header follow the text as it is edited.
+                this.on('change:text', () => this.trigger('change:name'));
+            },
+
+            /** Named after what it says (CGE-53), computed and never stored. */
+            getName() {
+                const text = this.get('text')
+                    ?? this.components().map((child) => child.get('content') || '').join('');
+
+                return staticTextName(text, config.strings['block.static_text_empty']);
             },
 
             /*
@@ -396,11 +414,14 @@ function registerDataField(editor, config) {
                         label: config.strings['trait.format'],
                         options: formatOptions,
                     },
+                    wrapTrait(config),
                 ],
                 stylable: TEXT_STYLES,
             },
 
             init() {
+                this.on('change:attributes:data-tpl-wrap', () => sizeForWrap(this, config));
+
                 /*
                  * A layout saved before the node select existed carries only
                  * `data-tpl-binding` — the node is recovered from it so the select
@@ -1014,4 +1035,60 @@ function escapeText(value) {
 
 function escapeAttribute(value) {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+}
+
+/**
+ * The "Várias linhas" switch of a text or a data field (CGE-52). An attribute, so it round
+ * trips through the HTML; `print.css` turns it into wrapping inside the block's own box.
+ */
+function wrapTrait(config) {
+    return {
+        type: 'checkbox',
+        name: 'data-tpl-wrap',
+        label: config.strings['trait.wrap'],
+        valueTrue: '1',
+        valueFalse: '',
+    };
+}
+
+/**
+ * A block switched to several lines needs a box to break in: one with no width or height
+ * gets the room to its band's right edge (at most 80mm — a one-word text's own width
+ * would break after every word) and three lines of its own font, which the user adjusts.
+ */
+function sizeForWrap(component, config) {
+    // A talão flows: its blocks already wrap in the roll's width and take the height
+    // they need, so a fixed box would only make a long address run over the next block.
+    if (component.getAttributes()['data-tpl-wrap'] !== '1' || config.geometry?.medium === 'roll') {
+        return;
+    }
+
+    const style = component.getStyle();
+    const el = component.getEl?.();
+    const box = measuredBox(el);
+
+    if (!box || (style.width && style.height)) {
+        return;
+    }
+
+    const fontPx = parseFloat(el.ownerDocument.defaultView.getComputedStyle(el).fontSize) || 16;
+
+    component.addStyle({
+        ...(style.width ? {} : { width: roundTo(Math.max(box.width, Math.min(80, box.width + box.right)), 0.5) + 'mm' }),
+        ...(style.height ? {} : { height: roundTo((3 * fontPx * 1.2) / PX_PER_MM, 0.5) + 'mm' }),
+    });
+}
+
+/** A multi-line text box for a trait (the fixed text's content). */
+function registerTextareaTrait(editor) {
+    editor.TraitManager.addType('tpl-textarea', {
+        createInput({ trait }) {
+            const input = document.createElement('textarea');
+            input.rows = 3;
+            input.className = 'tpl-textarea';
+            input.value = trait.getValue() ?? '';
+
+            return input;
+        },
+    });
 }

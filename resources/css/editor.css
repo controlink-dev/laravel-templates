@@ -1802,3 +1802,56 @@ select.tpl-pf-input {
     font-size: 0.75rem;
     color: var(--tpl-danger, #b91c1c);
 }
+
+/*
+ * The fixed text's content box (CGE-52): a textarea inside the trait's own bordered field,
+ * so it draws no border of its own and grows to the field instead of sitting low in it.
+ */
+.tpl-editor-root .gjs-field textarea.tpl-textarea {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 3.25rem;
+    padding: 0.25rem 0.5rem;
+    border: 0;
+    outline: none;
+    background: transparent;
+    resize: vertical;
+    line-height: 1.35;
+}
+
+/*
+ * Checkbox traits ("Várias linhas"): a square box that shows its state. The generic field
+ * rule above rounds every `.gjs-field` into a pill, and GrapesJS's own check mark is drawn
+ * by its stylesheet, which the editor does not load — so the box was round and never
+ * changed when ticked.
+ */
+.tpl-editor-root .gjs-field-checkbox {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    padding: 0;
+    border-radius: 0.25rem;
+    cursor: pointer;
+}
+
+.tpl-editor-root .gjs-field-checkbox:has(input:checked) {
+    border-color: var(--tpl-slate-900, #0f172a);
+    background: var(--tpl-slate-900, #0f172a);
+}
+
+.tpl-editor-root .gjs-field-checkbox .gjs-chk-icon {
+    display: none;
+    width: 0.3rem;
+    height: 0.55rem;
+    margin-top: -0.1rem;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.tpl-editor-root .gjs-field-checkbox input:checked + .gjs-chk-icon {
+    display: block;
+}

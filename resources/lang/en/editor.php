@@ -33,6 +33,7 @@ return [
     'blocks' => [
         'static_text'         => 'Text',
         'static_text_default' => 'Text',
+        'static_text_empty'   => 'Text (empty)',
         'data_field'          => 'Data field',
         'image'               => 'Image',
         'rule'                => 'Line / Rectangle',
@@ -43,6 +44,7 @@ return [
 
     'traits' => [
         'content'       => 'Content',
+        'wrap'          => 'Multiple lines',
         'format'        => 'Format',
         'file'          => 'File',
         'fit'           => 'Fit',
@@ -237,6 +239,8 @@ return [
         'hidden'    => '":field" is hidden.',
         'scope'     => '":field" has to appear on every page, so it can only sit in the header or the footer.',
         'off_sheet' => 'The field ":field" is off the sheet.',
+        'text_overflow' => 'The text of ":field" does not fit its box and will be cut.',
+        'missing_table' => 'The ":field" table is missing. It is required to activate.',
 
         'code_incomplete' => 'This fixed code has required fields left blank. Without them the code is valid but points at nothing.',
     ],
