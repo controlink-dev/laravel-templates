@@ -95,6 +95,9 @@ class FormulaEvaluatorTest extends TestCase
         $this->assertSame('FALSE', Formula::evaluate('0.1 + 0.2 > 0.3', []));
         // Real differences are still differences.
         $this->assertSame('FALSE', Formula::evaluate('0.3 = 0.30001', []));
+        // A cent on ten million is a real difference, not noise.
+        $this->assertSame('FALSE', Formula::evaluate('10000000 = 10000000.01', []));
+        $this->assertSame('TRUE', Formula::evaluate('10000000 < 10000000.01', []));
         $this->assertSame('TRUE', Formula::evaluate('a.b = 1229999.98', ['a.b' => 999999.99 + 229999.99]));
     }
 

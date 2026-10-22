@@ -2,6 +2,7 @@
 
 namespace Controlink\Templates\Tests\Feature;
 
+use Controlink\Templates\Exceptions\UnsafeTemplateException;
 use Controlink\Templates\Formulas\FormulaSet;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Rendering\TemplateRenderer;
@@ -287,6 +288,60 @@ class FormulaRenderTest extends TestCase
             $set->strippedHtml(),
         );
         $this->assertSame('xy', $set->inject([])['formula.sq1234']);
+    }
+
+    /** The word "formula" with no source in it goes through strip() and comes out unchanged. */
+    public function test_the_word_formula_without_sources_is_byte_identical(): void
+    {
+        $type = $this->invoice();
+        $html = str_replace(
+            '<div class="zone zone--header" data-tpl-zone="header">',
+            '<div class="zone zone--header" data-tpl-zone="header">'
+                .'<div class="block block--formula-note" data-note=\'formula\' title="formula > 1">A formula: {{ documento.numero }}</div>',
+            $type->initialLayout['html'],
+        );
+
+        $this->assertStringContainsString('formula', $html);
+        $this->assertSame($html, FormulaSet::fromHtml($html)->strippedHtml());
+
+        $dataset = $this->fixtureDataset($type);
+        $this->assertSame($dataset, FormulaSet::fromHtml($html)->inject($dataset));
+    }
+
+    /**
+     * A regex engine failure (backtrack limit) must refuse the document, never turn
+     * the markup into '' and print a blank one.
+     */
+    public function test_a_regex_failure_refuses_instead_of_blanking_the_markup(): void
+    {
+        $html = $this->withField($this->invoice()->initialLayout['html'], 'header', 'tpl-a', 'formula.abc123', '1 + 1');
+
+        $jit       = ini_get('pcre.jit');
+        $backtrack = ini_get('pcre.backtrack_limit');
+        ini_set('pcre.jit', '0');
+        ini_set('pcre.backtrack_limit', '1');
+
+        try {
+            FormulaSet::fromHtml($html);
+            $this->fail('A PCRE failure must throw.');
+        } catch (UnsafeTemplateException) {
+            $this->addToAssertionCount(1);
+        } finally {
+            ini_set('pcre.jit', (string) $jit);
+            ini_set('pcre.backtrack_limit', (string) $backtrack);
+        }
+
+        // And the validator reports it as V-07 rather than crashing.
+        ini_set('pcre.jit', '0');
+        ini_set('pcre.backtrack_limit', '1');
+
+        try {
+            $this->expectException(UnsafeTemplateException::class);
+            app(DocumentComposer::class)->assertSafe($html, '');
+        } finally {
+            ini_set('pcre.jit', (string) $jit);
+            ini_set('pcre.backtrack_limit', (string) $backtrack);
+        }
     }
 
     public function test_inject_evaluates_over_the_whole_dataset_and_skips_missing_collections(): void

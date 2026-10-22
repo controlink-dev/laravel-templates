@@ -46,7 +46,8 @@ final class FormulaSet
     ) {}
 
     /**
-     * @throws UnsafeTemplateException when a formula source survives the removal
+     * @throws UnsafeTemplateException when a formula source survives the removal, or the
+     *                                 markup cannot be scanned (regex engine limit)
      */
     public static function fromHtml(string $html): self
     {
@@ -178,12 +179,12 @@ final class FormulaSet
      */
     private static function strip(string $html): string
     {
-        return (string) preg_replace_callback(self::TAG, function (array $tag): string {
+        return self::replace(self::TAG, function (array $tag): string {
             if (stripos($tag[0], 'formula') === false) {
                 return $tag[0];
             }
 
-            return (string) preg_replace_callback(self::ATTRIBUTE, function (array $attribute): string {
+            return self::replace(self::ATTRIBUTE, function (array $attribute): string {
                 $name = strtolower($attribute[2]);
 
                 if ($name === 'data-tpl-formula') {
@@ -227,11 +228,33 @@ final class FormulaSet
             return null;
         }
 
-        return htmlspecialchars(
-            (string) json_encode($list, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            ENT_QUOTES,
-            'UTF-8',
-        );
+        $json = json_encode($list, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+        // An empty attribute would silently drop every column of the table.
+        if ($json === false) {
+            throw new UnsafeTemplateException('A line table\'s columns could not be re-encoded without their formulas.');
+        }
+
+        return htmlspecialchars($json, ENT_QUOTES, 'UTF-8');
+    }
+
+    /**
+     * preg_replace_callback that refuses on an engine failure (backtrack or JIT
+     * limit). PHP returns null then, and a null cast to '' would hand the
+     * compositor an empty body — a blank document printed with no error — or,
+     * in the inner pass, delete a whole tag.
+     *
+     * @throws UnsafeTemplateException
+     */
+    private static function replace(string $pattern, callable $callback, string $subject): string
+    {
+        $result = preg_replace_callback($pattern, $callback, $subject);
+
+        if ($result === null || preg_last_error() !== PREG_NO_ERROR) {
+            throw new UnsafeTemplateException('Template HTML could not be scanned for formula sources: '.preg_last_error_msg());
+        }
+
+        return $result;
     }
 
     /** Whether any element still carries a source, as the HTML parser reads it. */

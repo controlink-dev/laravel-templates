@@ -143,11 +143,12 @@ final class Evaluator
      * Two numbers within float noise of each other are equal: `0.1 + 0.2 = 0.3`
      * has to be TRUE on a printed document, as it is in a spreadsheet. The
      * tolerance is relative so it holds for large amounts as well as small ones,
-     * and it lives in the ordering so `<=`/`>=` agree with `=`/`<>`.
+     * and it lives in the ordering so `<=`/`>=` agree with `=`/`<>`. 1e-12, not
+     * 1e-9: at 10,000,000 a looser bound would already swallow a cent.
      */
     private function numericOrder(int|float $left, int|float $right): int
     {
-        if (abs($left - $right) <= 1e-9 * max(1, abs($left), abs($right))) {
+        if (abs($left - $right) <= 1e-12 * max(1, abs($left), abs($right))) {
             return 0;
         }
 
