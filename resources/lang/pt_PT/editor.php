@@ -326,6 +326,13 @@ return [
         'result'       => 'Resultado: :value',
         'blank'        => 'Sem valor: imprime vazio.',
         'functions'    => 'Funções: :list',
+
+        // Coluna de fórmula da tabela de linhas: calculada para cada linha.
+        'column_label'       => 'Fórmula',
+        'add_column'         => '+ Coluna de fórmula',
+        'remove_column'      => 'Remover coluna de fórmula',
+        'column_placeholder' => 'ex.: lines.quantity * lines.unit_price',
+        'column_help'        => 'Aqui :collection.<coluna> é o valor desta linha; SUM(:collection.<coluna>) soma todas as linhas. O resultado mostrado é o da primeira linha.',
     ],
 
     // Rotas (Http\Controllers\*), mensagens de sucesso.

@@ -19,6 +19,7 @@ import {
     FORMULA_SOURCE_TRAIT, FORMULA_TOGGLE_TRAIT, freshFormulaKey, isFormulaKey, newFormulaId, refreshFormulaTraits,
     registerFormula,
 } from './formula.js';
+import { freshFormulaColumns, isFormulaColumn } from './formula-columns.js';
 import {
     DATE_PATTERNS, DECIMALS, SYMBOLS, defaultSpecFor, expression, specFromAttributes, specToAttributes,
 } from './formats.js';
@@ -417,6 +418,29 @@ function registerDataField(editor, config) {
         return keys;
     };
 
+    /**
+     * Every formula column key (`formula_<id>`) of every line table on the sheet but
+     * `except`'s. V-19 refuses a column key shared across tables, so a copy checks them all.
+     */
+    const formulaColumnKeysOnSheet = (except) => {
+        const keys = [];
+        const walk = (component) => {
+            if (!component) {
+                return;
+            }
+
+            if (component !== except && component.get?.('type') === 'line-table' && typeof component.columns === 'function') {
+                component.columns().filter(isFormulaColumn).forEach((column) => keys.push(column.key));
+            }
+
+            component.components?.().forEach(walk);
+        };
+
+        walk(editor.getWrapper());
+
+        return keys;
+    };
+
     /*
      * A copied formula field gets its own key (Review Focus 3). Copy, paste and the
      * toolbar's duplicate all go through `Component.clone()`, which announces the copy
@@ -437,6 +461,16 @@ function registerDataField(editor, config) {
 
                 if (fresh !== key) {
                     component.addAttributes({ 'data-tpl-binding': fresh });
+                }
+            }
+
+            // A copied line table: its formula columns get their own keys too, one write.
+            if (component.get?.('type') === 'line-table' && typeof component.columns === 'function') {
+                const columns = component.columns();
+                const fresh = freshFormulaColumns(columns, formulaColumnKeysOnSheet(component));
+
+                if (fresh !== columns) {
+                    component.setColumns(fresh);
                 }
             }
 

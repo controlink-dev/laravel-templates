@@ -208,6 +208,13 @@ class Editor extends Component
             'formula.blank'        => __('templates::editor.formula.blank'),
             'formula.functions'    => __('templates::editor.formula.functions', ['list' => ':list']),
 
+            // Formula columns of the line table (CGE-37). `:collection` is filled in JS.
+            'formula.column_label'       => __('templates::editor.formula.column_label'),
+            'formula.add_column'         => __('templates::editor.formula.add_column'),
+            'formula.remove_column'      => __('templates::editor.formula.remove_column'),
+            'formula.column_placeholder' => __('templates::editor.formula.column_placeholder'),
+            'formula.column_help'        => __('templates::editor.formula.column_help', ['collection' => ':collection']),
+
             'fit.contain' => __('templates::editor.fits.contain'),
             'fit.cover'   => __('templates::editor.fits.cover'),
             'fit.fill'    => __('templates::editor.fits.fill'),

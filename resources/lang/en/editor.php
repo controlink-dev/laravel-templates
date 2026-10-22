@@ -316,6 +316,13 @@ return [
         'result'       => 'Result: :value',
         'blank'        => 'No value: prints empty.',
         'functions'    => 'Functions: :list',
+
+        // A formula column of the line table: computed for each line.
+        'column_label'       => 'Formula',
+        'add_column'         => '+ Formula column',
+        'remove_column'      => 'Remove formula column',
+        'column_placeholder' => 'e.g. lines.quantity * lines.unit_price',
+        'column_help'        => 'Here :collection.<column> is the value of this line; SUM(:collection.<column>) adds up every line. The result shown is for the first line.',
     ],
 
     // Routes (Http\Controllers\*), success messages.
