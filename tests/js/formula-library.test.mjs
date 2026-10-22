@@ -150,6 +150,7 @@ describe('createFormulaLibrary', () => {
         inputs: 0,
         setRangeText(text) { this.value += text; },
         focus() {},
+        setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
         dispatchEvent() { this.inputs++; },
     });
 
@@ -186,9 +187,12 @@ describe('createFormulaLibrary', () => {
         library.adopt(other);
         assert.equal(library.target(), old, 'another owner is not followed');
 
+        old.selectionStart = 2;
+        old.selectionEnd = 4;
         old.isConnected = false;
         library.adopt(again);
         assert.equal(library.target(), again);
+        assert.deepEqual([again.selectionStart, again.selectionEnd], [2, 4], 'the caret where it was in the old box');
 
         rail.find('tpl-formula-library__field').fire('click');
         assert.equal(again.value, '[Quantidade]');

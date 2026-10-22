@@ -347,7 +347,15 @@ export function createFormulaLibrary({ rail, config }) {
         const owner = input?.dataset?.formulaOwner;
 
         if (state && owner && state.target !== input && state.target?.dataset?.formulaOwner === owner) {
+            const { selectionStart, selectionEnd } = state.target;
+
             state.target = input;
+
+            // Where the caret was in the old box, so the next click inserts there and not
+            // at the end of a box that never had the focus.
+            if (Number.isInteger(selectionStart) && typeof input.setSelectionRange === 'function') {
+                input.setSelectionRange(selectionStart, Number.isInteger(selectionEnd) ? selectionEnd : selectionStart);
+            }
         }
     }
 

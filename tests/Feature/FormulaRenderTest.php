@@ -405,6 +405,8 @@ class FormulaRenderTest extends TestCase
             return $matches[1];
         };
 
+        // The fixture's descriptions are not capitals already: the result and the raw value differ.
+        $this->assertNotSame($cells('t-dsc'), $cells('t-raw'));
         $this->assertSame(array_map(fn (array $row): string => $escape(mb_strtoupper($row['descricao'])), $dataset['linhas']), $cells('t-dsc'));
         $this->assertSame(array_map(fn (array $row): string => $escape($row['descricao']), $dataset['linhas']), $cells('t-raw'));
         $this->assertSame(array_map(fn (array $row): string => $escape($row['descricao'].'!'), $dataset['linhas']), $cells('t-again'));
