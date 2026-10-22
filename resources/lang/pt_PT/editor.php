@@ -33,6 +33,7 @@ return [
     'blocks' => [
         'static_text'         => 'Texto',
         'static_text_default' => 'Texto',
+        'static_text_empty'   => 'Texto (vazio)',
         'data_field'          => 'Campo de dados',
         'image'               => 'Imagem',
         'rule'                => 'Linha / Retângulo',

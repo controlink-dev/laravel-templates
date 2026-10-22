@@ -10,6 +10,7 @@
  * ========================================================================= */
 
 import { icons } from './icons.js';
+import { staticTextName } from './layer-names.js';
 import { alertDialog } from './dialog.js';
 import { previewValue } from './preview-filter.js';
 import {
@@ -276,6 +277,16 @@ function registerStaticText(editor, config) {
                 );
 
                 this.on('change:text', this.syncContent);
+                // Layers and the selection header follow the text as it is edited.
+                this.on('change:text', () => this.trigger('change:name'));
+            },
+
+            /** Named after what it says (CGE-53), computed and never stored. */
+            getName() {
+                const text = this.get('text')
+                    ?? this.components().map((child) => child.get('content') || '').join('');
+
+                return staticTextName(text, config.strings['block.static_text_empty']);
             },
 
             /*

@@ -161,6 +161,7 @@ class Editor extends Component
 
             'block.static_text'         => __('templates::editor.blocks.static_text'),
             'block.static_text_default' => __('templates::editor.blocks.static_text_default'),
+            'block.static_text_empty'   => __('templates::editor.blocks.static_text_empty'),
             'block.data_field'          => __('templates::editor.blocks.data_field'),
             'block.image'               => __('templates::editor.blocks.image'),
             'block.rule'                => __('templates::editor.blocks.rule'),

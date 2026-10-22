@@ -33,6 +33,7 @@ return [
     'blocks' => [
         'static_text'         => 'Text',
         'static_text_default' => 'Text',
+        'static_text_empty'   => 'Text (empty)',
         'data_field'          => 'Data field',
         'image'               => 'Image',
         'rule'                => 'Line / Rectangle',

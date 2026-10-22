@@ -1778,7 +1778,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             return;
         }
 
-        const name = binding?.label ?? component.get('name') ?? component.getName?.() ?? '';
+        // getName() first: a fixed text is named after its own words (CGE-53).
+        const name = binding?.label ?? component.getName?.() ?? component.get('name') ?? '';
         const chip = attributes['data-tpl-legal'] === '1'
             ? `<span class="tpl-chip">${icons.shieldCheck} ${escapeHtml(config.strings['chrome.legal_chip'])}</span>`
             : '';
@@ -1793,6 +1794,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     };
 
     editor.on('component:selected component:deselected', renderSelection);
+    // A fixed text is named after its words (CGE-53): the header follows an edit.
+    editor.on('component:update:text', (component) => component === editor.getSelected() && renderSelection());
 
     /* ------------------------------------------------------------ zone picker */
 
