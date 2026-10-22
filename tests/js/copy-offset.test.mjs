@@ -37,3 +37,21 @@ assert.deepEqual(
 );
 
 console.log('copy-offset: ok');
+
+// Review I-1: the copy is placed from ITS OWN style (the clone of the block copied), never
+// from whatever block was selected when pasting, and it steps past copies already there,
+// so pasting several times — or several blocks at once — never stacks them.
+{
+    const { freeSpotForCopy } = await import('../../resources/js/editor/copy-offset.js');
+    const total = { right: '0mm', bottom: '2mm' };
+    const size = { width: 40, height: 4 };
+
+    // Nothing in the way: the plain offset.
+    assert.deepEqual(freeSpotForCopy(total, size, zone, [total]), { right: '3mm', bottom: '5mm' });
+
+    // A first copy already sits there: the next one steps on.
+    assert.deepEqual(
+        freeSpotForCopy(total, size, zone, [total, { right: '3mm', bottom: '5mm' }]),
+        { right: '6mm', bottom: '8mm' },
+    );
+}

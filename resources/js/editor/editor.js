@@ -18,7 +18,7 @@ import { mountPreviewPanel, plainProjectData, refreshPreview } from './preview-f
 import { createFormatPreview } from './format-preview.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
-import { offsetCopy } from './copy-offset.js';
+import { freeSpotForCopy } from './copy-offset.js';
 import { readSectors, writeSector } from './sector-memory.js';
 import { mountGeometryPanel } from './geometry-panel.js';
 import { icons } from './icons.js';
@@ -2276,24 +2276,28 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
      * A copy (toolbar clone or Ctrl+C/V) is selected and set a few millimetres off the
      * block it came from (CGE-53). GrapesJS puts it exactly on top and keeps the original
      * selected, so a copy looked like nothing had happened. The copy's `#id` rule is a
-     * copy of the original's, which is where the offset is read from; the block selected
-     * when pasting is the base, so pasting again from the copy makes a staircase.
+     * copy of the original's, which is where the offset is read from — never from the
+     * block selected when pasting, whose anchor may differ (a copy would then carry both
+     * `top` and `bottom` and stretch across its band). It steps past blocks already on
+     * that spot, so repeated or multi-block pastes make a staircase, not a stack.
      */
     let pasted = [];
 
     editor.on('component:paste', (component) => {
-        const base = editor.getSelected();
-
-        if (!rollMode && base && base !== component) {
+        if (!rollMode) {
             const el = component.getEl?.();
             const band = el?.offsetParent;
             const box = measuredBox(el);
+            const taken = (component.parent?.()?.components() ?? [])
+                .filter((sibling) => sibling !== component)
+                .map((sibling) => sibling.getStyle());
 
             if (box && band) {
-                component.addStyle(offsetCopy(
-                    base.getStyle(),
+                component.addStyle(freeSpotForCopy(
+                    component.getStyle(),
                     { width: box.width, height: box.height },
                     { width: band.clientWidth / PX_PER_MM, height: band.clientHeight / PX_PER_MM },
+                    taken,
                 ));
             }
         }

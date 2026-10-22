@@ -273,7 +273,7 @@ function registerStaticText(editor, config) {
             },
 
             init() {
-                this.on('change:attributes:data-tpl-wrap', () => sizeForWrap(this));
+                this.on('change:attributes:data-tpl-wrap', () => sizeForWrap(this, config));
 
                 // Seed the trait from the block's current text so the Field panel shows it,
                 // silently so merely opening a saved version is not marked as a change.
@@ -420,7 +420,7 @@ function registerDataField(editor, config) {
             },
 
             init() {
-                this.on('change:attributes:data-tpl-wrap', () => sizeForWrap(this));
+                this.on('change:attributes:data-tpl-wrap', () => sizeForWrap(this, config));
 
                 /*
                  * A layout saved before the node select existed carries only
@@ -1056,8 +1056,10 @@ function wrapTrait(config) {
  * gets the room to its band's right edge (at most 80mm — a one-word text's own width
  * would break after every word) and three lines of its own font, which the user adjusts.
  */
-function sizeForWrap(component) {
-    if (component.getAttributes()['data-tpl-wrap'] !== '1') {
+function sizeForWrap(component, config) {
+    // A talão flows: its blocks already wrap in the roll's width and take the height
+    // they need, so a fixed box would only make a long address run over the next block.
+    if (component.getAttributes()['data-tpl-wrap'] !== '1' || config.geometry?.medium === 'roll') {
         return;
     }
 

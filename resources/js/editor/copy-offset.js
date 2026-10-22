@@ -39,3 +39,23 @@ function place(offset, length, extent, delta) {
 
     return roundTo(value, 0.1) + 'mm';
 }
+
+/**
+ * Where a pasted copy goes: offset from ITS OWN style — the clone of the block it was
+ * copied from — by one step, then two, … until no block already in its band sits on that
+ * spot. Several pastes, or several blocks pasted at once, so never stack; and the block
+ * that happened to be selected when pasting plays no part (its anchor may differ).
+ *
+ * @param {Array<Record<string, string>>} taken  the `#id` styles of the band's blocks
+ */
+export function freeSpotForCopy(style, size, zone, taken, step = 3, tries = 20) {
+    const same = (spot, other) => Object.entries(spot).every(([side, value]) => other?.[side] === value);
+
+    let spot = offsetCopy(style, size, zone, step);
+
+    for (let k = 2; k <= tries && taken.some((other) => same(spot, other)); k++) {
+        spot = offsetCopy(style, size, zone, k * step);
+    }
+
+    return spot;
+}
