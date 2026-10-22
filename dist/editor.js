@@ -1679,8 +1679,11 @@ In order to be iterable, non-array objects must have a [Symbol.iterator]() metho
             background: color-mix(in srgb, var(--tpl-accent) 45%, transparent);
         }
 
+        /* Neutral, not the accent: the accent already means selected, hovered and legal.
+           #dfe6ee all but vanished on white paper once zoomed out (CGE-55). Canvas
+           only — the compositor reads print.css, so the bands never print. */
         body.tpl-view-zones .zone {
-            outline: 1px dashed #dfe6ee;
+            outline: 1px dashed #64748b;
             outline-offset: 0;
         }
 
