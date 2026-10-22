@@ -203,9 +203,11 @@ trait BuildsLayouts
             foreach ($columns as $column) {
                 $head .= '<th>'.htmlspecialchars((string) $column['label'], ENT_QUOTES).'</th>';
 
-                $value = $column['expression'] ?? (($column['format'] ?? '') !== ''
-                    ? '{{ linha.'.$column['key'].'|'.$column['format'].' }}'
-                    : '{{ linha.'.$column['key'].' }}');
+                // A formula column prints its result, under `formulaKey` when it has one.
+                $printed = $column['formulaKey'] ?? $column['key'];
+                $value   = $column['expression'] ?? (($column['format'] ?? '') !== ''
+                    ? '{{ linha.'.$printed.'|'.$column['format'].' }}'
+                    : '{{ linha.'.$printed.' }}');
 
                 $cells .= '<td>'.$value.'</td>';
             }

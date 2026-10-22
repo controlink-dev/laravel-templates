@@ -1237,6 +1237,129 @@ class LayoutValidatorTest extends TestCase
         $this->assertSame(['tpl-lines'], array_values(array_unique(array_column($problems, 'component_id'))));
     }
 
+    /**
+     * A catalogue column turned into a formula keeps its key and prints under `formulaKey`:
+     * valid, and its source is checked as a row of the table's collection.
+     */
+    public function test_catalogue_column_formula_is_valid(): void
+    {
+        $layout = $this->layoutWithColumns([
+            ['key' => 'descricao', 'label' => 'Descrição', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_dsc12345'],
+        ]);
+
+        $this->assertStringContainsString('{{ linha.formula_dsc12345 }}', $layout['html']);
+        $this->assertSame([], $this->problems($layout));
+
+        $this->assertFormulaProblem('formula_unknown_reference', $this->layoutWithColumns([
+            ['key' => 'descricao', 'label' => 'Descrição', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.inexistente)', 'formulaKey' => 'formula_dsc12345'],
+        ]), 'Descrição');
+    }
+
+    /** `formulaKey` is printed as a Twig path, so it has the formula column key's shape. */
+    public function test_formula_key_not_matching_pattern_is_v01(): void
+    {
+        $problems = $this->problems($this->layoutWithColumns([
+            ['key' => 'descricao', 'label' => 'Descrição', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_3b270w4p'],
+        ]));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame(__('templates::editor.validation.unknown_binding', ['binding' => 'formula_3b270w4p']), $problems[0]['message']);
+    }
+
+    /** A formula column keeps a key of its collection, or its own `formulaKey`; nothing else. */
+    public function test_formula_on_unknown_catalogue_key_is_v01(): void
+    {
+        $problems = $this->problems($this->layoutWithColumns([
+            ['key' => 'nope', 'label' => 'Nope', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_dsc12345'],
+        ]));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame(__('templates::editor.validation.unknown_binding', ['binding' => 'nope']), $problems[0]['message']);
+
+        // A calculated column whose key is its own formulaKey is no catalogue column.
+        $this->assertSame([], $this->problems($this->layoutWithColumns([
+            ['key' => 'formula_dsc12345', 'label' => 'Calculado', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_dsc12345'],
+        ])));
+    }
+
+    /**
+     * A model-backed collection declares no columns: the catalogue column is one the host
+     * resolves, and the table's own column list never vouches for itself.
+     */
+    public function test_catalogue_column_formula_of_a_model_backed_collection_resolves_through_the_host(): void
+    {
+        $base = Templates::type(self::TYPE_CODE);
+        $type = new TemplateType(
+            $base->code, $base->label, $base->output, $base->seeded, $base->layoutRevision,
+            [...$base->bindings, [
+                'key' => 'artigos', 'label' => 'Artigos', 'type' => 'collection', 'mandatory' => false,
+                'legal' => false, 'scope' => null, 'default_format' => null, 'columns' => null,
+            ]],
+            $base->nodes, $base->fixture, $base->fixtureRepeats, $base->initialLayout, $base->pdf, [],
+        );
+
+        $layoutFor = function (string $key): array {
+            $table = $this->extraTable('tpl-artigos', 'artigos');
+
+            $table['attributes']['data-tpl-columns'] = json_encode([
+                ['key' => $key, 'label' => 'Artigo', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(artigos.descricao)', 'formulaKey' => 'formula_art12345'],
+            ]);
+
+            return $this->layoutPlus($table);
+        };
+        $validate = fn (array $layout): array => app(LayoutValidator::class)->validate($layout['project_data'], $type, $layout['html'], $layout['css']);
+
+        $this->app->bind(BindingResolver::class, fn () => new class implements BindingResolver {
+            public function resolve(string $key, TemplateType $type): ?array
+            {
+                return $key === 'artigos.descricao' ? [
+                    'key' => $key, 'label' => 'Descrição', 'type' => 'text',
+                    'mandatory' => false, 'legal' => false, 'scope' => null, 'default_format' => '',
+                ] : null;
+            }
+        });
+
+        $this->assertSame([], $validate($layoutFor('descricao')));
+
+        $problems = $validate($layoutFor('nope'));
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame(__('templates::editor.validation.unknown_binding', ['binding' => 'nope']), $problems[0]['message']);
+    }
+
+    /**
+     * The shape saved before `formulaKey` existed still validates, and a catalogue key
+     * carrying a formula without one is still refused: it would print the raw value.
+     */
+    public function test_legacy_formula_column_without_formula_key_still_valid(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutWithColumns([
+            ['key' => 'formula_abc123', 'label' => 'Calculado', 'width' => '', 'align' => 'right', 'format' => '', 'formula' => 'linhas.quantidade * 2'],
+        ])));
+
+        $problems = $this->problems($this->layoutWithColumns([
+            ['key' => 'descricao', 'label' => 'Descrição', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)'],
+        ]));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame(__('templates::editor.validation.unknown_binding', ['binding' => 'descricao']), $problems[0]['message']);
+    }
+
+    /** One `formulaKey` per result, across every table: a copied column that kept it is V-19. */
+    public function test_duplicate_formula_key_across_tables_is_v19(): void
+    {
+        $second = $this->extraTable('tpl-other', 'outra');
+
+        $second['attributes']['data-tpl-columns'] = json_encode([
+            ['key' => 'formula_dsc12345', 'label' => 'Outra', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => '1 + 1', 'formulaKey' => 'formula_dsc12345'],
+        ]);
+
+        $layout = $this->layoutWithColumns([
+            ['key' => 'descricao', 'label' => 'Descrição', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_dsc12345'],
+        ], [$second]);
+
+        $this->assertFormulaProblem('formula_duplicate_key', $layout, 'Outra');
+    }
+
     /** A table bound to no collection has no rows: the compositor would print the column empty. */
     public function test_formula_column_in_a_table_without_collection_is_v19_scope(): void
     {
@@ -1336,6 +1459,43 @@ class LayoutValidatorTest extends TestCase
         unset($block);
 
         return $this->layout($blocks);
+    }
+
+    /**
+     * The valid layout with columns of its line table replaced by key (or appended), plus
+     * any extra blocks.
+     *
+     * @param  list<array<string, mixed>>  $columns
+     * @param  list<array<string, mixed>>  $extra
+     * @return array{project_data: array<string, mixed>, html: string, css: string}
+     */
+    private function layoutWithColumns(array $columns, array $extra = []): array
+    {
+        $blocks = $this->defaultBlocks(self::TYPE_CODE);
+
+        foreach ($blocks as &$block) {
+            if (($block['type'] ?? null) !== 'line-table') {
+                continue;
+            }
+
+            $declared = json_decode($block['attributes']['data-tpl-columns'], true);
+
+            foreach ($columns as $column) {
+                $index = array_search($column['key'], array_column($declared, 'key'), true);
+
+                if ($index === false) {
+                    $declared[] = $column;
+                } else {
+                    $declared[$index] = $column;
+                }
+            }
+
+            $block['attributes']['data-tpl-columns'] = json_encode($declared);
+        }
+
+        unset($block);
+
+        return $this->layout([...$blocks, ...$extra]);
     }
 
     /**

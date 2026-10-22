@@ -317,6 +317,50 @@ class FormulaRenderTest extends TestCase
         $this->assertSame($expected, $cells[1]);
     }
 
+    /**
+     * A catalogue column turned into a formula keeps its own key and prints the result
+     * under its `formulaKey`: the source goes, the `formulaKey` stays (the cell prints it),
+     * and every line of every sheet shows the result, not the raw value.
+     */
+    public function test_catalogue_column_with_formula_prints_result_on_every_sheet(): void
+    {
+        $dataset = $this->fixtureDataset($this->invoice());
+        $html    = preg_replace_callback(
+            '/data-tpl-columns="([^"]*)"/',
+            function (array $m): string {
+                $columns = json_decode(html_entity_decode($m[1], ENT_QUOTES), true);
+
+                foreach ($columns as &$column) {
+                    if ($column['key'] === 'descricao') {
+                        $column += ['formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_dsc12345'];
+                    }
+                }
+
+                return 'data-tpl-columns="'.htmlspecialchars(json_encode($columns, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), ENT_QUOTES).'"';
+            },
+            $this->invoice()->initialLayout['html'],
+            1,
+        );
+        $html = str_replace('<td style="text-align:left">{{ linha.descricao }}</td>', '<td class="t-dsc">{{ linha.formula_dsc12345 }}</td>', $html, $count);
+        $this->assertSame(1, $count);
+
+        $set = FormulaSet::fromHtml($html);
+        $this->assertSame([['collection' => 'linhas', 'key' => 'formula_dsc12345', 'source' => 'UPPER(linhas.descricao)']], $set->columns());
+        $this->assertStringContainsString('&quot;formulaKey&quot;:&quot;formula_dsc12345&quot;', $set->strippedHtml());
+        $this->assertStringNotContainsString('&quot;formula&quot;', $set->strippedHtml());
+
+        $document = $this->compose($html, $dataset);
+
+        $this->assertGreaterThan(1, substr_count($document, '<div class="page">'));
+
+        preg_match_all('/<td class="t-dsc">(.*?)<\/td>/s', $document, $cells);
+
+        $this->assertSame(
+            array_map(fn (array $row): string => htmlspecialchars(mb_strtoupper($row['descricao']), ENT_QUOTES | ENT_SUBSTITUTE), $dataset['linhas']),
+            $cells[1],
+        );
+    }
+
     /* -----------------------------------------------------------------------
      * FormulaSet
      * -------------------------------------------------------------------- */

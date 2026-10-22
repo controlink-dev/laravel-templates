@@ -267,10 +267,29 @@ class LayoutValidator
                 // CGE-37: a column that carries a formula, or claims the formula prefix,
                 // under a key of any other shape (`formula_3…`) is never computed, so the
                 // row would print a value that does not exist. Refused like an unknown field.
-                foreach ($columns as $column) {
-                    $key = (string) (((array) $column)['key'] ?? '');
+                // With a `formulaKey` the result prints under it, so that is the key judged;
+                // the column's own `key` then has to be itself or a column of the collection
+                // (a catalogue column turned into a formula), never a name of nothing.
+                $collection = (string) ($table['attributes']['data-tpl-collection'] ?? '');
 
-                    if ((str_starts_with($key, 'formula_') || array_key_exists('formula', (array) $column)) && ! FormulaSet::isColumnKey($key)) {
+                foreach ($columns as $column) {
+                    $column = (array) $column;
+                    $key    = (string) ($column['key'] ?? '');
+
+                    if (! array_key_exists('formulaKey', $column)) {
+                        if ((str_starts_with($key, 'formula_') || array_key_exists('formula', $column)) && ! FormulaSet::isColumnKey($key)) {
+                            $problems[] = $this->problem('V-01', $table, 'unknown_binding', ['binding' => $key]);
+                        }
+
+                        continue;
+                    }
+
+                    $formulaKey = is_string($column['formulaKey']) ? $column['formulaKey'] : '';
+
+                    if (! FormulaSet::isColumnKey($formulaKey)) {
+                        $problems[] = $this->problem('V-01', $table, 'unknown_binding', ['binding' => $formulaKey]);
+                    } elseif ($key !== $formulaKey && $collection !== '' && ! $this->isCollectionColumn($collection, $key, $bindings, $type)) {
+                        // An unbound table has no catalogue; V-19 already refuses its formula.
                         $problems[] = $this->problem('V-01', $table, 'unknown_binding', ['binding' => $key]);
                     }
                 }
@@ -418,7 +437,8 @@ class LayoutValidator
 
     /**
      * Every formula the layout carries: data fields bound to `formula.<id>` and line-table
-     * columns keyed `formula_<id>`, each with its source (trimmed, '' when there is none).
+     * columns whose result prints under `formula_<id>` (their `formulaKey`, or their `key`
+     * when they have none), each with its source (trimmed, '' when there is none).
      *
      * Only keys of the exported shape count, as in `FormulaSet` (what the compositor
      * evaluates): a `data-tpl-formula` on any other binding means nothing, and that binding
@@ -450,7 +470,8 @@ class LayoutValidator
             $collection = (string) ($table['attributes']['data-tpl-collection'] ?? '');
 
             foreach ($this->tableColumns($table) as $column) {
-                $key = $column['key'] ?? null;
+                // Keyed as it prints, `formulaKey ?? key`, like the compositor reads it.
+                $key = FormulaSet::columnFormulaKey($column);
 
                 if (! is_string($key) || ! FormulaSet::isColumnKey($key)) {
                     continue;
@@ -721,6 +742,31 @@ class LayoutValidator
             $columns,
             fn (string $column): bool => $column !== '' && ! str_starts_with($column, 'formula_'),
         )));
+    }
+
+    /**
+     * Whether a key names a real column of the collection: one the type declares, or, for
+     * a model-backed collection (`columns: null`), one the host resolver knows as
+     * `<collection>.<column>`. Unlike `collectionColumns` this never counts the document's
+     * own tables, so a column cannot vouch for itself. A formula column is never one.
+     *
+     * @param  array<string, array<string, mixed>>  $bindings
+     */
+    private function isCollectionColumn(string $collection, string $column, array $bindings, TemplateType $type): bool
+    {
+        $binding = $bindings[$collection] ?? null;
+
+        if ($column === '' || str_starts_with($column, 'formula_') || ($binding['type'] ?? null) !== 'collection') {
+            return false;
+        }
+
+        if (is_array($binding['columns'] ?? null)) {
+            return in_array($column, array_map(fn (mixed $declared): string => (string) (((array) $declared)['key'] ?? ''), $binding['columns']), true);
+        }
+
+        $resolved = $bindings[$collection.'.'.$column] ?? $this->resolver->resolve($collection.'.'.$column, $type);
+
+        return $resolved !== null && ($resolved['type'] ?? null) !== 'collection';
     }
 
     /**

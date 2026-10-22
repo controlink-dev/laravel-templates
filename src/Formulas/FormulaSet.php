@@ -13,9 +13,10 @@ use DOMXPath;
  * The editor exports a formula next to where its result prints: a data field bound
  * to `formula.<id>` carries its source in `data-tpl-formula`, and a line table's
  * formula column carries it as the `formula` property of its entry in
- * `data-tpl-columns`. Both are read here, evaluated into the dataset, and removed
- * from the markup — because the source is user-typed text and the markup is about
- * to go through the HTML guard and Twig. A `{{` or `javascript:` inside a text
+ * `data-tpl-columns`, its result printed under the column's `formulaKey ?? key`
+ * (`columnFormulaKey`; `formulaKey` is no source, so it stays). Both are read here,
+ * evaluated into the dataset, and removed from the markup — because the source is
+ * user-typed text and the markup is about to go through the HTML guard and Twig. A `{{` or `javascript:` inside a text
  * literal must cost nothing, so the guard and the template engine must never see it.
  *
  * Reading goes through DOM (decoded attribute values, like PageStructure). Removing
@@ -86,6 +87,19 @@ final class FormulaSet
     }
 
     /**
+     * The key a line-table column's result prints under: its `formulaKey` when it has one
+     * (a catalogue column turned into a formula keeps its own `key`, `description`, and
+     * prints `linha.formula_<id>`), else its `key` (a calculated column, and every column
+     * saved before `formulaKey` existed). Whether that is a formula key is `isColumnKey`'s.
+     *
+     * @param  array<mixed>  $column
+     */
+    public static function columnFormulaKey(array $column): mixed
+    {
+        return $column['formulaKey'] ?? $column['key'] ?? null;
+    }
+
+    /**
      * Data-field formulas, binding key ⇒ source. Only keys of the exported shape are
      * listed; a field with a valid key but no source maps to '' and so prints empty.
      * Sources here and in `columns()` are already `Formula::normalize`d.
@@ -111,7 +125,8 @@ final class FormulaSet
 
     /**
      * The dataset with every result added: `formula.<id>` for each field, and
-     * `formula_<id>` on each row of a formula column's collection.
+     * `formula_<id>` (the column's `columnFormulaKey`) on each row of a formula column's
+     * collection — never over the row's own catalogue value, which the formula may read.
      *
      * Everything is evaluated against the dataset as it arrived — the whole
      * collection, before the compositor slices it per sheet — so a SUM is the
@@ -185,7 +200,7 @@ final class FormulaSet
             $declared   = json_decode($node->getAttribute('data-tpl-columns'), true);
 
             foreach (is_array($declared) ? $declared : [] as $column) {
-                $key = is_array($column) ? ($column['key'] ?? null) : null;
+                $key = is_array($column) ? self::columnFormulaKey($column) : null;
 
                 if ($collection !== '' && is_string($key) && preg_match(self::COLUMN_KEY, $key) === 1) {
                     $columns[] = [
