@@ -108,7 +108,7 @@ function make(attributes = {}) {
     return component;
 }
 
-const FORMULA_KEY = /^formula\.[a-z0-9]{8}$/;
+const FORMULA_KEY = /^formula\.[a-z][a-z0-9]{7}$/;
 
 // 1. Switching on: a fresh key, an empty source, the selects replaced by the box.
 {

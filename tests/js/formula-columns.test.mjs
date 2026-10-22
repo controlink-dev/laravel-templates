@@ -19,7 +19,7 @@ globalThis.document ??= {
     }),
 };
 
-const KEY = /^formula_[a-z0-9]{8}$/;
+const KEY = /^formula_[a-z][a-z0-9]{7}$/;
 const catalogue = [
     { key: 'quantity', label: 'Qty', format: 'number', formatArgs: {}, align: 'right', width: '' },
     { key: 'unit_price', label: 'Price', format: 'money', formatArgs: {}, align: 'right', width: '' },

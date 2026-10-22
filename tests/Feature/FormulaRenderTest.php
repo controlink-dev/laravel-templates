@@ -109,6 +109,30 @@ class FormulaRenderTest extends TestCase
         $this->assertNotSame('', $printed[0]);
     }
 
+    /**
+     * The id the editor draws: a letter, then letters and digits. Digits after the first
+     * letter must print (`{{ formula.b3270w4p }}` is a plain Twig path); a digit-led id
+     * is not a formula key at all and is refused at save (LayoutValidatorTest).
+     */
+    public function test_a_letter_led_formula_id_with_digits_renders(): void
+    {
+        $html = $this->withField(
+            $this->invoice()->initialLayout['html'],
+            'header',
+            'tpl-f-letter',
+            'formula.b3270w4p',
+            'totais.total_a_pagar * 2',
+            'money',
+        );
+
+        $this->assertSame([$this->format(1229999.98 * 2, 'money')], array_values(array_unique($this->printed($this->compose($html), 'tpl-f-letter'))));
+
+        $this->assertTrue(FormulaSet::isFieldKey('formula.b3270w4p'));
+        $this->assertFalse(FormulaSet::isFieldKey('formula.3b270w4p'));
+        $this->assertTrue(FormulaSet::isColumnKey('formula_b3270w4p'));
+        $this->assertFalse(FormulaSet::isColumnKey('formula_3b270w4p'));
+    }
+
     /** Review Focus 4: a failed formula prints nothing, whatever the format. */
     public function test_failed_formula_prints_empty_with_money_format(): void
     {

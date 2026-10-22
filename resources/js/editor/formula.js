@@ -37,16 +37,23 @@ const MAX_ITEMS = 50;
 
 const ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
+/** The letters at the start of `ID_ALPHABET`. */
+const LETTERS = 26;
+
 /**
- * A new formula id: eight of `[a-z0-9]`, which the server's key pattern
- * (`[a-z0-9]{6,12}`) accepts. Random rather than counted: a layout is edited across
+ * A new formula id: a letter, then seven of `[a-z0-9]`, which the server's key pattern
+ * (`[a-z][a-z0-9]{5,11}`) accepts. Random rather than counted: a layout is edited across
  * sessions and copied between formats, and no counter survives that.
  */
 export function newFormulaId() {
     const bytes = new Uint8Array(8);
     globalThis.crypto.getRandomValues(bytes);
 
-    return Array.from(bytes, (byte) => ID_ALPHABET[byte % ID_ALPHABET.length]).join('');
+    // The first character is a letter: the key prints as a Twig path, and Twig reads
+    // `formula.3b…` as the number 3 followed by a name (the server refuses that key).
+    return Array.from(bytes, (byte, index) => (index === 0
+        ? ID_ALPHABET[byte % LETTERS]
+        : ID_ALPHABET[byte % ID_ALPHABET.length])).join('');
 }
 
 export function isFormulaKey(key) {

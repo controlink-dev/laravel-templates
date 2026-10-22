@@ -25,9 +25,14 @@ use DOMXPath;
  */
 final class FormulaSet
 {
-    private const FIELD_KEY = '/^formula\.[a-z0-9]{6,12}$/';
+    /*
+     * The id starts with a letter: the key is printed as a Twig path (`{{ formula.<id> }}`,
+     * `{{ linha.formula_<id> }}`), and Twig reads `formula.3b…` as the number 3 followed by
+     * a name — a layout that saved but could not print.
+     */
+    private const FIELD_KEY = '/^formula\.[a-z][a-z0-9]{5,11}$/';
 
-    private const COLUMN_KEY = '/^formula_[a-z0-9]{6,12}$/';
+    private const COLUMN_KEY = '/^formula_[a-z][a-z0-9]{5,11}$/';
 
     /** An opening tag, with quoted values consumed whole so a `>` inside one does not end it. */
     private const TAG = '/<[a-zA-Z][^\s\/>]*(?:\s+[^\s"\'>\/=]+(?:\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s"\'=<>`]+))?)*\s*\/?>/';

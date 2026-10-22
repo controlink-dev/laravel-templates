@@ -264,6 +264,17 @@ class LayoutValidator
                     $this->assertKnownFormat(FormatSpec::fromColumn((array) $column));
                 }
 
+                // CGE-37: a column that carries a formula, or claims the formula prefix,
+                // under a key of any other shape (`formula_3…`) is never computed, so the
+                // row would print a value that does not exist. Refused like an unknown field.
+                foreach ($columns as $column) {
+                    $key = (string) (((array) $column)['key'] ?? '');
+
+                    if ((str_starts_with($key, 'formula_') || array_key_exists('formula', (array) $column)) && ! FormulaSet::isColumnKey($key)) {
+                        $problems[] = $this->problem('V-01', $table, 'unknown_binding', ['binding' => $key]);
+                    }
+                }
+
                 $tableId = (string) ($table['attributes']['id'] ?? '');
 
                 if ($tableId !== '' && $exports->has($tableId) === false) {

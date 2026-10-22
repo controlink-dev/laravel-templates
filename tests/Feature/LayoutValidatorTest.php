@@ -1032,6 +1032,32 @@ class LayoutValidatorTest extends TestCase
         $this->assertSame(['V-01'], array_column($problems, 'code'));
     }
 
+    /**
+     * A digit right after the dot would print as `{{ formula.3b270w4p }}`, which Twig reads
+     * as `formula.3` followed by a name and refuses: the layout saved, the PDF failed. A
+     * key of that shape is not a formula key, so the save refuses it as an unknown field.
+     */
+    public function test_formula_key_with_a_leading_digit_is_refused_at_save(): void
+    {
+        $problems = $this->problems($this->layoutPlus($this->formulaField('formula.3b270w4p', 'totais.total_a_pagar')));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+
+        // The same id led by a letter is a formula like any other.
+        $this->assertSame([], $this->problems($this->layoutPlus($this->formulaField('formula.b3270w4p', 'totais.total_a_pagar'))));
+    }
+
+    /** The column side of the same rule: `formula_3…` is not a formula column, so it blocks. */
+    public function test_formula_column_key_with_a_leading_digit_is_refused_at_save(): void
+    {
+        $problems = $this->problems($this->layoutWithFormulaColumns([['formula_3b270w4p', 'linhas.quantidade * 2']]));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame(__('templates::editor.validation.unknown_binding', ['binding' => 'formula_3b270w4p']), $problems[0]['message']);
+
+        $this->assertSame([], $this->problems($this->layoutWithFormulaColumns([['formula_b3270w4p', 'linhas.quantidade * 2']])));
+    }
+
     public function test_formula_row_formula_column_checked_against_its_collection(): void
     {
         $this->assertSame([], $this->problems($this->layoutWithFormulaColumns([

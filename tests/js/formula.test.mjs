@@ -24,8 +24,19 @@ const fakeFetch = (calls, answer = (item) => ({ value: `R(${item.source})`, erro
 /* ---------------------------------------------------------------- ids and keys */
 
 {
-    for (let i = 0; i < 200; i++) {
-        assert.match(newFormulaId(), /^[a-z0-9]{8}$/);
+    // Led by a letter: `{{ formula.3b… }}` is read by Twig as the number 3 and a name,
+    // and the PDF fails for a layout that saved (the server refuses that key now too).
+    for (let i = 0; i < 500; i++) {
+        assert.match(newFormulaId(), /^[a-z][a-z0-9]{7}$/);
+    }
+
+    // Even when every random byte would pick a digit.
+    const original = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+    globalThis.crypto.getRandomValues = (bytes) => bytes.fill(26);
+    try {
+        assert.match(newFormulaId(), /^[a-z][a-z0-9]{7}$/);
+    } finally {
+        globalThis.crypto.getRandomValues = original;
     }
 
     assert.ok(isFormulaKey('formula.ab12cd34'));
