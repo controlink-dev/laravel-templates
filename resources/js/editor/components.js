@@ -12,6 +12,49 @@
 import { icons } from './icons.js';
 import { alertDialog } from './dialog.js';
 import { previewValue } from './preview-filter.js';
+import {
+    DATE_PATTERNS, DECIMALS, SYMBOLS, defaultSpecFor, expression, specFromAttributes, specToAttributes,
+} from './formats.js';
+
+const ARGUMENT_ATTRIBUTES = ['data-tpl-format-pattern', 'data-tpl-format-decimals', 'data-tpl-format-symbol'];
+
+/**
+ * The argument selects of each format (CGE-49), keyed by format name. Shared by the data
+ * field (as traits) and the line-table column card (as plain selects).
+ */
+export function formatArgumentTraitsFor(config) {
+    const strings = config.strings;
+    const pattern = {
+        type: 'select',
+        name: 'data-tpl-format-pattern',
+        label: strings['format_arg.pattern'],
+        options: DATE_PATTERNS.map((id) => ({ id, name: strings['format_pattern.' + id] ?? id })),
+        changeProp: false,
+    };
+    const decimals = (defaultLabel) => ({
+        type: 'select',
+        name: 'data-tpl-format-decimals',
+        label: strings['format_arg.decimals'],
+        options: DECIMALS.map((value) => ({
+            id: value === null ? '' : String(value),
+            name: value === null ? defaultLabel : String(value),
+        })),
+        changeProp: false,
+    });
+    const symbol = {
+        type: 'select',
+        name: 'data-tpl-format-symbol',
+        label: strings['format_arg.symbol'],
+        options: SYMBOLS.map((id) => ({ id, name: strings['format_symbol.' + id] ?? id })),
+        changeProp: false,
+    };
+
+    return {
+        date: [pattern],
+        number: [decimals(strings['format_arg.decimals_number'])],
+        money: [decimals(strings['format_arg.decimals_money']), symbol],
+    };
+}
 
 /** Only these families exist; the catalogue is closed on the server. */
 /*
@@ -157,9 +200,9 @@ function registerZones(editor, config) {
                 // user places blocks where they want them (RF-C03).
                 'custom-name': config.strings['zone.' + name],
                 layerable: true,
-                stylable: flow
-                    ? ['background-color']
-                    : ['background-color', 'height'],
+                // No 'height' (CGE-50): a band's height is the version's geometry, edited in
+                // the page panel (geometry-panel.js). As a style it only stretched the element.
+                stylable: ['background-color'],
             },
         },
     });
@@ -183,7 +226,8 @@ function registerZones(editor, config) {
                 removable: false,
                 copyable: false,
                 draggable: false,
-                selectable: false,
+                // Selectable (CGE-50): a click on the sheet's margin opens its page panel.
+                selectable: true,
                 attributes: { class: 'page' },
                 stylable: false,
             },
@@ -295,6 +339,8 @@ function registerDataField(editor, config) {
         config.formats.map((format) => ({ id: format, name: config.strings['format.' + format] })),
     );
 
+    const formatArgumentTraits = formatArgumentTraitsFor(config);
+
     editor.DomComponents.addType('data-field', {
         isComponent: (el) => el?.dataset?.tplType === 'data-field',
         model: {
@@ -306,7 +352,10 @@ function registerDataField(editor, config) {
                     'data-tpl-type': 'data-field',
                     'data-tpl-node': firstNode,
                     'data-tpl-binding': firstField,
-                    'data-tpl-format': '',
+                    // No `data-tpl-format` here on purpose (CGE-49): a block that arrives
+                    // without one was just dropped from the palette and is given its
+                    // binding type's default format in `init()`. A saved layout always
+                    // carries the attribute, even empty, and keeps what it says.
                 },
                 editable: false,
                 /*
@@ -364,6 +413,18 @@ function registerDataField(editor, config) {
                 this.on('change:attributes:data-tpl-node', this.onNodeChange);
                 this.on('change:attributes:data-tpl-binding', this.onBindingChange);
                 this.on('change:attributes:data-tpl-format', this.onBindingChange);
+                this.on('change:attributes:data-tpl-binding', this.onBindingPicked);
+                this.on('change:attributes:data-tpl-format', this.onFormatPicked);
+
+                ARGUMENT_ATTRIBUTES.forEach((name) => this.on('change:attributes:' + name, this.onBindingChange));
+
+                if (!('data-tpl-format' in this.getAttributes())) {
+                    this.applyFormatSpec(defaultSpecFor(findBinding(config, this.binding())?.type));
+                }
+
+                this.__pfBinding = this.binding();
+                this.__pfFormat = this.formatName();
+                this.syncFormatTraits();
 
                 if (this.getAttributes()['data-tpl-node'] !== node) {
                     this.__pfSyncingNode = true;
@@ -385,6 +446,65 @@ function registerDataField(editor, config) {
 
             formatName() {
                 return this.getAttributes()['data-tpl-format'] ?? '';
+            },
+
+            formatSpec() {
+                return specFromAttributes(this.getAttributes());
+            },
+
+            /** Writes a spec (or none) as this field's format attributes, in one change. */
+            applyFormatSpec(spec) {
+                // Recorded first: the attribute event below re-enters `onFormatPicked`,
+                // which must see this as the format already in place.
+                this.__pfFormat = spec?.name ?? '';
+                this.addAttributes(specToAttributes(spec));
+                this.syncFormatTraits();
+            },
+
+            /**
+             * A new binding brings its type's default format (CGE-49): a date field
+             * shows a date, a total shows money. Only a real change of binding — the
+             * attribute event fires for every key `addAttributes` touches.
+             */
+            onBindingPicked() {
+                if (this.binding() === this.__pfBinding) {
+                    return;
+                }
+
+                this.__pfBinding = this.binding();
+                this.applyFormatSpec(defaultSpecFor(findBinding(config, this.binding())?.type));
+            },
+
+            /**
+             * Choosing a format fills in its default arguments and empties those it does
+             * not take, so the attributes never describe two formats at once.
+             */
+            onFormatPicked() {
+                if (this.formatName() === this.__pfFormat) {
+                    return;
+                }
+
+                const name = this.formatName();
+                const fallback = ['date', 'money', 'number'].includes(name) ? defaultSpecFor(name) : null;
+
+                this.applyFormatSpec(name ? { ...(fallback ?? {}), name } : null);
+            },
+
+            /** Only the argument selects the chosen format takes are shown. */
+            syncFormatTraits() {
+                const wanted = formatArgumentTraits[this.formatName()] ?? [];
+
+                ARGUMENT_ATTRIBUTES.forEach((name) => {
+                    if (this.getTrait(name) && !wanted.some((trait) => trait.name === name)) {
+                        this.removeTrait(name);
+                    }
+                });
+
+                wanted.forEach((trait) => {
+                    if (!this.getTrait(trait.name)) {
+                        this.addTrait(trait);
+                    }
+                });
             },
 
             /*
@@ -518,7 +638,15 @@ function registerDataField(editor, config) {
                 const key = this.binding();
                 const sample = example ? config.fixture?.[key] : previewValue(config, key);
 
-                return String(sample ?? findBinding(config, key)?.label ?? key);
+                if (sample === null || sample === undefined) {
+                    return String(findBinding(config, key)?.label ?? key);
+                }
+
+                // The canvas shows the value in this field's format, exactly as the PDF
+                // prints it (CGE-49). The example a saved version carries stays raw.
+                return example || !config.formatPreview
+                    ? String(sample)
+                    : config.formatPreview.text(sample, this.formatSpec());
             },
 
             /** The `content` this block shows (escaped), for the save/dirty read-back. */
@@ -572,13 +700,7 @@ function registerDataField(editor, config) {
              * select and the format from another, both validated again on the server.
              */
             toHTML() {
-                const binding = this.binding();
-                const formatName = this.formatName();
-                const expression = formatName
-                    ? `{{ ${binding}|${formatName} }}`
-                    : `{{ ${binding} }}`;
-
-                return `<div${this.attributesToHTML()}>${expression}</div>`;
+                return `<div${this.attributesToHTML()}>${expression(this.binding(), this.formatSpec())}</div>`;
             },
 
             /** GrapesJS gives no helper for this, and hand-built strings must be escaped. */
@@ -636,7 +758,7 @@ function registerImage(editor, config) {
                 // zoom that reads as "nothing happened". The placeholder style (canvasCss)
                 // outlines the empty box so there is something to see and resize.
                 style: { width: '25mm', height: '25mm' },
-                stylable: ['left', 'top', 'width', 'height', 'opacity'],
+                stylable: ['left', 'top', 'right', 'bottom', 'width', 'height', 'opacity'],
             },
         },
     });
@@ -754,7 +876,7 @@ function registerRule(editor, config) {
                 // nothing shows — which read as "the line cannot be placed", worst of all on
                 // a small label.
                 style: { width: '40mm' },
-                stylable: ['left', 'top', 'width', 'height', 'background-color', 'border-color'],
+                stylable: ['left', 'top', 'right', 'bottom', 'width', 'height', 'background-color', 'border-color'],
             },
 
             init() {
@@ -791,9 +913,12 @@ function registerRule(editor, config) {
 const TEXT_STYLES = [
     // Position first: an absolute block is placed by dragging, but a drag over a zoomed
     // canvas is imprecise, so `left`/`top` are also editable as exact millimetres in the
-    // Position sector of the style panel (the sector's strings already existed).
+    // Position sector of the style panel (the sector's strings already existed). Right
+    // and bottom too (CGE-51): the starting layouts anchor totals there.
     'left',
     'top',
+    'right',
+    'bottom',
     'font-size',
     'font-weight',
     'font-style',

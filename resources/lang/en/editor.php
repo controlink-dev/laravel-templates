@@ -137,6 +137,35 @@ return [
         'upper'  => 'Uppercase',
     ],
 
+    'format_args' => [
+        'pattern'         => 'Date pattern',
+        'decimals'        => 'Decimal places',
+        'symbol'          => 'Symbol',
+        'decimals_money'  => 'From the currency',
+        'decimals_number' => 'Automatic',
+    ],
+
+    'geometry' => [
+        'page'             => 'Page',
+        'margin'           => [
+            'top'    => 'Top margin',
+            'right'  => 'Right margin',
+            'bottom' => 'Bottom margin',
+            'left'   => 'Left margin',
+        ],
+        'header_height'    => 'Header height',
+        'footer_height'    => 'Footer height',
+        'body_too_small'   => 'That leaves the body under 20 mm. Reduce the margins or the heights.',
+        'margins_too_wide' => 'The left and right margins leave no width on the sheet.',
+    ],
+
+    'format_symbols' => [
+        'before' => 'Symbol before (€ 1.00)',
+        'after'  => 'Symbol after (1.00 €)',
+        'code'   => 'Code at the end (1.00 EUR)',
+        'none'   => 'No symbol (1.00)',
+    ],
+
     'fits' => [
         'contain' => 'Fit without cropping',
         'cover'   => 'Fill and crop',
@@ -174,6 +203,8 @@ return [
         'border_color'     => 'Border colour',
         'top'              => 'Top',
         'left'             => 'Left',
+        'right'            => 'Right',
+        'bottom'           => 'Bottom',
     ],
 
     /* Style property options; the canvas library offers 100-900 and raw CSS keywords. */
@@ -241,6 +272,7 @@ return [
     'validation' => [
         'unknown_binding'   => 'The field ":binding" does not exist in this document type catalogue.',
         'unknown_format'    => 'The format ":format" is not allowed.',
+        'format_mismatch'   => 'The printed format of the field does not match the format chosen for it. Choose the format again and save.',
         'missing_mandatory' => 'The mandatory field ":field" is not in the document.',
         'missing_legal'     => 'The legally required field ":field" is not in the document.',
         'image_source'      => 'The image has no file.',

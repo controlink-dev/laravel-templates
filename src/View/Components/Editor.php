@@ -2,7 +2,9 @@
 
 namespace Controlink\Templates\View\Components;
 
+use Carbon\CarbonImmutable;
 use Closure;
+use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Types\TemplateType;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
@@ -218,6 +220,8 @@ class Editor extends Component
             'prop.border_color'     => __('templates::editor.properties.border_color'),
             'prop.top'              => __('templates::editor.properties.top'),
             'prop.left'             => __('templates::editor.properties.left'),
+            'prop.right'            => __('templates::editor.properties.right'),
+            'prop.bottom'           => __('templates::editor.properties.bottom'),
 
             'weight.normal' => __('templates::editor.style_options.weight_normal'),
             'weight.bold'   => __('templates::editor.style_options.weight_bold'),
@@ -328,6 +332,27 @@ class Editor extends Component
         // not need a second edit here.
         foreach ((array) config('templates.formats') as $format) {
             $strings['format.'.$format] = __('templates::editor.formats.'.$format);
+        }
+
+        // CGE-49: the format arguments. A date pattern is labelled by what it prints, in
+        // the reader's language, so the choice is made by eye rather than by syntax.
+        foreach (['pattern', 'decimals', 'symbol', 'decimals_money', 'decimals_number'] as $label) {
+            $strings['format_arg.'.$label] = __('templates::editor.format_args.'.$label);
+        }
+
+        // CGE-50: the page panel (margins, header/footer heights).
+        foreach (['page', 'margin.top', 'margin.right', 'margin.bottom', 'margin.left', 'header_height', 'footer_height', 'body_too_small', 'margins_too_wide'] as $key) {
+            $strings['geometry.'.$key] = __('templates::editor.geometry.'.$key);
+        }
+
+        foreach (FormatSpec::SYMBOLS as $symbol) {
+            $strings['format_symbol.'.$symbol] = __('templates::editor.format_symbols.'.$symbol);
+        }
+
+        $sample = CarbonImmutable::create(2026, 12, 31)->locale(app()->getLocale());
+
+        foreach (FormatSpec::DATE_PATTERNS as $pattern) {
+            $strings['format_pattern.'.$pattern] = $sample->isoFormat((string) FormatSpec::isoPattern($pattern));
         }
 
         foreach (array_keys((array) config('templates.rule_widths')) as $width) {

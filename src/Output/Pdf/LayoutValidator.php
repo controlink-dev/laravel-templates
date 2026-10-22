@@ -4,8 +4,10 @@ namespace Controlink\Templates\Output\Pdf;
 
 use Controlink\Templates\Contracts\BindingResolver;
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
+use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
+use InvalidArgumentException;
 
 /**
  * Layer 1 of the validation: static, over `project_data`, at save time (spec 8.1).
@@ -186,6 +188,7 @@ class LayoutValidator
     ): array {
         $problems = [];
         $placed   = [];
+        $exports  = new ExportedMarkup($html);
 
         foreach ($document->dataFields() as $field) {
             $key = $field['attributes']['data-tpl-binding'] ?? '';
@@ -204,6 +207,56 @@ class LayoutValidator
 
             if ($format !== '' && ! in_array($format, (array) config('templates.formats'), true)) {
                 $problems[] = $this->problem('V-01', $field, 'unknown_format', ['format' => $format]);
+
+                continue;
+            }
+
+            // CGE-49: the arguments come from closed lists, and the exported expression
+            // (what Twig actually renders) has to be the one the attributes describe.
+            try {
+                $spec = FormatSpec::fromAttributes($field['attributes']);
+            } catch (InvalidArgumentException) {
+                $problems[] = $this->problem('V-01', $field, 'unknown_format', ['format' => $format]);
+
+                continue;
+            }
+
+            // A block with no id yet (dropped, never styled) cannot be found in the export;
+            // the filters still refuse any argument outside its list at render.
+            $fieldId  = (string) ($field['attributes']['id'] ?? '');
+            $exported = $fieldId === '' ? null : $exports->fieldTexts($fieldId);
+            $expected = $spec?->expression($key) ?? '{{ '.$key.' }}';
+
+            // Every element under the id must print the expression, and there must be
+            // one: a renamed or duplicated id is not a way around the comparison.
+            if ($exported !== null && ($exported === [] || array_diff($exported, [$expected]) !== [])) {
+                $problems[] = $this->problem('V-01', $field, 'format_mismatch', ['format' => $format]);
+            }
+        }
+
+        // A line table: its columns' choices come from the closed lists, and every value it
+        // prints is a canonical format expression with arguments from those lists. The
+        // cells are not matched column by column: a starting layout may compose a cell
+        // by hand (the roll's sub-line of price and VAT), which the editor never does.
+        foreach ($document->blocksOfType('line-table') as $table) {
+            $columns = json_decode((string) ($table['attributes']['data-tpl-columns'] ?? '[]'), true);
+
+            try {
+                foreach (is_array($columns) ? $columns : [] as $column) {
+                    $this->assertKnownFormat(FormatSpec::fromColumn((array) $column));
+                }
+
+                $tableId = (string) ($table['attributes']['id'] ?? '');
+
+                if ($tableId !== '' && $exports->has($tableId) === false) {
+                    throw new InvalidArgumentException('The table is missing from the export.');
+                }
+
+                foreach ($exports->tableExpressions($tableId) ?? [] as $printed) {
+                    $this->assertKnownFormat(FormatSpec::fromExpression($printed));
+                }
+            } catch (InvalidArgumentException) {
+                $problems[] = $this->problem('V-01', $table, 'format_mismatch', ['format' => '']);
             }
         }
 
@@ -972,6 +1025,14 @@ class LayoutValidator
         return str_contains(substr($source, 0, $comma), ';base64')
             ? (int) (strlen($payload) * 3 / 4)
             : strlen(urldecode($payload));
+    }
+
+    /** @throws InvalidArgumentException when the format is not in `templates.formats` */
+    private function assertKnownFormat(?FormatSpec $spec): void
+    {
+        if ($spec !== null && ! in_array($spec->name(), (array) config('templates.formats'), true)) {
+            throw new InvalidArgumentException("Unknown format [{$spec->name()}].");
+        }
     }
 
     /**

@@ -140,6 +140,35 @@ return [
         'upper'  => 'Maiúsculas',
     ],
 
+    'format_args' => [
+        'pattern'         => 'Padrão da data',
+        'decimals'        => 'Casas decimais',
+        'symbol'          => 'Símbolo',
+        'decimals_money'  => 'Da moeda',
+        'decimals_number' => 'Automático',
+    ],
+
+    'geometry' => [
+        'page'             => 'Página',
+        'margin'           => [
+            'top'    => 'Margem de cima',
+            'right'  => 'Margem direita',
+            'bottom' => 'Margem de baixo',
+            'left'   => 'Margem esquerda',
+        ],
+        'header_height'    => 'Altura do cabeçalho',
+        'footer_height'    => 'Altura do rodapé',
+        'body_too_small'   => 'Assim o corpo fica com menos de 20 mm. Reduza as margens ou as alturas.',
+        'margins_too_wide' => 'As margens esquerda e direita não deixam largura na folha.',
+    ],
+
+    'format_symbols' => [
+        'before' => 'Símbolo antes (€ 1,00)',
+        'after'  => 'Símbolo depois (1,00 €)',
+        'code'   => 'Código no fim (1,00 EUR)',
+        'none'   => 'Sem símbolo (1,00)',
+    ],
+
     'fits' => [
         'contain' => 'Caber sem cortar',
         'cover'   => 'Preencher e cortar',
@@ -180,6 +209,8 @@ return [
         'border_color'     => 'Cor do contorno',
         'top'              => 'Topo',
         'left'             => 'Esquerda',
+        'right'            => 'Direita',
+        'bottom'           => 'Fundo',
     ],
 
     /*
@@ -251,6 +282,7 @@ return [
     'validation' => [
         'unknown_binding'   => 'O campo «:binding» não existe no catálogo deste tipo de documento.',
         'unknown_format'    => 'O formato «:format» não é permitido.',
+        'format_mismatch'   => 'O formato impresso do campo não corresponde ao formato escolhido. Volte a escolher o formato e grave.',
         'missing_mandatory' => 'O campo obrigatório «:field» não está no documento.',
         'missing_legal'     => 'O campo obrigatório por lei «:field» não está no documento.',
         'image_source'      => 'A imagem não tem ficheiro.',

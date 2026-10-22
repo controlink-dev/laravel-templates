@@ -3,6 +3,7 @@
 namespace Controlink\Templates\Output\Pdf;
 
 use Controlink\Templates\Codes\CodePayload;
+use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Rendering\TemplateRenderer;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
@@ -25,6 +26,9 @@ use Throwable;
  */
 class RenderValidator
 {
+    /** Stands for "the binding's `default_format`" where no placed field is known. */
+    private const DEFAULT_FORMAT = 'binding-default';
+
     /**
      * Resolutions R-05 rasterises a code at, in order, retrying the next when one fails: a
      * module grid can alias against one dpi and read cleanly at another, so a single pass is
@@ -40,6 +44,7 @@ class RenderValidator
     /**
      * @param  array<string, mixed>  $dataset  the fixture the PDF was rendered with
      * @param  array<string, array{left: float, top: float, width: float, height: float, attributes: array<string, string>}>  $codeSlotBoxes  where each code sits on the page, keyed by binding for a dynamic slot or by component id for a fixed-text one, in millimetres
+     * @param  array<string, list<FormatSpec|null>>  $placedFormats  the format of every placed data field, by binding (CGE-49); a binding absent from it is looked for in its default format
      * @return array<int, array{code: string, page: int|null, message: string, component_id?: string}> `component_id` is only present for a fixed-text code slot, which is the only failure with a component to jump to
      */
     public function validate(
@@ -48,10 +53,11 @@ class RenderValidator
         array $dataset,
         float $seconds,
         array $codeSlotBoxes = [],
+        array $placedFormats = [],
     ): array {
         $problems = $this->checkBudget($type, $seconds);
 
-        return RenderedPdf::open($pdf, function (RenderedPdf $rendered) use ($type, $dataset, $problems, $codeSlotBoxes): array {
+        return RenderedPdf::open($pdf, function (RenderedPdf $rendered) use ($type, $dataset, $problems, $codeSlotBoxes, $placedFormats): array {
             $problems = array_merge($problems, $this->checkPageCount($rendered, $type));
 
             $sizeProblems = $this->checkPageSize($rendered, PageGeometry::fromType($type->pdf));
@@ -70,7 +76,7 @@ class RenderValidator
             foreach ($type->bindings as $binding) {
                 $problems = array_merge(
                     $problems,
-                    $this->checkBinding($rendered, $binding, $type, $dataset, $codeSlotBoxes),
+                    $this->checkBinding($rendered, $binding, $type, $dataset, $codeSlotBoxes, $placedFormats),
                 );
             }
 
@@ -175,6 +181,7 @@ class RenderValidator
         TemplateType $type,
         array $dataset,
         array $codeSlotBoxes,
+        array $placedFormats = [],
     ): array {
         // A collection is not a value on the page; its columns are, and each of those is
         // checked by whether the lines rendered at all.
@@ -188,9 +195,20 @@ class RenderValidator
                 : [];
         }
 
-        $expected = $this->expectedText($binding, $dataset);
+        // CGE-49: the text to look for is what the placed fields print, each with its own
+        // format and arguments. Any one of them on the page will do: the same binding
+        // placed twice in two formats is one value shown twice. With no placement known
+        // (a caller that did not pass the layout), the binding's default format.
+        $specs = array_key_exists($binding['key'], $placedFormats)
+            ? $placedFormats[$binding['key']]
+            : [self::DEFAULT_FORMAT];
 
-        if ($expected === '') {
+        $candidates = array_values(array_unique(array_filter(array_map(
+            fn (FormatSpec|string|null $spec): string => $this->expectedText($binding, $dataset, $spec),
+            $specs,
+        ), fn (string $text): bool => $text !== '')));
+
+        if ($candidates === []) {
             return [];
         }
 
@@ -198,11 +216,20 @@ class RenderValidator
         $pages    = $rendered->pageCount();
 
         // R-02: a mandatory value has to be somewhere in the document.
-        $found = [];
+        $found    = [];
+        $expected = $candidates[0];
 
-        for ($page = 1; $page <= $pages; $page++) {
-            if ($this->pageContains($rendered, $page, $expected)) {
-                $found[] = $page;
+        foreach ($candidates as $candidate) {
+            for ($page = 1; $page <= $pages; $page++) {
+                if ($this->pageContains($rendered, $page, $candidate)) {
+                    $found[] = $page;
+                }
+            }
+
+            if ($found !== []) {
+                $expected = $candidate;
+
+                break;
             }
         }
 
@@ -449,13 +476,19 @@ class RenderValidator
      * @param  array<string, mixed>  $binding
      * @param  array<string, mixed>  $dataset
      */
-    private function expectedText(array $binding, array $dataset): string
+    private function expectedText(array $binding, array $dataset, FormatSpec|string|null $spec = self::DEFAULT_FORMAT): string
     {
-        $format = $binding['default_format'] ?? '';
+        if ($spec === self::DEFAULT_FORMAT) {
+            $format = $binding['default_format'] ?? '';
 
-        $template = $format !== ''
-            ? '{{ '.$binding['key'].'|'.$format.' }}'
-            : '{{ '.$binding['key'].' }}';
+            $template = $format !== ''
+                ? '{{ '.$binding['key'].'|'.$format.' }}'
+                : '{{ '.$binding['key'].' }}';
+        } else {
+            $template = $spec instanceof FormatSpec
+                ? $spec->expression($binding['key'])
+                : '{{ '.$binding['key'].' }}';
+        }
 
         try {
             return html_entity_decode(

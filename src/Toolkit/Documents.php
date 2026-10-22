@@ -3,12 +3,15 @@
 namespace Controlink\Templates\Toolkit;
 
 use Controlink\Templates\Output\Pdf\DocumentComposer;
+use Controlink\Templates\Output\Pdf\LayoutDocument;
 use Controlink\Templates\Output\Pdf\LayoutValidator;
 use Controlink\Templates\Output\Pdf\PdfHash;
 use Controlink\Templates\Output\Pdf\PdfRenderer;
 use Controlink\Templates\Output\Pdf\RenderValidator;
+use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Types\TemplateType;
 use Controlink\Templates\Versions\CanonicalHash;
+use InvalidArgumentException;
 
 /**
  * The stateless public facade over the pure pipeline: compose, render, validate, hash.
@@ -137,11 +140,47 @@ final class Documents
      * @param  array<string, mixed>  $geometry
      * @param  float  $seconds  how long the render took
      * @param  array<string, array<string, mixed>>  $codeSlotBoxes
+     * @param  array{project_data?: array<string, mixed>}  $layout  the rendered layout, so R-02 looks for each value in the format its field was placed with (CGE-49); without it, the binding's default format
      * @return array<int, array{code: string, page: int|null, message: string}>
      */
-    public function validateRender(string $pdf, array $fields, array $data, array $geometry, float $seconds, array $codeSlotBoxes = []): array
+    public function validateRender(string $pdf, array $fields, array $data, array $geometry, float $seconds, array $codeSlotBoxes = [], array $layout = []): array
     {
-        return $this->renderValidator->validate($pdf, $this->carrier($fields, $geometry), $data, $seconds, $codeSlotBoxes);
+        return $this->renderValidator->validate(
+            $pdf,
+            $this->carrier($fields, $geometry),
+            $data,
+            $seconds,
+            $codeSlotBoxes,
+            $this->placedFormats((array) ($layout['project_data'] ?? [])),
+        );
+    }
+
+    /**
+     * Every placed data field's format, by binding. A format that does not parse is left
+     * out: V-01 refuses it before a render is ever validated.
+     *
+     * @param  array<string, mixed>  $projectData
+     * @return array<string, list<FormatSpec|null>>
+     */
+    private function placedFormats(array $projectData): array
+    {
+        if ($projectData === []) {
+            return [];
+        }
+
+        $placed = [];
+
+        foreach (LayoutDocument::fromProjectData($projectData)->dataFields() as $field) {
+            $key = (string) ($field['attributes']['data-tpl-binding'] ?? '');
+
+            try {
+                $placed[$key][] = FormatSpec::fromAttributes($field['attributes']);
+            } catch (InvalidArgumentException) {
+                continue;
+            }
+        }
+
+        return $placed;
     }
 
     /**

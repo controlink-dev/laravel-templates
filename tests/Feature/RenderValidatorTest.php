@@ -4,6 +4,7 @@ namespace Controlink\Templates\Tests\Feature;
 
 use Controlink\Templates\Output\Pdf\CodeReader;
 use Controlink\Templates\Output\Pdf\RenderValidator;
+use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Tests\TestCase;
 use Controlink\Templates\Types\TemplateType;
 use Symfony\Component\Process\ExecutableFinder;
@@ -338,5 +339,52 @@ class RenderValidatorTest extends TestCase
         ]);
 
         $this->assertContains('R-05', $this->codes($problems));
+    }
+
+    /* -----------------------------------------------------------------------
+     * R-02 against the formats actually placed (CGE-49)
+     * -------------------------------------------------------------------- */
+
+    /**
+     * The fixture prints the ATCUD in capitals. With the dataset in lower case, the
+     * binding's own (empty) default format expects lower case and R-02 fires; the field
+     * placed with `upper` is what the PDF really carries, so it does not.
+     *
+     * @param  array<string, list<FormatSpec|null>>  $placed
+     */
+    private function validateLowercase(array $placed): array
+    {
+        $pdf = (string) file_get_contents(__DIR__.'/../Fixtures/pdf/r-ok.pdf');
+
+        return app(RenderValidator::class)->validate(
+            $pdf,
+            $this->type(bindings: [
+                ['key' => 'documento.atcud', 'label' => 'ATCUD', 'type' => 'text', 'mandatory' => true, 'legal' => false],
+            ]),
+            ['documento.atcud' => 'jft7-0000000001'],
+            1.0,
+            [],
+            $placed,
+        );
+    }
+
+    public function test_r02_without_placed_formats_uses_the_binding_default(): void
+    {
+        $this->assertContains('R-02', $this->codes($this->validateLowercase([])));
+    }
+
+    public function test_r02_uses_placed_field_format(): void
+    {
+        $upper = FormatSpec::fromAttributes(['data-tpl-format' => 'upper']);
+
+        $this->assertNotContains('R-02', $this->codes($this->validateLowercase(['documento.atcud' => [$upper]])));
+    }
+
+    public function test_r02_any_placed_format_suffices(): void
+    {
+        $upper = FormatSpec::fromAttributes(['data-tpl-format' => 'upper']);
+
+        $this->assertNotContains('R-02', $this->codes($this->validateLowercase(['documento.atcud' => [null, $upper]])));
+        $this->assertContains('R-02', $this->codes($this->validateLowercase(['documento.atcud' => [null]])));
     }
 }

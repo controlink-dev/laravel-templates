@@ -6,7 +6,13 @@
  * attribute exist nowhere in `project_data`.
  * ========================================================================= */
 
-import { TRANSPARENT_PIXEL, nodeOptionsOf, fieldsOfNode, nodeOfBinding } from './components.js';
+import { TRANSPARENT_PIXEL, nodeOptionsOf, fieldsOfNode, nodeOfBinding, formatArgumentTraitsFor } from './components.js';
+import { defaultSpecFor, expression, specFromColumn, specToColumnArgs } from './formats.js';
+
+/** A column's `format` + `formatArgs` for a spec (or none). */
+function columnFormatOf(spec) {
+    return { format: spec?.name ?? '', formatArgs: specToColumnArgs(spec) };
+}
 import { icons } from './icons.js';
 import { previewRows } from './preview-filter.js';
 
@@ -59,7 +65,7 @@ function registerLineTable(editor, config) {
                         label: config.strings['trait.columns'],
                     },
                 ],
-                stylable: ['left', 'top', 'font-size', 'color', 'width'],
+                stylable: ['left', 'top', 'right', 'bottom', 'font-size', 'color', 'width'],
             },
 
             init() {
@@ -109,7 +115,9 @@ function registerLineTable(editor, config) {
                     align: column.default_format === 'money' || column.default_format === 'number'
                         ? 'right'
                         : 'left',
-                    format: column.default_format ?? '',
+                    // CGE-49: the column type's default format, written out in full.
+                    ...columnFormatOf(defaultSpecFor(column.default_format)
+                        ?? (column.default_format ? { name: column.default_format } : null)),
                 }));
             },
 
@@ -174,10 +182,24 @@ function registerLineTable(editor, config) {
                         + `${escapeText(config.strings['block.line_table'] ?? 'Tabela')}</div>`;
                 }
 
+                // A cell shows its value in the column's format, as the PDF prints it
+                // (CGE-49); the example a saved version carries stays raw.
+                const cell = (row, column) => {
+                    const value = row[column.key];
+
+                    if (value === null || value === undefined) {
+                        return String(column.label);
+                    }
+
+                    return example || !config.formatPreview
+                        ? String(value)
+                        : config.formatPreview.text(value, specFromColumn(column));
+                };
+
                 const body = (rows.length > 0 ? rows : [{}])
                     .map((first) => '<tr>' + columns
                         .map((column) => `<td style="text-align:${column.align || 'left'}">`
-                            + `${escapeText(String(first[column.key] ?? column.label))}</td>`)
+                            + `${escapeText(cell(first, column))}</td>`)
                         .join('') + '</tr>')
                     .join('');
 
@@ -204,9 +226,7 @@ function registerLineTable(editor, config) {
 
                 const cells = columns
                     .map((column) => {
-                        const value = column.format
-                            ? `{{ ${item}.${column.key}|${column.format} }}`
-                            : `{{ ${item}.${column.key} }}`;
+                        const value = expression(`${item}.${column.key}`, specFromColumn(column));
 
                         return `<td style="text-align:${column.align || 'left'}">${value}</td>`;
                     })
@@ -426,10 +446,56 @@ function columnCard(component, column, index, config, redraw, reorder) {
             option.selected = (column.format ?? '') === value;
             format.append(option);
         });
-    format.addEventListener('change', () => update({ format: format.value }));
-    formatField.append(format);
+    // CGE-49: the arguments of the chosen format, as plain selects under it. Choosing a
+    // format fills in its defaults and drops the arguments it does not take.
+    const argsWrap = document.createElement('div');
+    const argumentSelects = formatArgumentTraitsFor(config);
 
-    card.append(head, labelField, two, formatField);
+    const renderArgs = () => {
+        argsWrap.replaceChildren();
+
+        const current = component.columns()[index] ?? column;
+        const spec = specFromColumn(current);
+
+        (argumentSelects[spec?.name] ?? []).forEach((trait) => {
+            const argument = trait.name.replace('data-tpl-format-', '');
+            const field = columnField(trait.label);
+            const select = document.createElement('select');
+            select.className = 'gjs-field';
+
+            trait.options.forEach(({ id, name }) => {
+                const option = document.createElement('option');
+                option.value = id;
+                option.textContent = name;
+                option.selected = String(spec[argument] ?? '') === id;
+                select.append(option);
+            });
+
+            select.addEventListener('change', () => {
+                const value = argument === 'decimals'
+                    ? (select.value === '' ? null : Number(select.value))
+                    : select.value;
+                const args = { ...specToColumnArgs(specFromColumn(component.columns()[index])), [argument]: value };
+
+                update({ formatArgs: args });
+            });
+
+            field.append(select);
+            argsWrap.append(field);
+        });
+    };
+
+    format.addEventListener('change', () => {
+        const name = format.value;
+        const fallback = ['date', 'money', 'number'].includes(name) ? defaultSpecFor(name) : null;
+
+        update({ format: name, formatArgs: specToColumnArgs(name ? { ...(fallback ?? {}), name } : null) });
+        renderArgs();
+    });
+    formatField.append(format);
+    renderArgs();
+
+    card.append(head, labelField, two, formatField, argsWrap);
 
     return card;
 }
@@ -551,7 +617,7 @@ function registerCodeSlot(editor, config) {
                         name: 'data-tpl-code-content',
                     },
                 ],
-                stylable: ['left', 'top', 'width', 'height'],
+                stylable: ['left', 'top', 'right', 'bottom', 'width', 'height'],
                 style: { width: minimum + 'mm', height: minimum + 'mm' },
             },
 

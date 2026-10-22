@@ -233,7 +233,10 @@ class DocumentComposer
 
         $declarations .= 'font-family:"'.addcslashes((string) $family, '"\\').'",sans-serif;';
 
-        return '.page{'.$declarations.'}';
+        // `html .page`, not `.page` (CGE-50): the layout's own CSS comes later in the
+        // document and carries a `.page{--margin-…}` rule the editor wrote with the values
+        // of its day. The geometry is the server's; at equal specificity the stale rule won.
+        return 'html .page{'.$declarations.'}';
     }
 
     /**

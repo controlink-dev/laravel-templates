@@ -14,7 +14,11 @@ import grapesjs from 'grapesjs';
 import grapesjsMjml from 'grapesjs-mjml';
 import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
-import { mountPreviewPanel, plainProjectData } from './preview-filter.js';
+import { mountPreviewPanel, plainProjectData, refreshPreview } from './preview-filter.js';
+import { createFormatPreview } from './format-preview.js';
+import { measuredBox, wirePositionPanel } from './position-panel.js';
+import { dragResultToMm } from './anchors.js';
+import { mountGeometryPanel } from './geometry-panel.js';
 import { icons } from './icons.js';
 import {
     checkLegalFieldsLocally,
@@ -240,8 +244,19 @@ async function mountEditor(el) {
      * the behaviour — no preview text, no legal locking, and `toHTML()` never emitting
      * the template expression. Passing `components` to `init()` parses too early.
      */
+    // CGE-49: the canvas formats its sample values through the host, the same filters
+    // the PDF uses. Set before the block types read it; they redraw when it answers.
+    config.formatPreview = createFormatPreview({
+        url: config.formatPreviewUrl,
+        headers: requestHeaders(config),
+        onReady: () => refreshPreview(editor),
+    });
+
     registerComponents(editor, config);
     registerTableAndSlot(editor, config);
+
+    // CGE-51: the panel shows and writes real offsets — four sides, one anchor per axis.
+    wirePositionPanel(editor, chrome.styles);
 
     // Declared before the chrome is wired and filled in below: the format selector lives in
     // `wireChrome`, a different scope from the load/dirty tracking.
@@ -1241,8 +1256,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
          */
         const vars = '--margin-top:' + mm(m.top) + ';--margin-right:' + mm(m.right)
             + ';--margin-bottom:' + mm(m.bottom) + ';--margin-left:' + mm(m.left)
-            + ';--header-height:' + (Number(config.zones?.header_height ?? 35)) + 'mm'
-            + ';--footer-height:' + (Number(config.zones?.footer_height ?? 20)) + 'mm;';
+            + ';--header-height:' + (Number(effectiveZones(config).header_height ?? 35)) + 'mm'
+            + ';--footer-height:' + (Number(effectiveZones(config).footer_height ?? 20)) + 'mm;';
 
         style.textContent = 'html .page{width:' + paper.width + 'mm;box-sizing:border-box;'
             + vars
@@ -1344,6 +1359,27 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         layoutState.pristine = snapshot(editor);
         layoutState.refresh();
     };
+
+    // CGE-50: the version's margins and header/footer heights, edited on the sheet or on
+    // a band. They live in `config.geometry` like a custom size, so the save carries them
+    // and the canvas, the server checks and the PDF all read the same values.
+    mountGeometryPanel(editor, config, {
+        root: chrome.styles,
+        read: () => ({
+            // A version saved before formats existed has no geometry of its own: it is the
+            // type's sheet, which the save has to name for the server to accept the change.
+            geometry: config.geometry ?? { medium: 'sheet', paper_format: config.paperFormat || 'A4' },
+            effective: { margins: effectiveMargins(config), zones: effectiveZones(config) },
+            paper: resolvePaper(config.geometry, config.paperFormat),
+            mode: rollMode ? 'roll' : (labelMode ? 'label' : 'sheet'),
+        }),
+        onChange: (geometry) => {
+            config.geometry = geometry;
+            applyPaper(config.geometry);
+            layoutState.markDirty?.();
+            layoutState.refresh?.();
+        },
+    });
 
     const formatSelect = chrome.toolbar?.querySelector('[data-tpl-format]');
 
@@ -2065,7 +2101,14 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     // The mode is checked when the drag ends, not when the handler is registered: a format
     // tab can turn the sheet into a roll (and back) after mount.
     editor.on('component:drag:end', ({ target }) => {
-        if (rollMode || labelMode) {
+        if (rollMode) {
+            return;
+        }
+
+        // A label has one band: nothing to reparent, but the drag still wrote pixels.
+        if (labelMode) {
+            dragToMillimetres(target);
+
             return;
         }
 
@@ -2114,7 +2157,7 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         // margin, the usual shape of a line list, which the user can then resize or move.
         if (component.getAttributes?.()['data-tpl-type'] === 'line-table'
             && !component.getStyle?.().width) {
-            const margins = config.margins ?? {};
+            const margins = effectiveMargins(config);
             const left = Number(margins.left ?? 15);
             const printable = Number(config.paper?.width ?? 210) - left - Number(margins.right ?? 15);
 
@@ -2336,6 +2379,8 @@ function readConfig(el) {
         // Optional: the real records a node/collection can be previewed with (CGE-29).
         // Without it the editor has no sample-data panel and behaves as before.
         previewRecordsUrl: el.dataset.previewRecordsUrl || '',
+        // Optional: formats sample values for the canvas exactly as the PDF does (CGE-49).
+        formatPreviewUrl: el.dataset.formatPreviewUrl || '',
         // `__FORMAT__` is replaced with the chosen format id on an in-place format switch.
         formatSwitchUrl: el.dataset.formatSwitchUrl,
         printStylesheet: el.dataset.printStylesheet,
@@ -2412,8 +2457,8 @@ function pageVariables(config) {
     const declarations = sides
         .map((side) => `--margin-${side}:${Number(margins[side] || 0)}mm`)
         .concat([
-            `--header-height:${Number(config.zones?.header_height ?? 35)}mm`,
-            `--footer-height:${Number(config.zones?.footer_height ?? 20)}mm`,
+            `--header-height:${Number(effectiveZones(config).header_height ?? 35)}mm`,
+            `--footer-height:${Number(effectiveZones(config).footer_height ?? 20)}mm`,
         ])
         .join(';');
 
@@ -2448,7 +2493,7 @@ function moveToPoint(component, el, point) {
  * in one too.
  */
 function reparentToZone(editor, config, component) {
-    const zones = config.zones ?? {};
+    const zones = effectiveZones(config);
     const el = component?.getEl?.();
     const page = editor.Canvas.getBody?.()?.querySelector('.page');
 
@@ -2461,11 +2506,12 @@ function reparentToZone(editor, config, component) {
         return;
     }
 
-    const marginTop = Number(config.margins?.top ?? 15);
+    const margins = effectiveMargins(config);
+    const marginTop = Number(margins.top ?? 15);
     const header = Number(zones.header_height ?? 0);
     const footer = Number(zones.footer_height ?? 0);
     const pageHeight = (config.paper ?? PAPER_SIZES[config.paperFormat] ?? PAPER_SIZES.A4).height;
-    const bodyHeight = pageHeight - marginTop - Number(config.margins?.bottom ?? 15) - header - footer;
+    const bodyHeight = pageHeight - marginTop - Number(margins.bottom ?? 15) - header - footer;
 
     // Where the block's top edge is, in millimetres from the top of the printable area.
     const pageBox = page.getBoundingClientRect();
@@ -2475,6 +2521,8 @@ function reparentToZone(editor, config, component) {
     const target = zoneAt(fromTop, { header, bodyHeight });
 
     if (zoneOf(component) === target) {
+        dragToMillimetres(component);
+
         return;
     }
 
@@ -3035,4 +3083,67 @@ function showNotice(message, scope, closeLabel) {
     noticeTimer = setTimeout(() => {
         target.hidden = true;
     }, 6000);
+}
+
+/**
+ * GrapesJS's drag leaves whole pixels in `left`/`top`; the layout is written in
+ * millimetres on the half, keeping the side the block is anchored by (CGE-51).
+ */
+function dragToMillimetres(component) {
+    const el = component?.getEl?.();
+
+    if (!el || !component.getAttributes?.()['data-tpl-type']) {
+        return;
+    }
+
+    // A block pinned right/bottom has both sides set while the drag's left/top are on
+    // it, and an auto-sized box stretches between them: its natural size is measured
+    // with the far sides released, on the element only (the model is not touched).
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    const measured = measuredBox(el);
+    el.style.right = '';
+    el.style.bottom = '';
+
+    if (!measured) {
+        return;
+    }
+
+    // The drag ran on left/top (position-panel.js); the side the block was anchored by
+    // before it is restored here, measured from the zone's far edge.
+    const anchor = component.__pfDragAnchor;
+    const before = { ...component.getStyle() };
+
+    delete component.__pfDragAnchor;
+
+    if (anchor?.x === 'right' && !before.right) {
+        before.right = '0mm';
+    }
+
+    if (anchor?.y === 'bottom' && !before.bottom) {
+        before.bottom = '0mm';
+    }
+
+    const { set, remove } = dragResultToMm(
+        before,
+        measured,
+        { width: el.offsetParent.clientWidth / PX_PER_MM, height: el.offsetParent.clientHeight / PX_PER_MM },
+    );
+    const style = { ...component.getStyle(), ...set };
+
+    remove.forEach((side) => delete style[side]);
+    component.setStyle(style);
+}
+
+/**
+ * The header/footer heights the page is laid out with: the version's own where it set
+ * them (CGE-50), else the type's from the catalogue.
+ */
+export function effectiveZones(config) {
+    return { ...(config.zones ?? {}), ...(config.geometry?.zones ?? {}) };
+}
+
+/** The page margins: the version's or its format's, else the type's. */
+export function effectiveMargins(config) {
+    return config.geometry?.margins ?? config.margins ?? {};
 }
