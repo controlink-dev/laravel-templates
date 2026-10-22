@@ -1085,7 +1085,7 @@ function registerTextareaTrait(editor) {
         createInput({ trait }) {
             const input = document.createElement('textarea');
             input.rows = 3;
-            input.className = 'gjs-field tpl-textarea';
+            input.className = 'tpl-textarea';
             input.value = trait.getValue() ?? '';
 
             return input;
