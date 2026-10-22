@@ -4,6 +4,7 @@ namespace Controlink\Templates\View\Components;
 
 use Carbon\CarbonImmutable;
 use Closure;
+use Controlink\Templates\Formulas\Formula;
 use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Types\TemplateType;
 use Illuminate\Contracts\View\View;
@@ -197,6 +198,62 @@ class Editor extends Component
 
             'format.none' => __('templates::editor.formats.none'),
 
+            // Formula mode of a data field (CGE-37). `:value` is filled in JS.
+            'formula.label'        => __('templates::editor.formula.label'),
+            'formula.toggle'       => __('templates::editor.formula.toggle'),
+            'formula.legal_locked' => __('templates::editor.formula.legal_locked'),
+            'formula.mandatory_locked' => __('templates::editor.formula.mandatory_locked'),
+            'formula.source'       => __('templates::editor.formula.source'),
+            'formula.placeholder'  => __('templates::editor.formula.placeholder'),
+            'formula.calculating'  => __('templates::editor.formula.calculating'),
+            'formula.result'       => __('templates::editor.formula.result', ['value' => ':value']),
+            'formula.blank'        => __('templates::editor.formula.blank'),
+
+            // "Valor: Campo | Fórmula" and the box (CGE-37). `:name`/`:field` are filled in JS.
+            'formula.value'             => __('templates::editor.formula.value'),
+            'formula.value_field'       => __('templates::editor.formula.value_field'),
+            'formula.value_formula'     => __('templates::editor.formula.value_formula'),
+            'formula.done'              => __('templates::editor.formula.done'),
+            'formula.unknown_field'     => __('templates::editor.formula.unknown_field', ['name' => ':name']),
+            'formula.quick.heading'     => __('templates::editor.formula.quick.heading'),
+            'formula.quick.text'        => __('templates::editor.formula.quick.text'),
+            'formula.quick.text_source' => __('templates::editor.formula.quick.text_source', ['field' => ':field']),
+            'formula.quick.upper'       => __('templates::editor.formula.quick.upper'),
+            'formula.quick.total'       => __('templates::editor.formula.quick.total'),
+            'formula.quick.left'        => __('templates::editor.formula.quick.left'),
+            'formula.quick.round'       => __('templates::editor.formula.quick.round'),
+            'formula.quick.share'       => __('templates::editor.formula.quick.share'),
+            'formula.quick.zero_blank'  => __('templates::editor.formula.quick.zero_blank'),
+
+            // The autocomplete under the formula box (CGE-37).
+            'formula.functions_group'   => __('templates::editor.formula.functions_group'),
+
+            // Formula and calculated columns of the line table (CGE-37).
+            'formula.column_label'       => __('templates::editor.formula.column_label'),
+            'formula.add_column'         => __('templates::editor.formula.add_column'),
+            'formula.remove_column'      => __('templates::editor.formula.remove_column'),
+            'formula.column_calculated'  => __('templates::editor.formula.column_calculated'),
+            'formula.column_no_collection' => __('templates::editor.formula.column_no_collection'),
+            'formula.column_placeholder' => __('templates::editor.formula.column_placeholder', ['example' => ':example']),
+            'formula.column_help'        => __('templates::editor.formula.column_help'),
+            'formula.columns_overflow'   => __('templates::editor.formula.columns_overflow'),
+
+            // The "Campos e funções" library in the Blocks rail (CGE-37). `:example` is filled in JS.
+            'formula.library.heading'          => __('templates::editor.formula.library.heading'),
+            'formula.library.fields'           => __('templates::editor.formula.library.fields'),
+            'formula.library.functions'        => __('templates::editor.formula.library.functions'),
+            'formula.library.search_fields'    => __('templates::editor.formula.library.search_fields'),
+            'formula.library.search_functions' => __('templates::editor.formula.library.search_functions'),
+            'formula.library.empty'            => __('templates::editor.formula.library.empty'),
+            'formula.library.example'          => __('templates::editor.formula.library.example', ['example' => ':example']),
+            'formula.library.this_row'         => __('templates::editor.formula.library.this_row'),
+            'formula.group.math'               => __('templates::editor.formula.groups.math'),
+            'formula.group.totals'             => __('templates::editor.formula.groups.totals'),
+            'formula.group.conditions'         => __('templates::editor.formula.groups.conditions'),
+            'formula.group.text'               => __('templates::editor.formula.groups.text'),
+            'formula.group.dates'              => __('templates::editor.formula.groups.dates'),
+            'formula.group.other'              => __('templates::editor.formula.groups.other'),
+
             'fit.contain' => __('templates::editor.fits.contain'),
             'fit.cover'   => __('templates::editor.fits.cover'),
             'fit.fill'    => __('templates::editor.fits.fill'),
@@ -375,6 +432,15 @@ class Editor extends Component
 
         foreach (array_keys((array) __('templates::editor.code_fields')) as $field) {
             $strings['code_field.'.$field] = __('templates::editor.code_fields.'.$field);
+        }
+
+        // CGE-37: one signature, one line and one example per function the parser accepts,
+        // in its order. The bundle reads its function list from these keys, so the parser stays
+        // the only list — the autocomplete never offers a function the save refuses.
+        foreach (Formula::functions() as $name) {
+            $strings['formula.signature.'.$name]   = __('templates::editor.formula.signatures.'.$name);
+            $strings['formula.description.'.$name] = __('templates::editor.formula.descriptions.'.$name);
+            $strings['formula.example.'.$name]     = __('templates::editor.formula.examples.'.$name);
         }
 
         return $strings;

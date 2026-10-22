@@ -296,6 +296,162 @@ return [
         'outside_printable' => '":field" is outside the printable area.',
         'occluded'          => '":field" is covered by an opaque element placed on top of it.',
         'occluded_warning'  => '":field" is covered by another element placed on top of it and may not appear when printed.',
+        // V-19 (CGE-37): `:formula` is the column header, or the generic formula label on a field.
+        'formula_syntax'            => '":formula": the formula is not written correctly. Check the operators, brackets, commas between arguments, quotes and the number of arguments of each function.',
+        'formula_unknown_function'  => '":formula": the formula uses a function that does not exist.',
+        'formula_unknown_reference' => '":formula": the formula uses a field that does not exist in this document type (or the result of another formula, which is not allowed).',
+        'formula_scope'             => '":formula": a column of the lines can only be used inside SUM or COUNT here.',
+        'formula_duplicate_key'     => '":formula": two formulas share the same key. Delete this one and create it again.',
+        'formula_without_source'    => '":formula": the formula is empty.',
+    ],
+
+    // Formula fields and columns (CGE-37).
+    'formula' => [
+        'label'        => 'Formula',
+        'toggle'       => 'Calculate with a formula',
+        'legal_locked' => 'This is the only block with this legal field: it cannot become a formula. Add another copy of the field if you need a formula here.',
+        'mandatory_locked' => 'This is the only block with this mandatory field: it cannot become a formula. Add another copy of the field if you need a formula here.',
+        'source'       => 'Formula',
+        'placeholder'  => 'e.g. totals.total_due * 2',
+        'calculating'  => 'Calculating…',
+        'result'       => 'Result: :value',
+        'blank'        => 'No value: prints empty.',
+
+        // The data field's "Value: Field | Formula" and its formula box (spec §6.1, §6.4).
+        // `:name` and `:field` are filled in JS.
+        'value'         => 'Value',
+        'value_field'   => 'Field',
+        'value_formula' => 'Formula',
+        'done'          => 'Done',
+        'unknown_field' => 'Unknown field: :name',
+        'quick' => [
+            'heading'     => 'Quick examples',
+            'text'        => 'Text with a field in the middle',
+            'text_source' => '"Text before " & :field & " text after"',
+            'upper'       => 'Capitals',
+            'total'       => 'Table total',
+            // The column box's, made from the column itself.
+            'left'        => 'First 40 characters',
+            'round'       => 'Round',
+            'share'       => '% of the total',
+            'zero_blank'  => 'Blank when zero',
+        ],
+
+        // The functions' group in the suggestions under the formula box.
+        'functions_group'   => 'Functions',
+
+        // One per function the parser accepts (Formulas\Parser::FUNCTIONS); the bundle reads
+        // the function list from these keys, so a function added there needs both here.
+        'signatures' => [
+            'IF'     => 'IF(condition, if_true, if_false)',
+            'AND'    => 'AND(condition, …)',
+            'OR'     => 'OR(condition, …)',
+            'NOT'    => 'NOT(condition)',
+            'SUM'    => 'SUM(collection.column)',
+            'COUNT'  => 'COUNT(collection.column)',
+            'ROUND'  => 'ROUND(number[, decimals])',
+            'ABS'    => 'ABS(number)',
+            'MIN'    => 'MIN(number, …)',
+            'MAX'    => 'MAX(number, …)',
+            'UPPER'  => 'UPPER(text)',
+            'LOWER'  => 'LOWER(text)',
+            'CONCAT' => 'CONCAT(text, …)',
+            'LEFT'   => 'LEFT(text[, count])',
+            'RIGHT'  => 'RIGHT(text[, count])',
+            'LEN'    => 'LEN(text)',
+            'TRIM'   => 'TRIM(text)',
+            'YEAR'   => 'YEAR(date)',
+            'MONTH'  => 'MONTH(date)',
+            'DAY'    => 'DAY(date)',
+            'DAYS'   => 'DAYS(end, start)',
+            'TEXT'   => 'TEXT(value, "date" | "money" | "number"[, option])',
+        ],
+        'descriptions' => [
+            'IF'     => 'The second value when the condition holds, the third otherwise.',
+            'AND'    => 'True when every condition holds.',
+            'OR'     => 'True when at least one condition holds.',
+            'NOT'    => 'The opposite of the condition.',
+            'SUM'    => 'Adds up the column over every line of the document.',
+            'COUNT'  => 'How many lines the document has.',
+            'ROUND'  => 'The number rounded to that many decimals (none when left out).',
+            'ABS'    => 'The number without its sign.',
+            'MIN'    => 'The smallest of the values.',
+            'MAX'    => 'The largest of the values.',
+            'UPPER'  => 'The text in capitals.',
+            'LOWER'  => 'The text in lower case.',
+            'CONCAT' => 'The texts joined together (the same as &).',
+            'LEFT'   => 'The first characters of the text (one when the count is left out).',
+            'RIGHT'  => 'The last characters of the text (one when the count is left out).',
+            'LEN'    => 'How many characters the text has.',
+            'TRIM'   => 'The text without spaces at the start and the end.',
+            'YEAR'   => 'The year of the date.',
+            'MONTH'  => 'The month of the date (1 to 12).',
+            'DAY'    => 'The day of the month of the date.',
+            'DAYS'   => 'The days from the start date to the end date.',
+            'TEXT'   => 'The value written as the document prints it: a date, an amount or a number. The optional third argument is an option of that format (for a date, its pattern).',
+        ],
+
+        // The Blocks rail while a formula is edited: "Fields and functions" (spec §6.3).
+        // `:example` is filled in JS.
+        'library' => [
+            'heading'          => 'Fields and functions',
+            'fields'           => 'Fields',
+            'functions'        => 'Functions',
+            'search_fields'    => 'Search fields…',
+            'search_functions' => 'Search functions…',
+            'empty'            => 'Nothing found.',
+            'example'          => 'e.g. :example',
+            'this_row'         => 'This line',
+        ],
+
+        // The function groups of the list ("Table totals" also among the fields).
+        'groups' => [
+            'math'       => 'Arithmetic',
+            'totals'     => 'Table totals',
+            'conditions' => 'Conditions',
+            'text'       => 'Text',
+            'dates'      => 'Dates',
+            'other'      => 'Other',
+        ],
+
+        // One example per function, written with technical keys of the fiscal document
+        // type; the editor shows it with the readable names of the open type (fields that
+        // type lacks stay as they are). Quoted text is never translated by the editor.
+        'examples' => [
+            'IF'     => 'IF(totals.tax_total > 0, totals.total_due, totals.net_total)',
+            'AND'    => 'IF(AND(totals.tax_total > 0, totals.net_total > 0), "Yes", "No")',
+            'OR'     => 'IF(OR(totals.tax_total = 0, totals.net_total = 0), "Exempt", "")',
+            'NOT'    => 'IF(NOT(totals.tax_total > 0), "No VAT", "")',
+            'SUM'    => 'SUM(lines.amount)',
+            'COUNT'  => 'COUNT(lines.code)',
+            'ROUND'  => 'ROUND(totals.net_total * 0.23, 2)',
+            'ABS'    => 'ABS(totals.total_due)',
+            'MIN'    => 'MIN(totals.total_due, 1000)',
+            'MAX'    => 'MAX(totals.total_due, 0)',
+            'UPPER'  => 'UPPER(customer.name)',
+            'LOWER'  => 'LOWER(customer.name)',
+            'CONCAT' => 'CONCAT(document.designation, " ", document.number)',
+            'LEFT'   => 'LEFT(customer.name, 20)',
+            'RIGHT'  => 'RIGHT(customer.tax_id, 4)',
+            'LEN'    => 'LEN(customer.name)',
+            'TRIM'   => 'TRIM(customer.address)',
+            'YEAR'   => 'YEAR(document.issue_date)',
+            'MONTH'  => 'MONTH(document.issue_date)',
+            'DAY'    => 'DAY(document.issue_date)',
+            'DAYS'   => 'DAYS(document.supply_date, document.issue_date)',
+            'TEXT'   => '"Total: " & TEXT(totals.total_due, "money")',
+        ],
+
+        // Line-table columns in Formula and calculated columns: computed for each line. The
+        // placeholder's `:example` is the column's own first quick example, by name.
+        'column_label'       => 'Formula',
+        'add_column'         => '+ Calculated column',
+        'remove_column'      => 'Remove calculated column',
+        'column_calculated'  => 'A calculated column is always a formula; to drop it, delete it.',
+        'column_no_collection' => 'A table with no collection has no lines for a formula to read.',
+        'column_placeholder' => 'e.g. :example',
+        'column_help'        => 'The result shown is for the first line.',
+        'columns_overflow'   => 'The columns take more than the width of the table; make one narrower or hide one.',
     ],
 
     // Routes (Http\Controllers\*), success messages.

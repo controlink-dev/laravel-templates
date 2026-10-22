@@ -4,6 +4,9 @@ namespace Controlink\Templates\Output\Pdf;
 
 use Controlink\Templates\Contracts\BindingResolver;
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
+use Controlink\Templates\Formulas\Formula;
+use Controlink\Templates\Formulas\FormulaException;
+use Controlink\Templates\Formulas\FormulaSet;
 use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
@@ -76,10 +79,13 @@ class LayoutValidator
     public function validate(array $projectData, TemplateType $type, string $html = '', string $css = ''): array
     {
         $document = LayoutDocument::fromProjectData($projectData);
-        $bindings = $this->bindingsByKey($type, $this->placedKeys($projectData));
+        $formulas = $this->formulasOf($document);
+        $bindings = $this->documentBindings($projectData, $formulas, $type);
 
         $problems = array_merge(
             $this->checkStructure($document, $bindings, $type, $html, $css),
+            $this->checkFormulas($document, $formulas, $bindings),
+            $this->checkFormulaExport($document, $formulas, $html),
             $this->checkLegalVisibility($document, $bindings, $type),
             // Only the blocking half: a covered field the law does not require is a
             // warning (V-18), which the host asks the user to confirm, never a refusal.
@@ -106,8 +112,9 @@ class LayoutValidator
     public function occlusions(array $projectData, TemplateType $type): array
     {
         $document = LayoutDocument::fromProjectData($projectData);
+        $bindings = $this->documentBindings($projectData, $this->formulasOf($document), $type);
 
-        return $this->checkOcclusion($document, $this->bindingsByKey($type, $this->placedKeys($projectData)), $type);
+        return $this->checkOcclusion($document, $bindings, $type);
     }
 
     /**
@@ -193,6 +200,11 @@ class LayoutValidator
         foreach ($document->dataFields() as $field) {
             $key = $field['attributes']['data-tpl-binding'] ?? '';
 
+            // A formula key with no source prints empty; V-19 reports it, once, as that.
+            if (FormulaSet::isFieldKey((string) $key) && $this->formulaSource($field['attributes']['data-tpl-formula'] ?? null) === '') {
+                continue;
+            }
+
             // V-01: a field bound to something the catalogue does not declare would
             // render as an empty expression, silently.
             if ($key === '' || ! isset($bindings[$key])) {
@@ -242,8 +254,44 @@ class LayoutValidator
             $columns = json_decode((string) ($table['attributes']['data-tpl-columns'] ?? '[]'), true);
 
             try {
-                foreach (is_array($columns) ? $columns : [] as $column) {
+                // Unreadable columns hide whatever the table carries — its formulas among
+                // them (CGE-37) — from every rule here, while the markup still prints them.
+                if (! is_array($columns)) {
+                    throw new InvalidArgumentException('The table\'s columns are not a list.');
+                }
+
+                foreach ($columns as $column) {
                     $this->assertKnownFormat(FormatSpec::fromColumn((array) $column));
+                }
+
+                // CGE-37: a column that carries a formula, or claims the formula prefix,
+                // under a key of any other shape (`formula_3…`) is never computed, so the
+                // row would print a value that does not exist. Refused like an unknown field.
+                // With a `formulaKey` the result prints under it, so that is the key judged;
+                // the column's own `key` then has to be itself or a column of the collection
+                // (a catalogue column turned into a formula), never a name of nothing.
+                $collection = (string) ($table['attributes']['data-tpl-collection'] ?? '');
+
+                foreach ($columns as $column) {
+                    $column = (array) $column;
+                    $key    = (string) ($column['key'] ?? '');
+
+                    if (! array_key_exists('formulaKey', $column)) {
+                        if ((str_starts_with($key, 'formula_') || array_key_exists('formula', $column)) && ! FormulaSet::isColumnKey($key)) {
+                            $problems[] = $this->problem('V-01', $table, 'unknown_binding', ['binding' => $key]);
+                        }
+
+                        continue;
+                    }
+
+                    $formulaKey = is_string($column['formulaKey']) ? $column['formulaKey'] : '';
+
+                    if (! FormulaSet::isColumnKey($formulaKey)) {
+                        $problems[] = $this->problem('V-01', $table, 'unknown_binding', ['binding' => $formulaKey]);
+                    } elseif ($key !== $formulaKey && $collection !== '' && ! $this->isCollectionColumn($collection, $key, $bindings, $type)) {
+                        // An unbound table has no catalogue; V-19 already refuses its formula.
+                        $problems[] = $this->problem('V-01', $table, 'unknown_binding', ['binding' => $key]);
+                    }
                 }
 
                 $tableId = (string) ($table['attributes']['id'] ?? '');
@@ -369,6 +417,375 @@ class LayoutValidator
         }
 
         return $problems;
+    }
+
+    /* -----------------------------------------------------------------------
+     * Formulas (V-19, CGE-37)
+     * -------------------------------------------------------------------- */
+
+    /**
+     * Maps `FormulaException::$reason` to the message key. A wrong argument count is a
+     * syntax problem to the user; anything unexpected is too, never a crash or no error.
+     */
+    private const FORMULA_REASONS = [
+        'syntax'            => 'formula_syntax',
+        'arity'             => 'formula_syntax',
+        'unknown_function'  => 'formula_unknown_function',
+        'unknown_reference' => 'formula_unknown_reference',
+        'scope'             => 'formula_scope',
+    ];
+
+    /**
+     * Every formula the layout carries: data fields bound to `formula.<id>` and line-table
+     * columns whose result prints under `formula_<id>` (their `formulaKey`, or their `key`
+     * when they have none), each with its source (trimmed, '' when there is none).
+     *
+     * Only keys of the exported shape count, as in `FormulaSet` (what the compositor
+     * evaluates): a `data-tpl-formula` on any other binding means nothing, and that binding
+     * is judged by V-01 as it always was.
+     *
+     * @return list<array{kind: string, key: string, source: string, block: array<string, mixed>, collection: ?string, label: string}>
+     */
+    private function formulasOf(LayoutDocument $document): array
+    {
+        $formulas = [];
+        $label    = __('templates::editor.formula.label');
+
+        foreach ($document->dataFields() as $field) {
+            $key = (string) ($field['attributes']['data-tpl-binding'] ?? '');
+
+            if (FormulaSet::isFieldKey($key)) {
+                $formulas[] = [
+                    'kind'       => 'field',
+                    'key'        => $key,
+                    'source'     => $this->formulaSource($field['attributes']['data-tpl-formula'] ?? null),
+                    'block'      => $field,
+                    'collection' => null,
+                    'label'      => $label,
+                ];
+            }
+        }
+
+        foreach ($document->blocksOfType('line-table') as $table) {
+            $collection = (string) ($table['attributes']['data-tpl-collection'] ?? '');
+
+            foreach ($this->tableColumns($table) as $column) {
+                // Keyed as it prints, `formulaKey ?? key`, like the compositor reads it.
+                $key = FormulaSet::columnFormulaKey($column);
+
+                if (! is_string($key) || ! FormulaSet::isColumnKey($key)) {
+                    continue;
+                }
+
+                $formulas[] = [
+                    'kind'       => 'column',
+                    'key'        => $key,
+                    'source'     => $this->formulaSource($column['formula'] ?? null),
+                    'block'      => $table,
+                    'collection' => $collection === '' ? null : $collection,
+                    // The table is the component, so the column is named by its header.
+                    'label'      => is_string($column['label'] ?? null) && $column['label'] !== '' ? $column['label'] : $label,
+                ];
+            }
+        }
+
+        return $formulas;
+    }
+
+    /**
+     * What a formula may reference in this type, resolved through the host's graph.
+     *
+     * The keys resolved are the ones the sources read, so a field the type never declared
+     * is known exactly as if it were placed (`documentBindings`). It is the very scope V-19
+     * checks against; the editor's live preview (`Documents::previewFormulas`) has no
+     * layout, so a model-backed collection offers the columns the sources name.
+     *
+     * @param  list<string>  $sources
+     * @return array{0: list<string>, 1: array<string, list<string>>}  singular keys, then collection => columns
+     */
+    public function formulaCatalogue(array $sources, TemplateType $type): array
+    {
+        $keys = [];
+
+        foreach ($sources as $source) {
+            array_push($keys, ...Formula::references($source));
+        }
+
+        return $this->formulaScope($this->bindingsByKey($type, array_values(array_unique($keys))));
+    }
+
+    /**
+     * The V-19 message of a failed `Formula::check`, as the save reports it.
+     *
+     * @param  string  $formula  how the formula is named in the message
+     */
+    public function formulaMessage(FormulaException $error, string $formula): string
+    {
+        return __('templates::editor.validation.'.$this->formulaReasonKey($error), ['formula' => $formula]);
+    }
+
+    private function formulaReasonKey(FormulaException $error): string
+    {
+        return self::FORMULA_REASONS[$error->reason] ?? 'formula_syntax';
+    }
+
+    /**
+     * Splits bindings into the singular keys and the collections with their columns.
+     * `formula.*` is never a known key (no chaining).
+     *
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return array{0: list<string>, 1: array<string, list<string>>}
+     */
+    private function formulaScope(array $bindings, ?LayoutDocument $document = null): array
+    {
+        $knownKeys   = [];
+        $collections = [];
+
+        foreach ($bindings as $key => $binding) {
+            if (($binding['type'] ?? null) === 'collection') {
+                $collections[$key] = $this->collectionColumns($document, $key, $binding, $bindings);
+            } elseif (! str_starts_with((string) $key, 'formula.')) {
+                $knownKeys[] = (string) $key;
+            }
+        }
+
+        return [$knownKeys, $collections];
+    }
+
+    /**
+     * V-19: every formula has a source, a key no other formula of its kind uses, and a
+     * source the closed language accepts against this document's catalogue.
+     *
+     * - The duplicate is reported on the second and later occurrences: a copied formula
+     *   that kept its key would print the first one's result (field keys and column keys,
+     *   across every table, are two separate key spaces).
+     * - Known keys are every singular binding — declared, or resolved by the host for a
+     *   key a formula or a block references (`documentBindings`). `formula.*` never is.
+     * - A row formula is checked as a row of its table's collection; an unbound table has
+     *   no row, so its column references are judged like a single field's.
+     *
+     * @param  list<array{kind: string, key: string, source: string, block: array<string, mixed>, collection: ?string, label: string}>  $formulas
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    private function checkFormulas(LayoutDocument $document, array $formulas, array $bindings): array
+    {
+        if ($formulas === []) {
+            return [];
+        }
+
+        [$knownKeys, $collections] = $this->formulaScope($bindings, $document);
+
+        $problems = [];
+        $seen     = ['field' => [], 'column' => []];
+
+        foreach ($formulas as $formula) {
+            $replacements = ['formula' => $formula['label']];
+
+            if (isset($seen[$formula['kind']][$formula['key']])) {
+                $problems[] = $this->problem('V-19', $formula['block'], 'formula_duplicate_key', $replacements);
+
+                continue;
+            }
+
+            $seen[$formula['kind']][$formula['key']] = true;
+
+            if ($formula['source'] === '') {
+                $problems[] = $this->problem('V-19', $formula['block'], 'formula_without_source', $replacements);
+
+                continue;
+            }
+
+            // A table bound to no collection has no rows, so the compositor never fills
+            // its formula column: it would print empty whatever the formula says.
+            if ($formula['kind'] === 'column' && $formula['collection'] === null) {
+                $problems[] = $this->problem('V-19', $formula['block'], 'formula_scope', $replacements);
+
+                continue;
+            }
+
+            $error = Formula::check($formula['source'], $knownKeys, $collections, $formula['collection']);
+
+            if ($error !== null) {
+                $problems[] = $this->problem('V-19', $formula['block'], $this->formulaReasonKey($error), $replacements);
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * V-01 `format_mismatch`: the formulas validated here are the ones that print.
+     *
+     * The rules above read the sources in `project_data`, but the compositor evaluates
+     * the ones in the exported markup (`FormulaSet`). The editor writes both from the same
+     * component, so they only differ when the payload was assembled by hand — and then a
+     * formula that passed V-19 is not the one that would print. Compared as `FormulaSet`
+     * reads them: fields by key, columns by collection and key (a column of an unbound
+     * table is not evaluated, and V-19 already refuses it), the last occurrence of a key
+     * winning, sources trimmed. A difference is reported on the block that holds it in
+     * `project_data` (for a column only the markup has, its collection's table), or on no
+     * block for a field only the markup has.
+     *
+     * Reported as the existing mismatch between what the block says and what it exports,
+     * rather than a V-19 key: it is the same defect V-01 already names for formats. Markup
+     * the formula reader refuses is V-07's (`assertSafe` runs the same reader).
+     *
+     * @param  list<array{kind: string, key: string, source: string, block: array<string, mixed>, collection: ?string, label: string}>  $formulas
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    private function checkFormulaExport(LayoutDocument $document, array $formulas, string $html): array
+    {
+        if ($html === '') {
+            return [];
+        }
+
+        try {
+            $exported = FormulaSet::fromHtml($html);
+        } catch (UnsafeTemplateException) {
+            return [];
+        }
+
+        $printed = [];
+
+        foreach ($exported->fields() as $key => $source) {
+            $printed['field:'.$key] = $this->formulaSource($source);
+        }
+
+        foreach ($exported->columns() as $column) {
+            $printed['column:'.$column['collection'].':'.$column['key']] = $this->formulaSource($column['source']);
+        }
+
+        $validated = [];
+        $blocks    = [];
+
+        // A column only the markup has is still pinned to its table, found by collection.
+        foreach ($exported->columns() as $column) {
+            foreach ($document->blocksOfType('line-table') as $table) {
+                if (($table['attributes']['data-tpl-collection'] ?? '') === $column['collection']) {
+                    $blocks['column:'.$column['collection'].':'.$column['key']] ??= $table;
+                }
+            }
+        }
+
+        foreach ($formulas as $formula) {
+            if ($formula['kind'] === 'column' && $formula['collection'] === null) {
+                continue;
+            }
+
+            $id = $formula['kind'] === 'field'
+                ? 'field:'.$formula['key']
+                : 'column:'.$formula['collection'].':'.$formula['key'];
+
+            $validated[$id] = $formula['source'];
+            $blocks[$id] ??= $formula['block'];
+        }
+
+        $problems = [];
+
+        foreach (array_keys($validated + $printed) as $id) {
+            if (($validated[$id] ?? null) === ($printed[$id] ?? null)) {
+                continue;
+            }
+
+            $problems[] = isset($blocks[$id])
+                ? $this->problem('V-01', $blocks[$id], 'format_mismatch', ['format' => ''])
+                : [
+                    'code'         => 'V-01',
+                    'component_id' => '',
+                    'message'      => __('templates::editor.validation.format_mismatch', ['format' => '']),
+                ];
+        }
+
+        return $problems;
+    }
+
+    /**
+     * The columns a formula may read from a collection, never a formula column (no chaining).
+     *
+     * Declared columns when the type lists them. A model-backed collection lists none
+     * (`columns: null`, the host's graph offers them), so there the columns are the ones
+     * the host resolver knows as `<collection>.<column>` (`documentBindings` asked it for
+     * every referenced key) plus the ones this document's own tables over it already show,
+     * which the editor only offers from that same graph. Anything else is refused as an
+     * unknown reference: the conservative side, since a wrong column prints empty.
+     *
+     * @param  array<string, mixed>  $binding
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return list<string>
+     */
+    private function collectionColumns(?LayoutDocument $document, string $key, array $binding, array $bindings): array
+    {
+        $columns = [];
+
+        if (is_array($binding['columns'] ?? null)) {
+            foreach ($binding['columns'] as $column) {
+                $columns[] = (string) ($column['key'] ?? '');
+            }
+        } else {
+            foreach ($bindings as $resolved => $descriptor) {
+                if (str_starts_with((string) $resolved, $key.'.') && ($descriptor['type'] ?? null) !== 'collection') {
+                    $columns[] = substr((string) $resolved, strlen($key) + 1);
+                }
+            }
+
+            foreach ($document?->blocksOfType('line-table') ?? [] as $table) {
+                if (($table['attributes']['data-tpl-collection'] ?? '') === $key) {
+                    foreach ($this->tableColumns($table) as $column) {
+                        $columns[] = is_string($column['key'] ?? null) ? $column['key'] : '';
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter(
+            $columns,
+            fn (string $column): bool => $column !== '' && ! str_starts_with($column, 'formula_'),
+        )));
+    }
+
+    /**
+     * Whether a key names a real column of the collection: one the type declares, or, for
+     * a model-backed collection (`columns: null`), one the host resolver knows as
+     * `<collection>.<column>`. Unlike `collectionColumns` this never counts the document's
+     * own tables, so a column cannot vouch for itself. A formula column is never one.
+     *
+     * @param  array<string, array<string, mixed>>  $bindings
+     */
+    private function isCollectionColumn(string $collection, string $column, array $bindings, TemplateType $type): bool
+    {
+        $binding = $bindings[$collection] ?? null;
+
+        if ($column === '' || str_starts_with($column, 'formula_') || ($binding['type'] ?? null) !== 'collection') {
+            return false;
+        }
+
+        if (is_array($binding['columns'] ?? null)) {
+            return in_array($column, array_map(fn (mixed $declared): string => (string) (((array) $declared)['key'] ?? ''), $binding['columns']), true);
+        }
+
+        $resolved = $bindings[$collection.'.'.$column] ?? $this->resolver->resolve($collection.'.'.$column, $type);
+
+        return $resolved !== null && ($resolved['type'] ?? null) !== 'collection';
+    }
+
+    /**
+     * A line table's declared columns, each an array (anything else in the list is dropped).
+     *
+     * @param  array<string, mixed>  $table
+     * @return list<array<string, mixed>>
+     */
+    private function tableColumns(array $table): array
+    {
+        $columns = json_decode((string) ($table['attributes']['data-tpl-columns'] ?? '[]'), true);
+
+        return array_values(array_filter(is_array($columns) ? $columns : [], 'is_array'));
+    }
+
+    /** A formula source as the validator judges it: '' when absent, blank or not text. */
+    private function formulaSource(mixed $source): string
+    {
+        return is_string($source) ? Formula::normalize($source) : '';
     }
 
     /* -----------------------------------------------------------------------
@@ -976,7 +1393,9 @@ class LayoutValidator
         $indexed = $type->bindingsByKey();
 
         foreach ($placed as $key) {
-            if ($key === '' || isset($indexed[$key])) {
+            // `formula.*` is the formulas' own namespace: no catalogue declares it and the
+            // host is never asked about it (see `documentBindings`).
+            if ($key === '' || isset($indexed[$key]) || str_starts_with($key, 'formula.')) {
                 continue;
             }
 
@@ -988,6 +1407,47 @@ class LayoutValidator
         }
 
         return $indexed;
+    }
+
+    /**
+     * The bindings this document needs, formulas included (CGE-37).
+     *
+     * The keys resolved through the graph are the placed ones plus every key a formula
+     * references, so a referenced field the type never declared is known exactly as if it
+     * were placed. Then each `formula.<id>` field with a source gets a synthetic, never
+     * mandatory nor legal, text descriptor: it is a known binding for V-01 (any format,
+     * still compared with the export) and it has a label for the occlusion warning. One
+     * without a source gets none — V-19 reports it, and V-01 skips it.
+     *
+     * @param  array<string, mixed>  $projectData
+     * @param  list<array{kind: string, key: string, source: string, block: array<string, mixed>, collection: ?string, label: string}>  $formulas
+     * @return array<string, array<string, mixed>>
+     */
+    private function documentBindings(array $projectData, array $formulas, TemplateType $type): array
+    {
+        $keys = $this->placedKeys($projectData);
+
+        foreach ($formulas as $formula) {
+            array_push($keys, ...Formula::references($formula['source']));
+        }
+
+        $bindings = $this->bindingsByKey($type, array_values(array_unique($keys)));
+
+        foreach ($formulas as $formula) {
+            if ($formula['kind'] === 'field' && $formula['source'] !== '') {
+                $bindings[$formula['key']] = [
+                    'key'            => $formula['key'],
+                    'label'          => __('templates::editor.formula.label'),
+                    'type'           => 'text',
+                    'mandatory'      => false,
+                    'legal'          => false,
+                    'scope'          => null,
+                    'default_format' => null,
+                ];
+            }
+        }
+
+        return $bindings;
     }
 
     /**

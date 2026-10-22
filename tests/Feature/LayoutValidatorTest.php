@@ -942,6 +942,584 @@ class LayoutValidatorTest extends TestCase
     }
 
     /* -----------------------------------------------------------------------
+     * Formulas (CGE-37): V-01 accepts their keys, V-19 reports their problems
+     * -------------------------------------------------------------------- */
+
+    public function test_formula_field_is_a_known_binding(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutPlus(
+            $this->formulaField('formula.abc123', 'totais.total_a_pagar * 2 & " EUR"'),
+        )));
+    }
+
+    public function test_formula_field_may_sum_a_collection_and_read_dates(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutPlus(
+            $this->formulaField('formula.abc123', 'IF(SUM(linhas.valor) > 0, YEAR(documento.data_emissao), COUNT(linhas.codigo))'),
+        )));
+    }
+
+    /** Enter in the formula box: line breaks are whitespace, and the export still matches. */
+    public function test_formula_with_line_breaks_and_trailing_newline_is_valid(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutPlus(
+            $this->formulaField('formula.abc123', "totais.total_a_pagar *\r\n\t2\n"),
+        )));
+    }
+
+    public function test_formula_text_literal_third_argument_is_checked_at_save(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutPlus(
+            $this->formulaField('formula.abc123', 'TEXT(totais.total_a_pagar, "money", 2) & TEXT(documento.data_emissao, "date", "dd/MM/yyyy")'),
+        )));
+        $this->assertFormulaProblem('formula_syntax', $this->layoutPlus($this->formulaField('formula.abc123', 'TEXT(totais.total_a_pagar, "money", 9)')));
+        $this->assertFormulaProblem('formula_syntax', $this->layoutPlus($this->formulaField('formula.abc123', 'TEXT(documento.data_emissao, "date", "d MMM")')));
+    }
+
+    public function test_formula_invalid_formula_is_v19_syntax(): void
+    {
+        $this->assertFormulaProblem('formula_syntax', $this->layoutPlus($this->formulaField('formula.abc123', 'totais.total_a_pagar +')));
+    }
+
+    public function test_formula_wrong_argument_count_is_v19_syntax(): void
+    {
+        $this->assertFormulaProblem('formula_syntax', $this->layoutPlus($this->formulaField('formula.abc123', 'IF(totais.total_a_pagar > 0, 1)')));
+    }
+
+    public function test_formula_unknown_function_is_v19(): void
+    {
+        $this->assertFormulaProblem('formula_unknown_function', $this->layoutPlus($this->formulaField('formula.abc123', 'TODAY()')));
+    }
+
+    public function test_formula_unknown_reference_is_v19(): void
+    {
+        $this->assertFormulaProblem('formula_unknown_reference', $this->layoutPlus($this->formulaField('formula.abc123', 'emitente.inventado & "x"')));
+    }
+
+    /** No chaining: one formula cannot read another's result. */
+    public function test_formula_reference_to_another_formula_is_v19(): void
+    {
+        $layout = $this->layoutWithFormulaFields([
+            ['formula.abc123', 'totais.total_a_pagar * 2'],
+            ['formula.def456', 'formula.abc123 + 1'],
+        ]);
+
+        $this->assertFormulaProblem('formula_unknown_reference', $layout);
+    }
+
+    public function test_formula_collection_column_outside_sum_is_v19_scope(): void
+    {
+        $this->assertFormulaProblem('formula_scope', $this->layoutPlus($this->formulaField('formula.abc123', 'linhas.valor * 2')));
+    }
+
+    /** Review Focus 3: a copied formula field keeps the key, and the second one is refused. */
+    public function test_formula_two_fields_same_formula_key_is_v19_duplicate(): void
+    {
+        $layout   = $this->layoutWithFormulaFields([
+            ['formula.abc123', 'totais.total_a_pagar * 2'],
+            ['formula.abc123', 'totais.total_a_pagar * 2'],
+        ]);
+        $problems = $this->problems($layout);
+
+        $this->assertSame(['V-19'], array_column($problems, 'code'));
+        $this->assertSame($this->formulaMessage('formula_duplicate_key'), $problems[0]['message']);
+        $this->assertSame('tpl-formula-1', $problems[0]['component_id'], 'Reported on the second field, not the first.');
+    }
+
+    public function test_formula_key_without_source_is_v19_and_not_v01(): void
+    {
+        $problems = $this->problems($this->layoutPlus($this->formulaField('formula.abc123', '  ')));
+
+        $this->assertSame(['V-19'], array_column($problems, 'code'));
+        $this->assertSame($this->formulaMessage('formula_without_source'), $problems[0]['message']);
+    }
+
+    /** The source attribute only means something on a key of the formula shape. */
+    public function test_formula_source_on_a_catalogue_binding_is_ignored(): void
+    {
+        $problems = $this->problems($this->layoutPlus($this->formulaField('emitente.inventado', 'totais.total_a_pagar')));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+    }
+
+    public function test_formula_key_of_the_wrong_shape_is_v01(): void
+    {
+        $problems = $this->problems($this->layoutPlus($this->formulaField('formula.ABC', 'totais.total_a_pagar')));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+    }
+
+    /**
+     * A digit right after the dot would print as `{{ formula.3b270w4p }}`, which Twig reads
+     * as `formula.3` followed by a name and refuses: the layout saved, the PDF failed. A
+     * key of that shape is not a formula key, so the save refuses it as an unknown field.
+     */
+    public function test_formula_key_with_a_leading_digit_is_refused_at_save(): void
+    {
+        $problems = $this->problems($this->layoutPlus($this->formulaField('formula.3b270w4p', 'totais.total_a_pagar')));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+
+        // The same id led by a letter is a formula like any other.
+        $this->assertSame([], $this->problems($this->layoutPlus($this->formulaField('formula.b3270w4p', 'totais.total_a_pagar'))));
+    }
+
+    /** The column side of the same rule: `formula_3…` is not a formula column, so it blocks. */
+    public function test_formula_column_key_with_a_leading_digit_is_refused_at_save(): void
+    {
+        $problems = $this->problems($this->layoutWithFormulaColumns([['formula_3b270w4p', 'linhas.quantidade * 2']]));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame(__('templates::editor.validation.unknown_binding', ['binding' => 'formula_3b270w4p']), $problems[0]['message']);
+
+        $this->assertSame([], $this->problems($this->layoutWithFormulaColumns([['formula_b3270w4p', 'linhas.quantidade * 2']])));
+    }
+
+    public function test_formula_row_formula_column_checked_against_its_collection(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutWithFormulaColumns([
+            ['formula_abc123', 'linhas.quantidade * linhas.preco_unitario / SUM(linhas.valor)'],
+        ])));
+
+        $this->assertFormulaProblem('formula_unknown_reference', $this->layoutWithFormulaColumns([
+            ['formula_abc123', 'linhas.inexistente * 2'],
+        ]), 'Calculado');
+
+        // A column cannot read another formula column either.
+        $this->assertFormulaProblem('formula_unknown_reference', $this->layoutWithFormulaColumns([
+            ['formula_abc123', 'linhas.quantidade * 2'],
+            ['formula_def456', 'linhas.formula_abc123 + 1'],
+        ]), 'Calculado');
+    }
+
+    public function test_formula_columns_with_the_same_key_are_v19_duplicate(): void
+    {
+        $this->assertFormulaProblem('formula_duplicate_key', $this->layoutWithFormulaColumns([
+            ['formula_abc123', 'linhas.quantidade * 2'],
+            ['formula_abc123', 'linhas.quantidade * 2'],
+        ]), 'Calculado');
+    }
+
+    public function test_formula_column_without_source_is_v19(): void
+    {
+        $this->assertFormulaProblem('formula_without_source', $this->layoutWithFormulaColumns([
+            ['formula_abc123', ''],
+        ]), 'Calculado');
+    }
+
+    /**
+     * Fiscal guarantee with no new code: a legal field turned into a formula is a legal
+     * field that is no longer in the document, and V-10 says so.
+     */
+    public function test_formula_legal_field_replaced_by_formula_still_reports_v10(): void
+    {
+        $layout = $this->layoutWith(
+            'documento.atcud',
+            fn (array $block): array => [
+                ...$block,
+                'binding'          => 'formula.abc123',
+                'legal'            => false,
+                'field_attributes' => ['data-tpl-formula' => 'documento.numero'],
+            ],
+        );
+
+        $this->assertHasProblem('V-10', $layout);
+    }
+
+    /** A referenced field the type never declared resolves through the host, like a placed one. */
+    public function test_formula_reference_resolved_by_the_host_resolver(): void
+    {
+        $layout = $this->layoutPlus($this->formulaField('formula.abc123', 'adquirente.vat & "x"'));
+
+        $this->assertFormulaProblem('formula_unknown_reference', $layout);
+
+        $this->app->bind(BindingResolver::class, fn () => new class implements BindingResolver {
+            public function resolve(string $key, TemplateType $type): ?array
+            {
+                return $key === 'adquirente.vat' ? [
+                    'key' => $key, 'label' => 'VAT', 'type' => 'text',
+                    'mandatory' => false, 'legal' => false, 'scope' => null, 'default_format' => '',
+                ] : null;
+            }
+        });
+
+        $this->assertSame([], $this->problems($layout));
+    }
+
+    /**
+     * A model-backed collection declares no columns (the host's graph offers them), so a
+     * referenced column of it is valid when the host resolver knows `<collection>.<column>`.
+     */
+    public function test_formula_column_of_a_model_backed_collection_resolves_through_the_host(): void
+    {
+        $base = Templates::type(self::TYPE_CODE);
+        $type = new TemplateType(
+            $base->code, $base->label, $base->output, $base->seeded, $base->layoutRevision,
+            [...$base->bindings, [
+                'key' => 'artigos', 'label' => 'Artigos', 'type' => 'collection', 'mandatory' => false,
+                'legal' => false, 'scope' => null, 'default_format' => null, 'columns' => null,
+            ]],
+            $base->nodes, $base->fixture, $base->fixtureRepeats, $base->initialLayout, $base->pdf, [],
+        );
+
+        $layout   = $this->layoutPlus($this->formulaField('formula.abc123', 'SUM(artigos.preco)'));
+        $validate = fn (): array => app(LayoutValidator::class)->validate($layout['project_data'], $type, $layout['html'], $layout['css']);
+
+        $this->assertSame(['V-19'], array_column($validate(), 'code'));
+
+        $this->app->bind(BindingResolver::class, fn () => new class implements BindingResolver {
+            public function resolve(string $key, TemplateType $type): ?array
+            {
+                return $key === 'artigos.preco' ? [
+                    'key' => $key, 'label' => 'Preço', 'type' => 'money',
+                    'mandatory' => false, 'legal' => false, 'scope' => null, 'default_format' => '',
+                ] : null;
+            }
+        });
+
+        $this->assertSame([], $validate());
+    }
+
+    /**
+     * What is validated is what prints: the compositor evaluates the sources in the
+     * exported markup, so a payload whose markup carries another formula is refused.
+     */
+    public function test_formula_field_source_differing_from_the_export_is_blocked(): void
+    {
+        $layout = $this->layoutPlus($this->formulaField('formula.abc123', 'totais.total_a_pagar * 2'));
+
+        $this->assertSame([], $this->problems($layout));
+
+        $layout['html'] = str_replace('data-tpl-formula="totais.total_a_pagar * 2"', 'data-tpl-formula="TODAY()"', $layout['html'], $count);
+        $this->assertSame(1, $count);
+
+        $problems = $this->problems($layout);
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame('tpl-formula', $problems[0]['component_id']);
+        $this->assertSame(__('templates::editor.validation.format_mismatch', ['format' => '']), $problems[0]['message']);
+    }
+
+    public function test_formula_field_only_in_the_export_is_blocked(): void
+    {
+        $layout         = $this->validLayout();
+        $layout['html'] = str_replace('</body>', '<div data-tpl-type="data-field" data-tpl-binding="formula.abc123" data-tpl-formula="TODAY()">{{ formula.abc123 }}</div></body>', $layout['html']);
+
+        $this->assertHasProblem('V-01', $layout);
+    }
+
+    public function test_formula_column_source_differing_from_the_export_is_blocked(): void
+    {
+        $layout = $this->layoutWithFormulaColumns([['formula_abc123', 'linhas.quantidade * 2']]);
+
+        $this->assertSame([], $this->problems($layout));
+
+        $layout['html'] = str_replace('linhas.quantidade * 2', 'TODAY()', $layout['html'], $count);
+        $this->assertSame(1, $count);
+
+        $problems = $this->problems($layout);
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame('tpl-lines', $problems[0]['component_id']);
+    }
+
+    /** Unreadable columns in the project data hide the formulas the markup still carries. */
+    public function test_formula_malformed_columns_in_the_project_data_are_blocked(): void
+    {
+        $layout = $this->layoutWithFormulaColumns([['formula_abc123', 'linhas.quantidade * 2']]);
+
+        array_walk_recursive($layout['project_data'], function (mixed &$value, string|int $attribute): void {
+            if ($attribute === 'data-tpl-columns') {
+                $value = '[{"key":';
+            }
+        });
+
+        $problems = $this->problems($layout);
+        $this->assertContains('V-01', array_column($problems, 'code'));
+        $this->assertSame(['tpl-lines'], array_values(array_unique(array_column($problems, 'component_id'))));
+    }
+
+    /**
+     * A catalogue column turned into a formula keeps its key and prints under `formulaKey`:
+     * valid, and its source is checked as a row of the table's collection.
+     */
+    public function test_catalogue_column_formula_is_valid(): void
+    {
+        $layout = $this->layoutWithColumns([
+            ['key' => 'descricao', 'label' => 'Descrição', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_dsc12345'],
+        ]);
+
+        $this->assertStringContainsString('{{ linha.formula_dsc12345 }}', $layout['html']);
+        $this->assertSame([], $this->problems($layout));
+
+        $this->assertFormulaProblem('formula_unknown_reference', $this->layoutWithColumns([
+            ['key' => 'descricao', 'label' => 'Descrição', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.inexistente)', 'formulaKey' => 'formula_dsc12345'],
+        ]), 'Descrição');
+    }
+
+    /** `formulaKey` is printed as a Twig path, so it has the formula column key's shape. */
+    public function test_formula_key_not_matching_pattern_is_v01(): void
+    {
+        $problems = $this->problems($this->layoutWithColumns([
+            ['key' => 'descricao', 'label' => 'Descrição', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_3b270w4p'],
+        ]));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame(__('templates::editor.validation.unknown_binding', ['binding' => 'formula_3b270w4p']), $problems[0]['message']);
+    }
+
+    /** A formula column keeps a key of its collection, or its own `formulaKey`; nothing else. */
+    public function test_formula_on_unknown_catalogue_key_is_v01(): void
+    {
+        $problems = $this->problems($this->layoutWithColumns([
+            ['key' => 'nope', 'label' => 'Nope', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_dsc12345'],
+        ]));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame(__('templates::editor.validation.unknown_binding', ['binding' => 'nope']), $problems[0]['message']);
+
+        // A calculated column whose key is its own formulaKey is no catalogue column.
+        $this->assertSame([], $this->problems($this->layoutWithColumns([
+            ['key' => 'formula_dsc12345', 'label' => 'Calculado', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_dsc12345'],
+        ])));
+    }
+
+    /**
+     * A model-backed collection declares no columns: the catalogue column is one the host
+     * resolves, and the table's own column list never vouches for itself.
+     */
+    public function test_catalogue_column_formula_of_a_model_backed_collection_resolves_through_the_host(): void
+    {
+        $base = Templates::type(self::TYPE_CODE);
+        $type = new TemplateType(
+            $base->code, $base->label, $base->output, $base->seeded, $base->layoutRevision,
+            [...$base->bindings, [
+                'key' => 'artigos', 'label' => 'Artigos', 'type' => 'collection', 'mandatory' => false,
+                'legal' => false, 'scope' => null, 'default_format' => null, 'columns' => null,
+            ]],
+            $base->nodes, $base->fixture, $base->fixtureRepeats, $base->initialLayout, $base->pdf, [],
+        );
+
+        $layoutFor = function (string $key): array {
+            $table = $this->extraTable('tpl-artigos', 'artigos');
+
+            $table['attributes']['data-tpl-columns'] = json_encode([
+                ['key' => $key, 'label' => 'Artigo', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(artigos.descricao)', 'formulaKey' => 'formula_art12345'],
+            ]);
+
+            return $this->layoutPlus($table);
+        };
+        $validate = fn (array $layout): array => app(LayoutValidator::class)->validate($layout['project_data'], $type, $layout['html'], $layout['css']);
+
+        $this->app->bind(BindingResolver::class, fn () => new class implements BindingResolver {
+            public function resolve(string $key, TemplateType $type): ?array
+            {
+                return $key === 'artigos.descricao' ? [
+                    'key' => $key, 'label' => 'Descrição', 'type' => 'text',
+                    'mandatory' => false, 'legal' => false, 'scope' => null, 'default_format' => '',
+                ] : null;
+            }
+        });
+
+        $this->assertSame([], $validate($layoutFor('descricao')));
+
+        $problems = $validate($layoutFor('nope'));
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame(__('templates::editor.validation.unknown_binding', ['binding' => 'nope']), $problems[0]['message']);
+    }
+
+    /**
+     * The shape saved before `formulaKey` existed still validates, and a catalogue key
+     * carrying a formula without one is still refused: it would print the raw value.
+     */
+    public function test_legacy_formula_column_without_formula_key_still_valid(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutWithColumns([
+            ['key' => 'formula_abc123', 'label' => 'Calculado', 'width' => '', 'align' => 'right', 'format' => '', 'formula' => 'linhas.quantidade * 2'],
+        ])));
+
+        $problems = $this->problems($this->layoutWithColumns([
+            ['key' => 'descricao', 'label' => 'Descrição', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)'],
+        ]));
+
+        $this->assertSame(['V-01'], array_column($problems, 'code'));
+        $this->assertSame(__('templates::editor.validation.unknown_binding', ['binding' => 'descricao']), $problems[0]['message']);
+    }
+
+    /** One `formulaKey` per result, across every table: a copied column that kept it is V-19. */
+    public function test_duplicate_formula_key_across_tables_is_v19(): void
+    {
+        $second = $this->extraTable('tpl-other', 'outra');
+
+        $second['attributes']['data-tpl-columns'] = json_encode([
+            ['key' => 'formula_dsc12345', 'label' => 'Outra', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => '1 + 1', 'formulaKey' => 'formula_dsc12345'],
+        ]);
+
+        $layout = $this->layoutWithColumns([
+            ['key' => 'descricao', 'label' => 'Descrição', 'width' => '', 'align' => 'left', 'format' => '', 'formula' => 'UPPER(linhas.descricao)', 'formulaKey' => 'formula_dsc12345'],
+        ], [$second]);
+
+        $this->assertFormulaProblem('formula_duplicate_key', $layout, 'Outra');
+    }
+
+    /** A table bound to no collection has no rows: the compositor would print the column empty. */
+    public function test_formula_column_in_a_table_without_collection_is_v19_scope(): void
+    {
+        $layout = $this->layoutPlus([
+            'type'       => 'line-table',
+            'zone'       => 'body',
+            'id'         => 'tpl-unbound',
+            'attributes' => ['data-tpl-columns' => json_encode([
+                ['key' => 'formula_abc123', 'label' => 'Calculado', 'width' => '', 'align' => 'right', 'format' => '', 'formula' => '1 + 1'],
+            ])],
+            'style' => ['position' => 'absolute', 'left' => '0mm', 'top' => '50mm', 'width' => '180mm'],
+        ]);
+
+        $this->assertFormulaProblem('formula_scope', $layout, 'Calculado');
+    }
+
+    /** The formula's descriptor reaches the occlusion check too: a covered formula is warned about. */
+    public function test_formula_field_covered_by_a_block_is_a_v18_warning(): void
+    {
+        $field = $this->formulaField('formula.abc123', 'totais.total_a_pagar * 2');
+
+        $field['style'] += ['width' => '40mm', 'height' => '4mm'];
+
+        $layout = $this->layout(array_merge($this->defaultBlocks(self::TYPE_CODE), [
+            $field,
+            $this->rectangle(['left' => '0mm', 'top' => '47mm', 'width' => '60mm', 'height' => '6mm'], '#000000'),
+        ]));
+
+        $warned = array_values(array_filter($this->occlusions($layout), fn (array $o): bool => $o['code'] === 'V-18'));
+
+        $this->assertCount(1, $warned);
+        $this->assertSame('tpl-formula', $warned[0]['component_id']);
+    }
+
+    /**
+     * A data field bound to a formula key, in the header below the default grid.
+     *
+     * @return array<string, mixed>
+     */
+    private function formulaField(string $key, string $source, string $id = 'tpl-formula'): array
+    {
+        return [
+            'binding'          => $key,
+            'format'           => '',
+            'zone'             => 'header',
+            'id'               => $id,
+            'field_attributes' => ['data-tpl-formula' => $source],
+            'style'            => [
+                'position'  => 'absolute',
+                'left'      => '0mm',
+                'top'       => '48mm',
+                'font-size' => '8pt',
+                'color'     => 'rgb(0, 0, 0)',
+            ],
+        ];
+    }
+
+    /**
+     * @param  list<array{0: string, 1: string}>  $fields  key and source of each formula field
+     * @return array{project_data: array<string, mixed>, html: string, css: string}
+     */
+    private function layoutWithFormulaFields(array $fields): array
+    {
+        $blocks = $this->defaultBlocks(self::TYPE_CODE);
+
+        foreach ($fields as $index => [$key, $source]) {
+            $blocks[] = $this->formulaField($key, $source, 'tpl-formula-'.$index);
+        }
+
+        return $this->layout($blocks);
+    }
+
+    /**
+     * The valid layout with formula columns appended to its line table.
+     *
+     * @param  list<array{0: string, 1: string}>  $columns  key and source of each formula column
+     * @return array{project_data: array<string, mixed>, html: string, css: string}
+     */
+    private function layoutWithFormulaColumns(array $columns): array
+    {
+        $blocks = $this->defaultBlocks(self::TYPE_CODE);
+
+        foreach ($blocks as &$block) {
+            if (($block['type'] ?? null) !== 'line-table') {
+                continue;
+            }
+
+            $declared = json_decode($block['attributes']['data-tpl-columns'], true);
+
+            foreach ($columns as [$key, $source]) {
+                $declared[] = ['key' => $key, 'label' => 'Calculado', 'width' => '', 'align' => 'right', 'format' => '', 'formula' => $source];
+            }
+
+            $block['attributes']['data-tpl-columns'] = json_encode($declared);
+        }
+
+        unset($block);
+
+        return $this->layout($blocks);
+    }
+
+    /**
+     * The valid layout with columns of its line table replaced by key (or appended), plus
+     * any extra blocks.
+     *
+     * @param  list<array<string, mixed>>  $columns
+     * @param  list<array<string, mixed>>  $extra
+     * @return array{project_data: array<string, mixed>, html: string, css: string}
+     */
+    private function layoutWithColumns(array $columns, array $extra = []): array
+    {
+        $blocks = $this->defaultBlocks(self::TYPE_CODE);
+
+        foreach ($blocks as &$block) {
+            if (($block['type'] ?? null) !== 'line-table') {
+                continue;
+            }
+
+            $declared = json_decode($block['attributes']['data-tpl-columns'], true);
+
+            foreach ($columns as $column) {
+                $index = array_search($column['key'], array_column($declared, 'key'), true);
+
+                if ($index === false) {
+                    $declared[] = $column;
+                } else {
+                    $declared[$index] = $column;
+                }
+            }
+
+            $block['attributes']['data-tpl-columns'] = json_encode($declared);
+        }
+
+        unset($block);
+
+        return $this->layout([...$blocks, ...$extra]);
+    }
+
+    /**
+     * @param  array{project_data: array<string, mixed>, html: string, css: string}  $layout
+     */
+    private function assertFormulaProblem(string $reason, array $layout, ?string $label = null): void
+    {
+        $this->assertHasProblem('V-19', $layout);
+
+        $messages = array_column(array_filter(
+            $this->problems($layout),
+            fn (array $problem): bool => $problem['code'] === 'V-19',
+        ), 'message');
+
+        $this->assertContains($this->formulaMessage($reason, $label), $messages, 'Got: '.implode(' | ', $messages));
+    }
+
+    /** A field is named by the generic label, a column by its own header. */
+    private function formulaMessage(string $reason, ?string $label = null): string
+    {
+        return __('templates::editor.validation.'.$reason, ['formula' => $label ?? __('templates::editor.formula.label')]);
+    }
+
+    /* -----------------------------------------------------------------------
      * Helpers
      * -------------------------------------------------------------------- */
 

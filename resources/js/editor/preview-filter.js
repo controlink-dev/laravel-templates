@@ -18,6 +18,9 @@
  * - Nothing is persisted in the browser either.
  */
 
+import { FORMULA_SOURCE_TRAIT } from './formula.js';
+import { formulaReferences } from './formula-names.js';
+
 /** How many collection rows the canvas draws (the panel lists the same ones). */
 export const PREVIEW_ROW_LIMIT = 5;
 
@@ -33,6 +36,8 @@ export function initPreviewState(editor, config) {
     const state = {
         // nodeId -> the chosen record's presented values (`nodeId.column` -> text)
         nodes: {},
+        // nodeId -> the chosen record's id, for the server-side `selection` (CGE-37)
+        ids: {},
         // collection binding key -> the filtered presented rows
         rows: {},
         // the merged `nodes`, the one lookup a block does
@@ -42,11 +47,17 @@ export function initPreviewState(editor, config) {
             return Object.keys(this.values).length > 0 || Object.keys(this.rows).length > 0;
         },
 
-        setNode(nodeId, values) {
+        setNode(nodeId, values, recordId = null) {
             if (values) {
                 this.nodes[nodeId] = values;
             } else {
                 delete this.nodes[nodeId];
+            }
+
+            if (values && recordId !== null && recordId !== undefined) {
+                this.ids[nodeId] = String(recordId);
+            } else {
+                delete this.ids[nodeId];
             }
 
             this.values = Object.assign({}, ...Object.values(this.nodes));
@@ -65,6 +76,31 @@ export function initPreviewState(editor, config) {
     states.set(editor, state);
 
     return state;
+}
+
+/**
+ * The records being previewed, as the host's `selection` takes them
+ * (`VersionController::preview`): the chosen record per node, and the ids of the rows
+ * shown per collection. Null when the canvas shows the example — the host then uses the
+ * type's fixture. The formula preview sends it, so a live result is the one the chosen
+ * records give (CGE-37).
+ */
+export function selectionOf(state) {
+    const nodes = { ...(state?.ids ?? {}) };
+    const collections = {};
+
+    Object.entries(state?.rows ?? {}).forEach(([key, rows]) => {
+        const ids = (rows ?? []).slice(0, PREVIEW_ROW_LIMIT)
+            .map((row) => row?.id)
+            .filter((id) => id !== null && id !== undefined && id !== '')
+            .map(String);
+
+        if (ids.length > 0) {
+            collections[key] = ids;
+        }
+    });
+
+    return Object.keys(nodes).length > 0 || Object.keys(collections).length > 0 ? { nodes, collections } : null;
 }
 
 /** A data field's text: the chosen record's value when there is one, else the example. */
@@ -146,6 +182,21 @@ export function plainProjectData(editor) {
 
 /* ------------------------------------------------------------------------ panel */
 
+/** A line table's `data-tpl-columns`, read as a list — none when absent or not JSON. */
+function columnsOf(json) {
+    if (!json) {
+        return [];
+    }
+
+    try {
+        const columns = JSON.parse(json);
+
+        return Array.isArray(columns) ? columns : [];
+    } catch {
+        return [];
+    }
+}
+
 const text = (config, key, fallback) => config.strings?.[`preview.${key}`] ?? fallback;
 
 const fill = (template, values) => Object.entries(values)
@@ -182,15 +233,42 @@ function el(tag, className, content) {
  * may, so the dot after the id is the boundary (mirrors the host's `substr(id)+1`) rather
  * than splitting on the first dot. Collection targets come only from `config.bindings`.
  *
+ * CGE-37: a formula uses records too, so its source counts as binding what it names. A
+ * data field in Formula is bound to `formula.<id>` (no node), and its source is in
+ * `data-tpl-formula`; a line table's formula columns keep theirs in the `formula` of
+ * their `data-tpl-columns` entry. The dotted keys those name outside text literals
+ * (`formulaReferences`) are read like a binding: one whose first segment is a collection
+ * binding's key (`SUM(lines.amount)`, a column's `lines.quantity`) marks that collection,
+ * any other its singular node by the same prefix rule.
+ *
  * Stable order: nodes in catalogue declaration order, then collection bindings in theirs,
  * filtered to those in use — the cards never reshuffle when blocks are moved around.
  */
-function collectTargets(config, editor) {
+export function collectTargets(config, editor) {
     const nodes = (config.nodes ?? []).filter((node) => !node.collection && node.reachable !== false);
     const bindings = config.bindings ?? [];
+    const collectionKeys = bindings.filter((binding) => binding.type === 'collection').map((binding) => binding.key);
 
     const usedNodeIds = new Set();
     const usedCollections = new Set();
+
+    const useNodeOf = (key) => {
+        const node = nodes.find((entry) => key === entry.id || key.startsWith(entry.id + '.'));
+
+        if (node) {
+            usedNodeIds.add(node.id);
+        }
+    };
+
+    const useReferencesOf = (source) => formulaReferences(source).forEach((key) => {
+        const collection = collectionKeys.find((entry) => key === entry || key.startsWith(entry + '.'));
+
+        if (collection !== undefined) {
+            usedCollections.add(collection);
+        } else {
+            useNodeOf(key);
+        }
+    });
 
     walk(editor.getWrapper(), (component) => {
         const attributes = component.getAttributes?.() ?? {};
@@ -198,11 +276,7 @@ function collectTargets(config, editor) {
         const binding = attributes['data-tpl-binding'] ?? '';
 
         if (binding !== '') {
-            const node = nodes.find((entry) => binding === entry.id || binding.startsWith(entry.id + '.'));
-
-            if (node) {
-                usedNodeIds.add(node.id);
-            }
+            useNodeOf(binding);
         }
 
         const collection = attributes['data-tpl-collection'] ?? '';
@@ -210,6 +284,9 @@ function collectTargets(config, editor) {
         if (collection !== '') {
             usedCollections.add(collection);
         }
+
+        useReferencesOf(attributes[FORMULA_SOURCE_TRAIT] ?? '');
+        columnsOf(attributes['data-tpl-columns']).forEach((column) => useReferencesOf(column?.formula ?? ''));
     });
 
     const targets = [];
@@ -706,7 +783,7 @@ function createTarget({ target, config, state, url, headers, onChange }) {
 
         if (item) {
             const { id, label, ...values } = item;
-            state.setNode(target.id, values);
+            state.setNode(target.id, values, id);
         } else {
             state.setNode(target.id, null);
         }

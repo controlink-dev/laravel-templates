@@ -341,6 +341,45 @@
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 
+/* A formula column (CGE-37): the source box spans the card, in the data field's monospace;
+ * its remove button turns red on hover, unlike the eye it stands in for. */
+.tpl-col .tpl-formula textarea.tpl-formula-source {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--tpl-edge, #ccd5e0);
+    border-radius: 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.75rem;
+}
+
+.tpl-col__remove:hover {
+    border-color: var(--tpl-danger, #b91c1c);
+    color: var(--tpl-danger, #b91c1c);
+}
+
+.tpl-columns__add {
+    width: 100%;
+    margin-top: 0.125rem;
+}
+
+/* The columns are wider than the table (CGE-37): the last ones get no room on the sheet. */
+.tpl-columns__notice {
+    margin: 0 0 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #f59e0b;
+    border-radius: 0.5rem;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 0.6875rem;
+    line-height: 1.35;
+}
+
+.tpl-columns__notice[hidden] {
+    display: none;
+}
+
 /*
  * The code slot's origin-dependent fields: the two chained node/field selects when
  * dynamic, or the content type and its fields when fixed. One label row per input,
@@ -1818,6 +1857,349 @@ select.tpl-pf-input {
     background: transparent;
     resize: vertical;
     line-height: 1.35;
+}
+
+/*
+ * "Valor: Campo | Fórmula" of a data field (CGE-37, spec §6.1). The switch and the box are
+ * custom traits whose input is a wrapper (see formula.js), so they sit in a plain field
+ * rather than in the pill the generic `.gjs-field` rule draws round a single control. The
+ * switch is GrapesJS's radio markup, drawn by the segmented `.gjs-radio-items` rules.
+ */
+.tpl-editor-root .gjs-field-tpl-value-mode,
+.tpl-editor-root .gjs-field-tpl-formula {
+    border: 0;
+    background: transparent;
+}
+
+/* The last block with a legal or mandatory field: "Fórmula" cannot be chosen (the reason is the tooltip). */
+.tpl-editor-root .tpl-value-mode.is-locked input:disabled + .gjs-radio-item-label {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
+/* The box has no label of its own (the panel heading says "Fórmula"): the full width. */
+.tpl-editor-root .gjs-trt-trait--tpl-formula {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.tpl-editor-root .gjs-trt-trait--tpl-formula .gjs-field-wrp {
+    width: 100%;
+}
+
+/* Quick examples, then "Concluir" on its own line at the end. */
+.tpl-editor-root .tpl-formula-examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+}
+
+.tpl-editor-root .tpl-formula-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+}
+
+.tpl-editor-root .gjs-field-tpl-formula textarea.tpl-formula-source,
+.tpl-editor-root .tpl-col textarea.tpl-formula-source {
+    border: 1px solid var(--tpl-edge, #ccd5e0);
+    border-radius: 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.tpl-editor-root .tpl-formula-status,
+.tpl-editor-root .tpl-formula-help {
+    margin: 0.3rem 0 0;
+    font-size: 0.6875rem;
+    line-height: 1.35;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+.tpl-editor-root .tpl-formula-status:empty {
+    display: none;
+}
+
+.tpl-editor-root .tpl-formula-status.is-error {
+    color: var(--tpl-danger, #b91c1c);
+}
+
+.tpl-editor-root .tpl-formula-status.is-result {
+    color: var(--tpl-slate-900, #0f172a);
+}
+
+/*
+ * The formula box's assistance (CGE-37): the suggestions right under the box, in the flow,
+ * so the narrow panel never clips them.
+ */
+.tpl-editor-root .tpl-formula-input textarea.tpl-formula-source {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.tpl-editor-root .tpl-formula-suggest {
+    margin: 0.2rem 0 0;
+    padding: 0.2rem 0;
+    max-height: 12rem;
+    overflow-y: auto;
+    list-style: none;
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 0.5rem;
+    background: var(--tpl-surface-base, #fff);
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1);
+    font-size: 0.6875rem;
+}
+
+.tpl-editor-root .tpl-formula-suggest[hidden] {
+    display: none;
+}
+
+.tpl-editor-root .tpl-formula-suggest__group {
+    padding: 0.25rem 0.5rem 0.1rem;
+    color: var(--tpl-slate-500, #64748b);
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.tpl-editor-root .tpl-formula-suggest__item {
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+}
+
+.tpl-editor-root .tpl-formula-suggest__item code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--tpl-slate-900, #0f172a);
+}
+
+.tpl-editor-root .tpl-formula-suggest__item span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+.tpl-editor-root .tpl-formula-suggest__item:hover,
+.tpl-editor-root .tpl-formula-suggest__item.is-active {
+    background: var(--tpl-surface-muted, #f8fafc);
+    box-shadow: inset 2px 0 0 var(--tpl-primary, #4f46e5);
+}
+
+/*
+ * "Campos e funções" (CGE-37, spec §6.3): the Blocks rail while a formula is edited. The
+ * blocks stay in the rail, hidden by the class (GrapesJS's grid would win over `hidden`),
+ * and come back as they were. The tabs are the segmented control of the radio traits,
+ * the items the suggestion rows, the group headings the block categories' headings.
+ */
+.tpl-editor-root .tpl-rail-body.is-formula-library > :not(.tpl-formula-library) {
+    display: none;
+}
+
+.tpl-editor-root .tpl-formula-library {
+    display: grid;
+    gap: 0.5rem;
+    align-content: start;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.tpl-editor-root .tpl-formula-library > * {
+    min-width: 0;
+}
+
+.tpl-editor-root .tpl-formula-library__tabs {
+    display: flex;
+    overflow: hidden;
+    border: 1px solid var(--tpl-edge-subtle, #e6ebf2);
+    border-radius: 0.5rem;
+    background: var(--tpl-surface-muted, #f8f8ff);
+}
+
+.tpl-editor-root .tpl-formula-library__tabs button {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    border: 0;
+    border-right: 1px solid var(--tpl-edge-subtle, #e6ebf2);
+    padding: 0.3rem 0.5rem;
+    background: transparent;
+    font: inherit;
+    font-size: 0.6875rem;
+    color: var(--tpl-slate-600, #475569);
+    cursor: pointer;
+}
+
+.tpl-editor-root .tpl-formula-library__tabs button:last-child {
+    border-right: 0;
+}
+
+.tpl-editor-root .tpl-formula-library__tabs button.is-active {
+    background: var(--tpl-surface-raised, #fff);
+    color: var(--tpl-slate-900, #0f172a);
+    font-weight: 600;
+}
+
+.tpl-editor-root .tpl-formula-library__search {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    background: var(--tpl-surface-raised, #fff);
+    font: inherit;
+    font-size: 0.71875rem;
+    color: var(--tpl-slate-900, #0f172a);
+}
+
+.tpl-editor-root .tpl-formula-library__search:focus {
+    outline: none;
+    border-color: var(--tpl-primary, #6d28d9);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--tpl-primary, #6d28d9) 10%, transparent);
+}
+
+.tpl-editor-root .tpl-formula-library__search::placeholder {
+    color: var(--tpl-slate-400, #94a3b8);
+}
+
+.tpl-editor-root .tpl-formula-library__group {
+    display: grid;
+    min-width: 0;
+    gap: 0.125rem;
+}
+
+/* The group heading folds its group: a flat button, chevron then name then count. */
+.tpl-editor-root .tpl-formula-library__group-head {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 0.375rem;
+    padding: 0.375rem 0.125rem 0.125rem;
+    background: transparent;
+    font: inherit;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-align: left;
+    text-transform: uppercase;
+    color: var(--tpl-slate-400, #94a3b8);
+    cursor: pointer;
+}
+
+.tpl-editor-root .tpl-formula-library__group-head:hover {
+    color: var(--tpl-slate-600, #475569);
+}
+
+.tpl-editor-root .tpl-formula-library__group-head:focus-visible {
+    outline: 2px solid var(--tpl-primary, #4f46e5);
+    outline-offset: 1px;
+}
+
+.tpl-editor-root .tpl-formula-library__chevron {
+    flex: none;
+    width: 0.35rem;
+    height: 0.35rem;
+    margin: 0 0.15rem 0 0.1rem;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg) translate(-1px, -1px);
+    transition: transform 0.12s ease;
+}
+
+.tpl-editor-root .tpl-formula-library__group.is-collapsed .tpl-formula-library__chevron {
+    transform: rotate(-45deg);
+}
+
+.tpl-editor-root .tpl-formula-library__group-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.tpl-editor-root .tpl-formula-library__group-count {
+    flex: none;
+    font-weight: 600;
+}
+
+.tpl-editor-root .tpl-formula-library__group-body {
+    display: grid;
+    min-width: 0;
+    gap: 0.125rem;
+}
+
+.tpl-editor-root .tpl-formula-library__group-body[hidden] {
+    display: none;
+}
+
+.tpl-editor-root .tpl-formula-library__field,
+.tpl-editor-root .tpl-formula-library__function {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.375rem;
+    background: transparent;
+    font: inherit;
+    font-size: 0.71875rem;
+    text-align: left;
+    color: var(--tpl-slate-900, #0f172a);
+    cursor: pointer;
+}
+
+.tpl-editor-root .tpl-formula-library__field span {
+    display: block;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.tpl-editor-root .tpl-formula-library__function code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.tpl-editor-root .tpl-formula-library__function span {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.6875rem;
+    line-height: 1.35;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+.tpl-editor-root .tpl-formula-library__function .tpl-formula-library__example {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.625rem;
+    color: var(--tpl-slate-600, #475569);
+    overflow-wrap: anywhere;
+}
+
+.tpl-editor-root .tpl-formula-library__field:hover,
+.tpl-editor-root .tpl-formula-library__function:hover {
+    background: var(--tpl-surface-raised, #fff);
+}
+
+.tpl-editor-root .tpl-formula-library__field:focus-visible,
+.tpl-editor-root .tpl-formula-library__function:focus-visible,
+.tpl-editor-root .tpl-formula-library__tabs button:focus-visible {
+    outline: 2px solid var(--tpl-primary, #4f46e5);
+    outline-offset: 1px;
+}
+
+.tpl-editor-root .tpl-formula-library__empty {
+    margin: 0.25rem 0.125rem;
+    font-size: 0.6875rem;
+    color: var(--tpl-slate-500, #64748b);
 }
 
 /*

@@ -3,6 +3,8 @@
 namespace Controlink\Templates\Tests\Feature;
 
 use Controlink\Templates\Contracts\TenantResolver;
+use Controlink\Templates\Formulas\Formula;
+use Controlink\Templates\Formulas\Parser;
 use Controlink\Templates\Tests\Fixtures\Models\EditorTemplate;
 use Controlink\Templates\Tests\Fixtures\Models\GuardedVersion;
 use Controlink\Templates\Tests\TestCase;
@@ -24,6 +26,17 @@ use RuntimeException;
  */
 class EditorComponentTest extends TestCase
 {
+    /** The keys of the host's invoice type that the function examples are written with. */
+    private const INVOICE_SINGULAR_KEYS = [
+        'customer.name', 'customer.tax_id', 'customer.address',
+        'document.designation', 'document.number', 'document.issue_date', 'document.supply_date',
+        'totals.net_total', 'totals.tax_total', 'totals.total_due',
+    ];
+
+    private const INVOICE_COLLECTIONS = [
+        'lines' => ['code', 'description', 'quantity', 'unit', 'unit_price', 'vat_rate', 'amount'],
+    ];
+
     /**
      * The hooks the pane behaviour hangs off. Each one is load-bearing: without the
      * root, every lookup would fall back to the document and find another editor's
@@ -153,6 +166,121 @@ class EditorComponentTest extends TestCase
         // not silently drop it.
         $this->assertArrayHasKey('check.code_incomplete', $strings);
         $this->assertStringNotContainsString('templates::editor.', $strings['check.code_incomplete']);
+    }
+
+    /** The formula mode of a data field (CGE-37) is labelled from the same pipeline. */
+    public function test_the_formula_strings_reach_the_bundle_translated(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $strings = (new Editor($template, $version))->strings();
+
+        foreach (['label', 'toggle', 'legal_locked', 'source', 'placeholder', 'calculating', 'result', 'blank',
+            'column_label', 'add_column', 'remove_column', 'column_calculated', 'column_placeholder', 'column_help', 'columns_overflow'] as $key) {
+            $this->assertArrayHasKey('formula.'.$key, $strings);
+            $this->assertStringNotContainsString('templates::editor.', $strings['formula.'.$key], "formula.{$key} reached the browser as a translation key.");
+        }
+
+        // Filled in by the bundle, so the placeholders must survive translation.
+        $this->assertStringContainsString(':value', $strings['formula.result']);
+
+        // The ƒx reference and its strings are gone: the "Campos e funções" library says it all.
+        foreach (['functions', 'reference_toggle', 'reference_heading', 'reference_note'] as $key) {
+            $this->assertArrayNotHasKey('formula.'.$key, $strings);
+        }
+    }
+
+    /**
+     * The function reference and the autocomplete (CGE-37) list exactly the functions the
+     * parser accepts: the bundle reads the list from these keys, so the parser is the only
+     * list there is, and every function carries a signature and a one-line description.
+     */
+    public function test_every_formula_function_reaches_the_bundle_with_a_signature_and_a_description(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        foreach (['en', 'pt_PT'] as $locale) {
+            app()->setLocale($locale);
+
+            $strings = (new Editor($template, $version))->strings();
+
+            $listed = [];
+
+            foreach (array_keys($strings) as $key) {
+                if (str_starts_with($key, 'formula.signature.')) {
+                    $listed[] = substr($key, strlen('formula.signature.'));
+                }
+            }
+
+            $this->assertSame(Formula::functions(), $listed, "{$locale}: the bundle's function list is not the parser's.");
+            $this->assertNotContains('TODAY', $listed);
+
+            foreach (Formula::functions() as $name) {
+                foreach (['signature', 'description', 'example'] as $kind) {
+                    $value = $strings["formula.{$kind}.{$name}"] ?? '';
+                    $this->assertNotSame('', $value);
+                    $this->assertStringNotContainsString('templates::editor.', $value, "{$locale}: formula.{$kind}.{$name} reached the browser as a translation key.");
+                }
+
+                $this->assertStringStartsWith($name.'(', $strings["formula.signature.{$name}"]);
+
+                // The example uses its own function and is a formula the parser accepts.
+                $example = $strings["formula.example.{$name}"];
+                $this->assertStringContainsString($name.'(', $example, "{$locale}: the example of {$name} does not use it.");
+                Parser::parse($example);
+
+                // And it is valid in a single data field of the invoice type it is written
+                // for: singular keys, the table's columns only inside SUM/COUNT (V-19 scope).
+                $this->assertNull(
+                    Formula::check($example, self::INVOICE_SINGULAR_KEYS, self::INVOICE_COLLECTIONS),
+                    "{$locale}: the example of {$name} is not valid in a data field.",
+                );
+            }
+
+            // The data field's "Valor: Campo | Fórmula", its box and its quick examples.
+            foreach (['value', 'value_field', 'value_formula', 'done', 'unknown_field',
+                'quick.heading', 'quick.text', 'quick.text_source', 'quick.upper', 'quick.total',
+                'quick.left', 'quick.round', 'quick.share', 'quick.zero_blank', 'column_no_collection'] as $key) {
+                $this->assertNotSame('', $strings['formula.'.$key] ?? '', "{$locale}: formula.{$key}");
+                $this->assertStringNotContainsString('templates::editor.', $strings['formula.'.$key], "{$locale}: formula.{$key}");
+            }
+
+            $this->assertStringContainsString(':name', $strings['formula.unknown_field']);
+
+            // The column box's placeholder is filled with the column's own first example.
+            $this->assertStringContainsString(':example', $strings['formula.column_placeholder']);
+
+            // The column examples (`columnQuickExamples` in formula-names.js), in the shapes the
+            // bundle builds them, are formulas the server accepts in a column of that table.
+            foreach (['UPPER(lines.description)', 'LEFT(lines.description, 40)', 'ROUND(lines.amount, 2)',
+                'IF(SUM(lines.amount) = 0, "", lines.amount / SUM(lines.amount) * 100)', 'IF(lines.amount = 0, "", lines.amount)'] as $example) {
+                $this->assertNull(Formula::check($example, self::INVOICE_SINGULAR_KEYS, self::INVOICE_COLLECTIONS, 'lines'), $example);
+            }
+
+            // The line table's button (spec §6.2), word for word.
+            $this->assertSame(['en' => '+ Calculated column', 'pt_PT' => '+ Coluna calculada'][$locale], $strings['formula.add_column']);
+            $this->assertStringContainsString(':field', $strings['formula.quick.text_source']);
+
+            // The text example, filled with a field, is a formula the parser accepts.
+            $this->assertNull(Formula::check(
+                str_replace(':field', 'customer.name', $strings['formula.quick.text_source']),
+                self::INVOICE_SINGULAR_KEYS,
+                self::INVOICE_COLLECTIONS,
+            ));
+
+            // The "Campos e funções" library: its labels, and one per group of functions.
+            foreach (['heading', 'fields', 'functions', 'search_fields', 'search_functions', 'empty', 'example', 'this_row'] as $key) {
+                $this->assertStringNotContainsString('templates::editor.', $strings['formula.library.'.$key] ?? 'templates::editor.', "{$locale}: formula.library.{$key}");
+            }
+
+            foreach (['math', 'totals', 'conditions', 'text', 'dates', 'other'] as $group) {
+                $this->assertStringNotContainsString('templates::editor.', $strings['formula.group.'.$group] ?? 'templates::editor.', "{$locale}: formula.group.{$group}");
+            }
+
+            $this->assertStringContainsString(':example', $strings['formula.library.example']);
+
+            $this->assertStringNotContainsString('templates::editor.', $strings['formula.functions_group']);
+        }
     }
 
     /**

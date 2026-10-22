@@ -14,8 +14,10 @@ import grapesjs from 'grapesjs';
 import grapesjsMjml from 'grapesjs-mjml';
 import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
-import { mountPreviewPanel, plainProjectData, refreshPreview } from './preview-filter.js';
+import { mountPreviewPanel, plainProjectData, refreshPreview, selectionOf } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
+import { createFormulaPreview, formulaFunctionsOf, refreshFormulaTraits, selectionHeading } from './formula.js';
+import { createFormulaLibrary } from './formula-library.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
 import { freeSpotForCopy } from './copy-offset.js';
@@ -140,6 +142,9 @@ async function mountEditor(el) {
 
     config.paper = paper;
     applyPaperVars(root, paper);
+
+    // "Campos e funções" (CGE-37): the formula boxes open it over the blocks rail.
+    config.formulaLibrary = createFormulaLibrary({ rail: chrome.blocks, config });
 
     /*
      * The tenant colour has to be handed to the canvas explicitly: the iframe is a
@@ -267,6 +272,16 @@ async function mountEditor(el) {
     config.formatPreview = createFormatPreview({
         url: config.formatPreviewUrl,
         headers: requestHeaders(config),
+        onReady: () => refreshPreview(editor),
+    });
+
+    // CGE-37: a formula field's result, checked and evaluated by the host on the data the
+    // canvas shows — the chosen real records when the sample panel has some. Asked after
+    // the user stops typing; the blocks redraw when it answers.
+    config.formulaPreview = createFormulaPreview({
+        url: config.formulaPreviewUrl,
+        headers: requestHeaders(config),
+        selection: () => selectionOf(config.preview),
         onReady: () => refreshPreview(editor),
     });
 
@@ -797,6 +812,26 @@ function canvasDecorations(paper, rollMode = false, editable = true) {
             box-sizing: border-box;
             padding: 0 1mm;
             vertical-align: middle;
+        }
+
+        /*
+         * A formula the server could not evaluate (CGE-37): its message, drawn on the
+         * block in the problem red of the toolbar count so it reads as something to fix.
+         * Canvas only — the span lives in the live content, never in a saved version
+         * (the saved text is the label), so it can never reach the PDF either.
+         */
+        .tpl-formula-error {
+            color: #b91c1c;
+            font-style: italic;
+        }
+
+        /*
+         * A formula column on the lines after the first: the server answers for the first
+         * line only, so the rest show a dimmed ellipsis that cannot be read as data.
+         * Canvas only, like the error above.
+         */
+        .tpl-formula-more {
+            color: #94a3b8;
         }
 
         /*
@@ -1808,13 +1843,15 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             return;
         }
 
-        // getName() first: a fixed text is named after its own words (CGE-53).
-        const name = binding?.label ?? component.getName?.() ?? component.get('name') ?? '';
+        // getName() first: a fixed text is named after its own words (CGE-53). A formula
+        // field is named "Fórmula" with its own key (CGE-37), not after its old binding.
+        const heading = selectionHeading(key, binding, component.getName?.() ?? component.get('name'), config.strings);
+        const name = heading.name;
         const chip = attributes['data-tpl-legal'] === '1'
             ? `<span class="tpl-chip">${icons.shieldCheck} ${escapeHtml(config.strings['chrome.legal_chip'])}</span>`
             : '';
 
-        const meta = [key, binding?.type, scopeLabel(binding, config)].filter(Boolean);
+        const meta = [...heading.meta, scopeLabel(binding, config)].filter(Boolean);
 
         chrome.selected.innerHTML =
             `<p class="tpl-selected-name">${escapeHtml(name)}${chip}</p>`
@@ -1826,6 +1863,27 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     editor.on('component:selected component:deselected', renderSelection);
     // A fixed text is named after its words (CGE-53): the header follows an edit.
     editor.on('component:update:text', (component) => component === editor.getSelected() && renderSelection());
+    // The binding changes under a selected block — another field, or the formula switch
+    // (CGE-37) — and the header has to name what the block now prints.
+    editor.on('component:update:attributes', (component) => component === editor.getSelected() && renderSelection());
+
+    /*
+     * "Campos e funções" belongs to the formula box of the selected block: selecting
+     * another block (or none) gives the Blocks rail back (spec §6.3).
+     *
+     * The "Valor" switch of the selected data field is held only while it is the last
+     * block carrying a legal or mandatory field (spec §6.1). Whether it is depends on the
+     * OTHER blocks, so it is repainted on selection and whenever any block's attributes
+     * change — a copy switched to Fórmula, or re-bound, holds this one again.
+     */
+    editor.on('component:toggled', () => config.formulaLibrary?.close());
+    editor.on('component:selected component:update:attributes', () => {
+        const selected = editor.getSelected();
+
+        if (selected?.get?.('type') === 'data-field') {
+            refreshFormulaTraits(selected, config.strings);
+        }
+    });
 
     /* ------------------------------------------------------------ zone picker */
 
@@ -2480,6 +2538,12 @@ function readConfig(el) {
         previewRecordsUrl: el.dataset.previewRecordsUrl || '',
         // Optional: formats sample values for the canvas exactly as the PDF does (CGE-49).
         formatPreviewUrl: el.dataset.formatPreviewUrl || '',
+        // Optional: checks and evaluates formula fields for the canvas (CGE-37). Without
+        // it a formula field shows its label, and the save still checks it (V-19).
+        formulaPreviewUrl: el.dataset.formulaPreviewUrl || '',
+        // The functions the formula box offers and explains: the server's own list, read
+        // off the strings it sends (one signature per function the parser accepts).
+        formulaFunctions: formulaFunctionsOf(parseJson(el.dataset.strings, {})),
         // `__FORMAT__` is replaced with the chosen format id on an in-place format switch.
         formatSwitchUrl: el.dataset.formatSwitchUrl,
         printStylesheet: el.dataset.printStylesheet,

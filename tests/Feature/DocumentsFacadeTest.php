@@ -120,4 +120,93 @@ class DocumentsFacadeTest extends TestCase
         $this->assertArrayHasKey('documento.qr', $boxes);
         $this->assertGreaterThan(0, $boxes['documento.qr']['width']);
     }
+
+    /* -----------------------------------------------------------------------
+     * previewFormulas (CGE-37): the editor's live preview
+     * -------------------------------------------------------------------- */
+
+    private function formulaType(): TemplateType
+    {
+        return TemplateType::fromConfig('x', ['bindings' => [
+            ['key' => 'totals.total', 'label' => 'Total', 'type' => 'money'],
+            ['key' => 'customer.name', 'label' => 'Name', 'type' => 'text'],
+            ['key' => 'lines', 'label' => 'Lines', 'type' => 'collection', 'columns' => [
+                ['key' => 'quantity', 'label' => 'Qty', 'type' => 'number'],
+                ['key' => 'price', 'label' => 'Price', 'type' => 'money'],
+            ]],
+        ]]);
+    }
+
+    private function formulaDataset(): array
+    {
+        return [
+            'totals.total'  => '100',
+            'customer.name' => 'Ana',
+            'lines'         => [
+                ['quantity' => 2, 'price' => '1.5'],
+                ['quantity' => 3, 'price' => '4'],
+            ],
+        ];
+    }
+
+    public function test_preview_formulas_evaluates_each_item_against_the_dataset(): void
+    {
+        $results = app(Documents::class)->previewFormulas([
+            ['source' => 'totals.total * 2'],
+            ['source' => 'UPPER(customer.name) & "!"'],
+            ['source' => 'SUM(lines.quantity)'],
+        ], $this->formulaDataset(), $this->formulaType());
+
+        $this->assertSame([
+            ['value' => 200, 'error' => null],
+            ['value' => 'ANA!', 'error' => null],
+            ['value' => 5, 'error' => null],
+        ], $results);
+    }
+
+    public function test_preview_formulas_evaluates_a_column_on_the_first_row_of_its_collection(): void
+    {
+        $results = app(Documents::class)->previewFormulas([
+            ['source' => 'lines.quantity * lines.price', 'collection' => 'lines'],
+            ['source' => 'lines.quantity', 'collection' => 'nothing'],
+        ], $this->formulaDataset(), $this->formulaType());
+
+        $this->assertSame(['value' => 3.0, 'error' => null], $results[0]);
+        $this->assertSame('', $results[1]['value']);
+        $this->assertNotNull($results[1]['error']);
+    }
+
+    public function test_preview_formulas_gives_an_empty_value_and_the_v19_message_for_an_invalid_formula(): void
+    {
+        $results = app(Documents::class)->previewFormulas([
+            ['source' => '1 +'],
+            ['source' => 'TODAY()'],
+            ['source' => 'nothing.here'],
+            ['source' => 'lines.quantity * 2'],
+            ['source' => ''],
+        ], $this->formulaDataset(), $this->formulaType());
+
+        $this->assertSame(
+            [
+                __('templates::editor.validation.formula_syntax', ['formula' => __('templates::editor.formula.label')]),
+                __('templates::editor.validation.formula_unknown_function', ['formula' => __('templates::editor.formula.label')]),
+                __('templates::editor.validation.formula_unknown_reference', ['formula' => __('templates::editor.formula.label')]),
+                __('templates::editor.validation.formula_scope', ['formula' => __('templates::editor.formula.label')]),
+                __('templates::editor.validation.formula_without_source', ['formula' => __('templates::editor.formula.label')]),
+            ],
+            array_column($results, 'error'),
+        );
+        $this->assertSame(['', '', '', '', ''], array_column($results, 'value'));
+    }
+
+    public function test_preview_formulas_with_no_rows_in_the_collection_prints_empty(): void
+    {
+        $results = app(Documents::class)->previewFormulas(
+            [['source' => 'lines.quantity', 'collection' => 'lines']],
+            ['lines' => []],
+            $this->formulaType(),
+        );
+
+        $this->assertSame([['value' => '', 'error' => null]], $results);
+    }
 }
