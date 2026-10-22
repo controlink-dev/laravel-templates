@@ -739,7 +739,7 @@ class LayoutValidator
     /** A formula source as the validator judges it: '' when absent, blank or not text. */
     private function formulaSource(mixed $source): string
     {
-        return is_string($source) ? trim($source) : '';
+        return is_string($source) ? Formula::normalize($source) : '';
     }
 
     /* -----------------------------------------------------------------------

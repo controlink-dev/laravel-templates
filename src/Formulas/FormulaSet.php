@@ -88,6 +88,7 @@ final class FormulaSet
     /**
      * Data-field formulas, binding key ⇒ source. Only keys of the exported shape are
      * listed; a field with a valid key but no source maps to '' and so prints empty.
+     * Sources here and in `columns()` are already `Formula::normalize`d.
      *
      * @return array<string, string>
      */
@@ -161,7 +162,7 @@ final class FormulaSet
 
         foreach ($xpath->query('//*[@data-tpl-binding]') ?: [] as $node) {
             if ($node instanceof DOMElement && preg_match(self::FIELD_KEY, $node->getAttribute('data-tpl-binding')) === 1) {
-                $fields[$node->getAttribute('data-tpl-binding')] = $node->getAttribute('data-tpl-formula');
+                $fields[$node->getAttribute('data-tpl-binding')] = Formula::normalize($node->getAttribute('data-tpl-formula'));
             }
         }
 
@@ -180,7 +181,7 @@ final class FormulaSet
                     $columns[] = [
                         'collection' => $collection,
                         'key'        => $key,
-                        'source'     => is_string($column['formula'] ?? null) ? $column['formula'] : '',
+                        'source'     => is_string($column['formula'] ?? null) ? Formula::normalize($column['formula']) : '',
                     ];
                 }
             }

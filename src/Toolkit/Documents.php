@@ -201,7 +201,7 @@ final class Documents
     public function previewFormulas(array $items, array $dataset, TemplateType $type): array
     {
         $sources = array_map(
-            fn (array $item): string => is_string($item['source'] ?? null) ? trim($item['source']) : '',
+            fn (array $item): string => is_string($item['source'] ?? null) ? Formula::normalize($item['source']) : '',
             $items,
         );
 

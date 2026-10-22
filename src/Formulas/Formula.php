@@ -2,7 +2,9 @@
 
 namespace Controlink\Templates\Formulas;
 
+use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Rendering\TemplateRenderer;
+use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -23,6 +25,17 @@ final class Formula
     public static function functions(): array
     {
         return array_keys(Parser::FUNCTIONS);
+    }
+
+    /**
+     * A source as every reader takes it: the validator (V-19), the editor's live preview
+     * and the compositor. One normalisation for all three, so a formula that saves and
+     * previews also prints — trailing whitespace once printed empty while the other two
+     * trimmed it away.
+     */
+    public static function normalize(string $source): string
+    {
+        return trim($source);
     }
 
     /**
@@ -141,10 +154,49 @@ final class Formula
                     && ($node['args'][1]['type'] !== 'str' || ! in_array($node['args'][1]['value'], Evaluator::TEXT_FORMATS, true))) {
                     throw new FormulaException('syntax', 'TEXT format must be "date", "money" or "number".');
                 }
+                if ($node['name'] === 'TEXT' && isset($node['args'][2])) {
+                    self::checkTextArgument($node['args'][1]['value'], $node['args'][2]);
+                }
 
                 foreach ($node['args'] as $arg) {
                     self::walk($arg, $knownKeys, $collections, $rowCollection, $aggregate);
                 }
+        }
+    }
+
+    /**
+     * TEXT's third argument, when it is written as a literal, is held to the same lists a
+     * field's format is (`FormatSpec`): decimals for money and number, a pattern for date.
+     * A computed one is left to the formatter at print time, where a bad value prints empty.
+     *
+     * @param  array<string, mixed>  $argument
+     *
+     * @throws FormulaException
+     */
+    private static function checkTextArgument(string $format, array $argument): void
+    {
+        $value = match (true) {
+            in_array($argument['type'], ['num', 'str', 'bool'], true)         => $argument['value'],
+            $argument['type'] === 'neg' && $argument['expr']['type'] === 'num' => -$argument['expr']['value'],
+            default                                                            => null,
+        };
+
+        if ($value === null) {
+            return;
+        }
+
+        try {
+            if ($format === 'date') {
+                if (! is_string($value)) {
+                    throw new InvalidArgumentException('A date pattern is text.');
+                }
+
+                FormatSpec::assertPattern($value);
+            } else {
+                FormatSpec::assertDecimals($value);
+            }
+        } catch (InvalidArgumentException $e) {
+            throw new FormulaException('syntax', $e->getMessage());
         }
     }
 

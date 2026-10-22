@@ -166,8 +166,8 @@ class FormulaParserTest extends TestCase
             'too many args' => ['NOT(1,2)', 'arity'],
             'no args' => ['SUM()', 'arity'],
             'round too many' => ['ROUND(1,2,3)', 'arity'],
-            'tab' => ["1\t+ 2", 'syntax'],
-            'newline' => ["1\n+ 2", 'syntax'],
+            'vertical tab' => ["1\x0B+ 2", 'syntax'],
+            'form feed' => ["1\f+ 2", 'syntax'],
             'accented letter' => ['é', 'syntax'],
             'nbsp' => ["1\u{00A0}+ 2", 'syntax'],
             'not equal bang' => ['a.b != 1', 'syntax'],
@@ -176,6 +176,38 @@ class FormulaParserTest extends TestCase
             'dollar' => ['$a', 'syntax'],
             'backslash' => ['\\', 'syntax'],
         ];
+    }
+
+    /**
+     * Tab, CR and LF outside a text literal are whitespace: a user who presses Enter to
+     * lay a long formula out must not get a syntax error. Inside a literal they are data.
+     */
+    public function test_tab_and_line_breaks_are_whitespace_outside_literals(): void
+    {
+        $expected = Parser::parse('1 + 2');
+
+        $this->assertSame($expected, Parser::parse("1\t+ 2"));
+        $this->assertSame($expected, Parser::parse("1\n+ 2"));
+        $this->assertSame($expected, Parser::parse("1 +\r\n 2"));
+        $this->assertSame($expected, Parser::parse("\n1 + 2\n"));
+        $this->assertSame(['type' => 'str', 'value' => "a\nb\tc\r"], Parser::parse("\"a\nb\tc\r\""));
+    }
+
+    public function test_normalize_trims_the_source_every_consumer_reads(): void
+    {
+        $this->assertSame("1 +\n 2", Formula::normalize("\t 1 +\n 2 \r\n"));
+        $this->assertSame('', Formula::normalize(" \n\t "));
+        // Only ASCII whitespace: a non-breaking space stays, and the parser refuses it.
+        $this->assertSame("\u{00A0}1", Formula::normalize("\u{00A0}1"));
+    }
+
+    /** Digits beyond PHP_INT_MAX are a float, never silently saturated to PHP_INT_MAX. */
+    public function test_integer_literal_overflow_parses_as_float(): void
+    {
+        $this->assertSame(PHP_INT_MAX, Parser::parse('9223372036854775807')['value']);
+        $this->assertSame(9223372036854775808.0, Parser::parse('9223372036854775808')['value']);
+        $this->assertSame(7, Parser::parse('007')['value']);
+        $this->assertSame(1.0E+20, Formula::evaluate('99999999999999999999 + 1', []));
     }
 
     public function test_rejects_source_longer_than_1000_characters(): void

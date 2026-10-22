@@ -193,6 +193,75 @@ class FormulaRenderTest extends TestCase
         $this->assertSame('ok', $this->printed($document, 'tpl-f-hidden')[0]);
     }
 
+    /**
+     * The same column, with hostile literal text in its source: the source sits in the
+     * table's `data-tpl-columns` JSON, and must reach neither the guard nor Twig from there.
+     */
+    public function test_column_formula_source_never_reaches_twig_or_guard(): void
+    {
+        $source = '"{{ x }} {% for %} javascript: onx=" & linhas.codigo';
+        $html   = $this->withRowColumn($this->invoice()->initialLayout['html'], 'formula_host01', $source);
+
+        app(DocumentComposer::class)->assertSafe($html, $this->invoice()->initialLayout['css']);
+
+        $dataset  = $this->fixtureDataset($this->invoice());
+        $document = $this->compose($html, $dataset);
+
+        $this->assertStringNotContainsString('&quot;formula&quot;', $document);
+        $this->assertStringNotContainsString('\&quot;{{ x }}', $document);
+        $this->assertStringNotContainsString('&amp; linhas.codigo', $document);
+
+        // Each cell is the literal as plain text, escaped once: Twig never parsed `{% for %}`.
+        preg_match_all('/<td class="t-formula">(.*?)<\/td>/s', $document, $cells);
+        $this->assertSame(
+            array_map(fn (array $row): string => htmlspecialchars('{{ x }} {% for %} javascript: onx='.$row['codigo'], ENT_QUOTES | ENT_SUBSTITUTE), $dataset['linhas']),
+            $cells[1],
+        );
+
+        // When the literal is not the result, nothing of it is left at all.
+        $html = $this->withRowColumn(
+            $this->invoice()->initialLayout['html'],
+            'formula_host02',
+            'IF(FALSE, "{{ x }} {% for %} javascript: onx=", "ok")',
+        );
+
+        $document = $this->compose($html, $dataset);
+
+        $this->assertStringNotContainsString('{{ x }}', $document);
+        $this->assertStringNotContainsString('javascript:', $document);
+        $this->assertStringNotContainsString('onx=', $document);
+        $this->assertStringNotContainsString('&quot;formula&quot;', $document);
+
+        preg_match_all('/<td class="t-formula">(.*?)<\/td>/s', $document, $cells);
+        $this->assertNotSame([], $cells[1]);
+        $this->assertSame(array_fill(0, count($dataset['linhas']), 'ok'), $cells[1]);
+    }
+
+    /**
+     * Leading and trailing whitespace, and line breaks between tokens, print what the
+     * validator and the live preview accepted: one normalisation for all three readers.
+     */
+    public function test_line_breaks_in_a_source_print_like_the_preview_shows(): void
+    {
+        foreach (["1+1\n" => '2', "\n 1 +\n 2\r\n" => '3', "1 +\n 2" => '3'] as $source => $expected) {
+            $html = $this->withField($this->invoice()->initialLayout['html'], 'header', 'tpl-f-lines', 'formula.lines1', $source);
+            $this->assertSame($expected, $this->printed($this->compose($html), 'tpl-f-lines')[0], json_encode($source));
+
+            // The same, with the line break written as a character reference.
+            $html = $this->withField($this->invoice()->initialLayout['html'], 'header', 'tpl-f-lines', 'formula.lines1', $source);
+            $attribute = htmlspecialchars($source, ENT_QUOTES);
+            $html      = str_replace($attribute, str_replace(["\r", "\n"], ['&#13;', '&#10;'], $attribute), $html);
+            $this->assertSame($expected, $this->printed($this->compose($html), 'tpl-f-lines')[0], json_encode($source));
+        }
+
+        $dataset = $this->fixtureDataset($this->invoice());
+        $html    = $this->withRowColumn($this->invoice()->initialLayout['html'], 'formula_lines1', "linhas.quantidade *\n 2\n");
+
+        preg_match_all('/<td class="t-formula">(.*?)<\/td>/s', $this->compose($html, $dataset), $cells);
+
+        $this->assertSame(array_map(fn (array $row): string => (string) ($row['quantidade'] * 2), $dataset['linhas']), $cells[1]);
+    }
+
     /** Review Focus 5: the single field is on every sheet, and SUM is the whole collection there. */
     public function test_sum_is_whole_collection_on_every_sheet(): void
     {

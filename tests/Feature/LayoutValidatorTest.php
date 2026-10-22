@@ -959,6 +959,23 @@ class LayoutValidatorTest extends TestCase
         )));
     }
 
+    /** Enter in the formula box: line breaks are whitespace, and the export still matches. */
+    public function test_formula_with_line_breaks_and_trailing_newline_is_valid(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutPlus(
+            $this->formulaField('formula.abc123', "totais.total_a_pagar *\r\n\t2\n"),
+        )));
+    }
+
+    public function test_formula_text_literal_third_argument_is_checked_at_save(): void
+    {
+        $this->assertSame([], $this->problems($this->layoutPlus(
+            $this->formulaField('formula.abc123', 'TEXT(totais.total_a_pagar, "money", 2) & TEXT(documento.data_emissao, "date", "dd/MM/yyyy")'),
+        )));
+        $this->assertFormulaProblem('formula_syntax', $this->layoutPlus($this->formulaField('formula.abc123', 'TEXT(totais.total_a_pagar, "money", 9)')));
+        $this->assertFormulaProblem('formula_syntax', $this->layoutPlus($this->formulaField('formula.abc123', 'TEXT(documento.data_emissao, "date", "d MMM")')));
+    }
+
     public function test_formula_invalid_formula_is_v19_syntax(): void
     {
         $this->assertFormulaProblem('formula_syntax', $this->layoutPlus($this->formulaField('formula.abc123', 'totais.total_a_pagar +')));

@@ -4,9 +4,12 @@ namespace Controlink\Templates\Formulas;
 
 /**
  * Splits formula text into tokens using a character whitelist: anything outside
- * letters, digits, `_ . " , ( ) + - * / = < > &` and spaces is a syntax error,
+ * letters, digits, `_ . " , ( ) + - * / = < > &` and whitespace is a syntax error,
  * so `{`, `}`, `|`, `%`, `^` and friends can never reach the parser. Text
  * literals are the one place any character is allowed, because they are data.
+ *
+ * Whitespace is space, tab, CR and LF: a user who presses Enter to lay a long formula
+ * out must not get a syntax error. Nothing else (no NBSP, no vertical tab) counts.
  *
  * Token shapes: ['t' => 'num'|'str'|'ident'|'op'|'(' |')'|',', 'v' => mixed].
  * Identifiers keep their dots (`lines.total`); the parser decides whether one
@@ -32,7 +35,7 @@ final class Tokenizer
         while ($i < $length) {
             $c = $source[$i];
 
-            if ($c === ' ') {
+            if ($c === ' ' || $c === "\t" || $c === "\n" || $c === "\r") {
                 $i++;
             } elseif ($c === '"') {
                 $value = '';
@@ -61,7 +64,9 @@ final class Tokenizer
                 if ($i < $length && self::isWordStart($source[$i])) {
                     throw new FormulaException('syntax', 'Invalid number.');
                 }
-                $tokens[] = ['t' => 'num', 'v' => str_contains($m[0], '.') ? (float) $m[0] : (int) $m[0]];
+                // `+ 0`, not `(int)`: PHP's numeric-string rule makes digits beyond PHP_INT_MAX
+                // a float, where a cast would silently saturate them to PHP_INT_MAX.
+                $tokens[] = ['t' => 'num', 'v' => str_contains($m[0], '.') ? (float) $m[0] : $m[0] + 0];
             } elseif (self::isWordStart($c)) {
                 preg_match('/\G[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*/', $source, $m, 0, $i);
                 $i += strlen($m[0]);

@@ -228,6 +228,35 @@ class FormulaEvaluatorTest extends TestCase
         $this->assertSame('syntax', $this->check('TEXT(customer.name, "")')->reason);
     }
 
+    /** A literal third argument is held to FormatSpec's lists: decimals for money/number, a pattern for date. */
+    public function test_check_validates_a_literal_text_argument(): void
+    {
+        foreach ([
+            'TEXT(totals.total_due, "money", 0)',
+            'TEXT(totals.total_due, "money", 4)',
+            'TEXT(totals.total_due, "number", "2")',
+            'TEXT(customer.name, "date", "dd/MM/yyyy")',
+            'TEXT(customer.name, "date", "dd MMM yyyy")',
+            // Not a literal: left to the formatter at print time, as before.
+            'TEXT(totals.total_due, "money", totals.total_due)',
+        ] as $valid) {
+            $this->assertNull($this->check($valid), $valid);
+        }
+
+        foreach ([
+            'TEXT(totals.total_due, "money", 5)',
+            'TEXT(totals.total_due, "money", 1.5)',
+            'TEXT(totals.total_due, "money", -1)',
+            'TEXT(totals.total_due, "number", "two")',
+            'TEXT(totals.total_due, "number", TRUE)',
+            'TEXT(customer.name, "date", "d MMM")',
+            'TEXT(customer.name, "date", 2)',
+            'TEXT(customer.name, "date", "")',
+        ] as $invalid) {
+            $this->assertSame('syntax', $this->check($invalid)?->reason, $invalid);
+        }
+    }
+
     public function test_functions_lists_names_for_autocomplete(): void
     {
         $names = Formula::functions();
