@@ -1821,6 +1821,61 @@ select.tpl-pf-input {
 }
 
 /*
+ * Formula mode of a data field (CGE-37). The switch and the box are custom traits whose
+ * input is a wrapper (see formula.js), so they sit in a plain field rather than in the
+ * pill the generic `.gjs-field` rule draws round a single control.
+ */
+.tpl-editor-root .gjs-field-tpl-formula-toggle,
+.tpl-editor-root .gjs-field-tpl-formula {
+    border: 0;
+    background: transparent;
+}
+
+.tpl-editor-root .tpl-formula-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.tpl-editor-root .tpl-formula-toggle input {
+    height: auto;
+    margin: 0;
+}
+
+.tpl-editor-root .tpl-formula-toggle.is-disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.tpl-editor-root .gjs-field-tpl-formula textarea.tpl-formula-source {
+    border: 1px solid var(--tpl-edge, #ccd5e0);
+    border-radius: 0.5rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.tpl-editor-root .tpl-formula-status,
+.tpl-editor-root .tpl-formula-help {
+    margin: 0.3rem 0 0;
+    font-size: 0.6875rem;
+    line-height: 1.35;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+.tpl-editor-root .tpl-formula-status:empty {
+    display: none;
+}
+
+.tpl-editor-root .tpl-formula-status.is-error {
+    color: var(--tpl-danger, #b91c1c);
+}
+
+.tpl-editor-root .tpl-formula-status.is-result {
+    color: var(--tpl-slate-900, #0f172a);
+}
+
+/*
  * Checkbox traits ("Várias linhas"): a square box that shows its state. The generic field
  * rule above rounds every `.gjs-field` into a pill, and GrapesJS's own check mark is drawn
  * by its stylesheet, which the editor does not load — so the box was round and never

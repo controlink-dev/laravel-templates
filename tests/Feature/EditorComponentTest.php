@@ -155,6 +155,23 @@ class EditorComponentTest extends TestCase
         $this->assertStringNotContainsString('templates::editor.', $strings['check.code_incomplete']);
     }
 
+    /** The formula mode of a data field (CGE-37) is labelled from the same pipeline. */
+    public function test_the_formula_strings_reach_the_bundle_translated(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $strings = (new Editor($template, $version))->strings();
+
+        foreach (['label', 'toggle', 'legal_locked', 'source', 'placeholder', 'calculating', 'result', 'blank', 'functions'] as $key) {
+            $this->assertArrayHasKey('formula.'.$key, $strings);
+            $this->assertStringNotContainsString('templates::editor.', $strings['formula.'.$key], "formula.{$key} reached the browser as a translation key.");
+        }
+
+        // Filled in by the bundle, so the placeholders must survive translation.
+        $this->assertStringContainsString(':value', $strings['formula.result']);
+        $this->assertStringContainsString(':list', $strings['formula.functions']);
+    }
+
     /**
      * The editor's assets are its own entry point, published under
      * `public/vendor/templates` — never folded into a host's own bundle.

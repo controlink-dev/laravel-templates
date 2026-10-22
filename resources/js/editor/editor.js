@@ -14,8 +14,9 @@ import grapesjs from 'grapesjs';
 import grapesjsMjml from 'grapesjs-mjml';
 import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
-import { mountPreviewPanel, plainProjectData, refreshPreview } from './preview-filter.js';
+import { mountPreviewPanel, plainProjectData, refreshPreview, selectionOf } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
+import { FORMULA_FUNCTIONS, createFormulaPreview } from './formula.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
 import { freeSpotForCopy } from './copy-offset.js';
@@ -267,6 +268,16 @@ async function mountEditor(el) {
     config.formatPreview = createFormatPreview({
         url: config.formatPreviewUrl,
         headers: requestHeaders(config),
+        onReady: () => refreshPreview(editor),
+    });
+
+    // CGE-37: a formula field's result, checked and evaluated by the host on the data the
+    // canvas shows — the chosen real records when the sample panel has some. Asked after
+    // the user stops typing; the blocks redraw when it answers.
+    config.formulaPreview = createFormulaPreview({
+        url: config.formulaPreviewUrl,
+        headers: requestHeaders(config),
+        selection: () => selectionOf(config.preview),
         onReady: () => refreshPreview(editor),
     });
 
@@ -797,6 +808,17 @@ function canvasDecorations(paper, rollMode = false, editable = true) {
             box-sizing: border-box;
             padding: 0 1mm;
             vertical-align: middle;
+        }
+
+        /*
+         * A formula the server could not evaluate (CGE-37): its message, drawn on the
+         * block in the problem red of the toolbar count so it reads as something to fix.
+         * Canvas only — the span lives in the live content, never in a saved version
+         * (the saved text is the label), so it can never reach the PDF either.
+         */
+        .tpl-formula-error {
+            color: #b91c1c;
+            font-style: italic;
         }
 
         /*
@@ -2480,6 +2502,11 @@ function readConfig(el) {
         previewRecordsUrl: el.dataset.previewRecordsUrl || '',
         // Optional: formats sample values for the canvas exactly as the PDF does (CGE-49).
         formatPreviewUrl: el.dataset.formatPreviewUrl || '',
+        // Optional: checks and evaluates formula fields for the canvas (CGE-37). Without
+        // it a formula field shows its label, and the save still checks it (V-19).
+        formulaPreviewUrl: el.dataset.formulaPreviewUrl || '',
+        // The reminder under the formula box; the language itself is closed on the server.
+        formulaFunctions: FORMULA_FUNCTIONS,
         // `__FORMAT__` is replaced with the chosen format id on an in-place format switch.
         formatSwitchUrl: el.dataset.formatSwitchUrl,
         printStylesheet: el.dataset.printStylesheet,

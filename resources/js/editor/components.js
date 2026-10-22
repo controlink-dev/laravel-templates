@@ -16,6 +16,10 @@ import { PX_PER_MM, roundTo } from './anchors.js';
 import { alertDialog } from './dialog.js';
 import { previewValue } from './preview-filter.js';
 import {
+    FORMULA_SOURCE_TRAIT, FORMULA_TOGGLE_TRAIT, freshFormulaKey, isFormulaKey, newFormulaId, refreshFormulaTraits,
+    registerFormula,
+} from './formula.js';
+import {
     DATE_PATTERNS, DECIMALS, SYMBOLS, defaultSpecFor, expression, specFromAttributes, specToAttributes,
 } from './formats.js';
 
@@ -75,6 +79,7 @@ const BLOCK_CATEGORY = { id: 'templates', label: '' };
  */
 export function registerComponents(editor, config) {
     registerTextareaTrait(editor);
+    registerFormula(editor, config);
     registerZones(editor, config);
     registerStaticText(editor, config);
     registerDataField(editor, config);
@@ -359,6 +364,88 @@ function registerDataField(editor, config) {
 
     const formatArgumentTraits = formatArgumentTraitsFor(config);
 
+    /*
+     * The node and field selects are kept as definitions because formula mode (CGE-37)
+     * takes them off the panel and puts them back: a formula has no node and no field,
+     * and two selects showing a binding the field no longer has would be a lie.
+     */
+    const nodeTrait = {
+        type: 'select',
+        name: 'data-tpl-node',
+        label: config.strings['trait.node'],
+        options: nodeOptions,
+        changeProp: false,
+    };
+    const bindingTrait = (nodeId) => ({
+        type: 'select',
+        name: 'data-tpl-binding',
+        label: config.strings['trait.field_source'],
+        options: fieldOptionsOf(nodeId),
+        changeProp: false,
+    });
+    const formulaToggleTrait = {
+        type: 'tpl-formula-toggle',
+        name: FORMULA_TOGGLE_TRAIT,
+        label: config.strings['formula.label'],
+    };
+    const formulaSourceTrait = {
+        type: 'tpl-formula',
+        name: FORMULA_SOURCE_TRAIT,
+        label: config.strings['formula.source'],
+    };
+    const formulaLabel = config.strings['formula.label'] ?? 'Formula';
+
+    /** Every `formula.*` key on the sheet but `except`'s own. */
+    const formulaKeysOnSheet = (except) => {
+        const keys = [];
+        const walk = (component) => {
+            if (!component) {
+                return;
+            }
+
+            const key = component !== except ? component.getAttributes?.()['data-tpl-binding'] : null;
+
+            if (isFormulaKey(key)) {
+                keys.push(key);
+            }
+
+            component.components?.().forEach(walk);
+        };
+
+        walk(editor.getWrapper());
+
+        return keys;
+    };
+
+    /*
+     * A copied formula field gets its own key (Review Focus 3). Copy, paste and the
+     * toolbar's duplicate all go through `Component.clone()`, which announces the copy
+     * BEFORE it is put on the sheet — so the original is still the only holder of the
+     * key, and the copy is renamed whenever it would share it.
+     *
+     * Done on the clone event and not in `init()`: `init()` also runs for every block of
+     * a layout being loaded, including the other format's layout on an in-place switch,
+     * while the old page may still be in the tree — renaming there would rewrite a saved
+     * key on opening and mark the version dirty for nothing.
+     */
+    editor.on('component:clone', (cloned) => {
+        const rename = (component) => {
+            const key = component.getAttributes?.()['data-tpl-binding'];
+
+            if (component.get?.('type') === 'data-field' && isFormulaKey(key)) {
+                const fresh = freshFormulaKey(formulaKeysOnSheet(component), key);
+
+                if (fresh !== key) {
+                    component.addAttributes({ 'data-tpl-binding': fresh });
+                }
+            }
+
+            component.components?.().forEach(rename);
+        };
+
+        rename(cloned);
+    });
+
     editor.DomComponents.addType('data-field', {
         isComponent: (el) => el?.dataset?.tplType === 'data-field',
         model: {
@@ -394,20 +481,9 @@ function registerDataField(editor, config) {
                  * attributes they round trip through HTML for free.
                  */
                 traits: [
-                    {
-                        type: 'select',
-                        name: 'data-tpl-node',
-                        label: config.strings['trait.node'],
-                        options: nodeOptions,
-                        changeProp: false,
-                    },
-                    {
-                        type: 'select',
-                        name: 'data-tpl-binding',
-                        label: config.strings['trait.field_source'],
-                        options: fieldOptionsOf(firstNode),
-                        changeProp: false,
-                    },
+                    formulaToggleTrait,
+                    nodeTrait,
+                    bindingTrait(firstNode),
                     {
                         type: 'select',
                         name: 'data-tpl-format',
@@ -436,6 +512,9 @@ function registerDataField(editor, config) {
                 this.on('change:attributes:data-tpl-format', this.onBindingChange);
                 this.on('change:attributes:data-tpl-binding', this.onBindingPicked);
                 this.on('change:attributes:data-tpl-format', this.onFormatPicked);
+                // Formula mode (CGE-37) follows the binding, so undo turns it back too.
+                this.on('change:attributes:data-tpl-binding', this.syncFormulaTraits);
+                this.on('change:attributes:' + FORMULA_SOURCE_TRAIT, this.onBindingChange);
 
                 ARGUMENT_ATTRIBUTES.forEach((name) => this.on('change:attributes:' + name, this.onBindingChange));
 
@@ -446,8 +525,11 @@ function registerDataField(editor, config) {
                 this.__pfBinding = this.binding();
                 this.__pfFormat = this.formatName();
                 this.syncFormatTraits();
+                this.syncFormulaTraits();
 
-                if (this.getAttributes()['data-tpl-node'] !== node) {
+                // A formula has no node: recovering one from `formula.<id>` would write a
+                // `data-tpl-node="formula"` the saved layout never had.
+                if (!this.isFormula() && this.getAttributes()['data-tpl-node'] !== node) {
                     this.__pfSyncingNode = true;
 
                     try {
@@ -467,6 +549,143 @@ function registerDataField(editor, config) {
 
             formatName() {
                 return this.getAttributes()['data-tpl-format'] ?? '';
+            },
+
+            /** Bound to `formula.<id>`: the value is computed from a formula (CGE-37). */
+            isFormula() {
+                return isFormulaKey(this.binding());
+            },
+
+            isLegalBinding() {
+                return Boolean(findBinding(config, this.binding())?.legal);
+            },
+
+            /**
+             * The "Fórmula" switch (CGE-37).
+             *
+             * On: a fresh `formula.<id>` key and an empty source. Off: the source goes and
+             * the field is bound again exactly as a freshly dropped one is — the first
+             * non-legal field of the default node (see `firstField` above) — because the
+             * field it had before is long gone and guessing it back would be a surprise.
+             * One attribute write each way, so a single undo reverses it.
+             *
+             * A legal field never switches on: the document would lose the field the law
+             * asks for. The switch is disabled for it too; this is the guard behind it.
+             */
+            setFormulaMode(on) {
+                if (Boolean(on) === this.isFormula() || (on && this.isLegalBinding())) {
+                    return;
+                }
+
+                const attributes = { ...this.getAttributes({ noClass: true, noStyle: true }) };
+
+                if (on) {
+                    attributes['data-tpl-binding'] = freshFormulaKey(formulaKeysOnSheet(this), 'formula.' + newFormulaId());
+                    attributes[FORMULA_SOURCE_TRAIT] = '';
+                } else {
+                    delete attributes[FORMULA_SOURCE_TRAIT];
+                    attributes['data-tpl-node'] = firstNode;
+                    attributes['data-tpl-binding'] = firstField;
+                }
+
+                // The node select is put back with the right options by `syncFormulaTraits`;
+                // its change event must not also reset the field just chosen.
+                this.__pfSyncingNode = true;
+
+                try {
+                    this.setAttributes(attributes);
+                } finally {
+                    this.__pfSyncingNode = false;
+                }
+            },
+
+            /**
+             * Formula mode shows the source box in place of the node and field selects;
+             * otherwise the selects, as ever. Mirrors `syncFormatTraits`: traits are taken
+             * off and put back rather than hidden, so the panel never holds a select whose
+             * value the field no longer has.
+             */
+            syncFormulaTraits() {
+                if (this.isFormula()) {
+                    ['data-tpl-node', 'data-tpl-binding'].forEach((name) => this.getTrait(name) && this.removeTrait(name));
+
+                    if (!this.getTrait(FORMULA_SOURCE_TRAIT)) {
+                        this.addTrait(formulaSourceTrait, { at: 1 });
+                    }
+                } else {
+                    if (this.getTrait(FORMULA_SOURCE_TRAIT)) {
+                        this.removeTrait(FORMULA_SOURCE_TRAIT);
+                    }
+
+                    if (!this.getTrait('data-tpl-node')) {
+                        this.addTrait(nodeTrait, { at: 1 });
+                    }
+
+                    if (!this.getTrait('data-tpl-binding')) {
+                        this.addTrait(bindingTrait(this.getAttributes()['data-tpl-node'] || nodeOfBinding(this.binding())), { at: 2 });
+                    }
+                }
+
+                refreshFormulaTraits(this, config.strings);
+            },
+
+            /**
+             * The formula's state for the canvas and the line under the box: `empty` (no
+             * source yet), `pending` (asked, not answered), `error` (what the server says
+             * is wrong) or `result` (the value in this field's format; `blank` when it
+             * prints nothing). The server is asked here, so drawing is asking.
+             */
+            formulaStatus() {
+                const source = this.getAttributes()[FORMULA_SOURCE_TRAIT] ?? '';
+
+                if (String(source).trim() === '') {
+                    return { state: 'empty', text: '' };
+                }
+
+                const result = config.formulaPreview?.result(source, null, this.cid) ?? null;
+
+                if (result === null) {
+                    return { state: 'pending', text: '' };
+                }
+
+                if (result.error) {
+                    return { state: 'error', text: String(result.error) };
+                }
+
+                const text = config.formatPreview
+                    ? config.formatPreview.text(result.value, this.formatSpec())
+                    : String(result.value ?? '');
+
+                return text === '' ? { state: 'blank', text: '' } : { state: 'result', text };
+            },
+
+            /**
+             * The canvas markup of a formula field. An error is drawn as a warning, in the
+             * canvas's own `.tpl-formula-error` style (see `canvasDecorations`); a value
+             * with nothing to print, or no source yet, shows the label — an empty block
+             * collapses and could no longer be picked. While an answer is on its way the
+             * previous text stays, so the canvas does not flicker on every keystroke.
+             *
+             * Only ever the live `content`: the saved one is the label (`previewContent`).
+             */
+            formulaContent() {
+                const status = this.formulaStatus();
+
+                if (status.state === 'pending' && this.__pfFormulaHtml !== undefined) {
+                    return this.__pfFormulaHtml;
+                }
+
+                const html = status.state === 'error'
+                    ? `<span class="tpl-formula-error">${escapeText(status.text)}</span>`
+                    : status.state === 'result'
+                        ? escapeText(status.text)
+                        : escapeText(formulaLabel);
+
+                if (status.state !== 'pending') {
+                    this.__pfFormulaHtml = html;
+                }
+
+                return html;
             },
 
             formatSpec() {
@@ -492,7 +711,24 @@ function registerDataField(editor, config) {
                     return;
                 }
 
+                const wasFormula = isFormulaKey(this.__pfBinding);
+
                 this.__pfBinding = this.binding();
+
+                /*
+                 * A formula has no declared type, so no default format (CGE-37). Turning
+                 * the switch on starts from none, as a field of unknown type would; a
+                 * copy renamed to its own key (one formula key for another) keeps the
+                 * format it was copied with.
+                 */
+                if (this.isFormula()) {
+                    if (!wasFormula) {
+                        this.applyFormatSpec(null);
+                    }
+
+                    return;
+                }
+
                 this.applyFormatSpec(defaultSpecFor(findBinding(config, this.binding())?.type));
             },
 
@@ -540,7 +776,8 @@ function registerDataField(editor, config) {
              * below re-enters this handler and recurses.
              */
             onNodeChange() {
-                if (this.__pfSyncingNode) {
+                // A formula has no node select (CGE-37); nothing may re-bind it to a field.
+                if (this.__pfSyncingNode || this.isFormula()) {
                     return;
                 }
 
@@ -585,7 +822,7 @@ function registerDataField(editor, config) {
                 try {
                     this.applyLegalMarking(config);
                     this.renderPreviewText(config);
-                    nameAfterBinding(this, config, config.strings['block.data_field']);
+                    nameAfterBinding(this, config, this.isFormula() ? formulaLabel : config.strings['block.data_field']);
                 } finally {
                     this.__pfSyncing = false;
                 }
@@ -656,6 +893,16 @@ function registerDataField(editor, config) {
              * ignores any real record being previewed — what a saved version must carry.
              */
             previewText(example = false) {
+                /*
+                 * A formula's saved text is its label, always (CGE-37). It must not depend
+                 * on the server's answer: `plainProjectData` swaps this in for the dirty
+                 * check and the save, and an answer arriving would otherwise change the
+                 * saved layout — a version marked unsaved by nothing the user did.
+                 */
+                if (this.isFormula()) {
+                    return formulaLabel;
+                }
+
                 const key = this.binding();
                 const sample = example ? config.fixture?.[key] : previewValue(config, key);
 
@@ -672,7 +919,7 @@ function registerDataField(editor, config) {
 
             /** The `content` this block shows (escaped), for the save/dirty read-back. */
             previewContent(example = false) {
-                return escapeText(this.previewText(example));
+                return this.isFormula() && !example ? this.formulaContent() : escapeText(this.previewText(example));
             },
 
             /** Redraw from the current preview state (a record was picked or cleared). */
@@ -686,7 +933,7 @@ function registerDataField(editor, config) {
              * template expression — the user is placing a field, not writing syntax.
              */
             renderPreviewText(config) {
-                const text = this.previewText();
+                const html = this.previewContent();
 
                 /*
                  * `content` and not `components()`: the preview text is furniture, and
@@ -710,9 +957,12 @@ function registerDataField(editor, config) {
                     this.components().reset();
                 }
 
-                if (this.get('content') !== escapeText(text)) {
-                    this.set('content', escapeText(text));
+                if (this.get('content') !== html) {
+                    this.set('content', html);
                 }
+
+                // The line under the formula box and the switch follow what was drawn.
+                refreshFormulaTraits(this, config.strings);
             },
 
             /**

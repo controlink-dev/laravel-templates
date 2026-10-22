@@ -307,7 +307,15 @@ return [
 
     // Formula fields and columns (CGE-37).
     'formula' => [
-        'label' => 'Formula',
+        'label'        => 'Formula',
+        'toggle'       => 'Calculate with a formula',
+        'legal_locked' => 'A legal field cannot become a formula: the document would lose the field the law requires.',
+        'source'       => 'Formula',
+        'placeholder'  => 'e.g. totals.total_due * 2',
+        'calculating'  => 'Calculating…',
+        'result'       => 'Result: :value',
+        'blank'        => 'No value: prints empty.',
+        'functions'    => 'Functions: :list',
     ],
 
     // Routes (Http\Controllers\*), success messages.

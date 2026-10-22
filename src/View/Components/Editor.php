@@ -197,6 +197,17 @@ class Editor extends Component
 
             'format.none' => __('templates::editor.formats.none'),
 
+            // Formula mode of a data field (CGE-37). `:value` and `:list` are filled in JS.
+            'formula.label'        => __('templates::editor.formula.label'),
+            'formula.toggle'       => __('templates::editor.formula.toggle'),
+            'formula.legal_locked' => __('templates::editor.formula.legal_locked'),
+            'formula.source'       => __('templates::editor.formula.source'),
+            'formula.placeholder'  => __('templates::editor.formula.placeholder'),
+            'formula.calculating'  => __('templates::editor.formula.calculating'),
+            'formula.result'       => __('templates::editor.formula.result', ['value' => ':value']),
+            'formula.blank'        => __('templates::editor.formula.blank'),
+            'formula.functions'    => __('templates::editor.formula.functions', ['list' => ':list']),
+
             'fit.contain' => __('templates::editor.fits.contain'),
             'fit.cover'   => __('templates::editor.fits.cover'),
             'fit.fill'    => __('templates::editor.fits.fill'),

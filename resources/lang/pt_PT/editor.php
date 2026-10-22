@@ -317,7 +317,15 @@ return [
 
     // Campos e colunas de fórmula (CGE-37).
     'formula' => [
-        'label' => 'Fórmula',
+        'label'        => 'Fórmula',
+        'toggle'       => 'Calcular com uma fórmula',
+        'legal_locked' => 'Um campo legal não pode ser uma fórmula: o documento perderia o campo que a lei exige.',
+        'source'       => 'Fórmula',
+        'placeholder'  => 'ex.: totals.total_due * 2',
+        'calculating'  => 'A calcular…',
+        'result'       => 'Resultado: :value',
+        'blank'        => 'Sem valor: imprime vazio.',
+        'functions'    => 'Funções: :list',
     ],
 
     // Rotas (Http\Controllers\*), mensagens de sucesso.

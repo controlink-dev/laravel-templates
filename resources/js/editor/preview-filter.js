@@ -33,6 +33,8 @@ export function initPreviewState(editor, config) {
     const state = {
         // nodeId -> the chosen record's presented values (`nodeId.column` -> text)
         nodes: {},
+        // nodeId -> the chosen record's id, for the server-side `selection` (CGE-37)
+        ids: {},
         // collection binding key -> the filtered presented rows
         rows: {},
         // the merged `nodes`, the one lookup a block does
@@ -42,11 +44,17 @@ export function initPreviewState(editor, config) {
             return Object.keys(this.values).length > 0 || Object.keys(this.rows).length > 0;
         },
 
-        setNode(nodeId, values) {
+        setNode(nodeId, values, recordId = null) {
             if (values) {
                 this.nodes[nodeId] = values;
             } else {
                 delete this.nodes[nodeId];
+            }
+
+            if (values && recordId !== null && recordId !== undefined) {
+                this.ids[nodeId] = String(recordId);
+            } else {
+                delete this.ids[nodeId];
             }
 
             this.values = Object.assign({}, ...Object.values(this.nodes));
@@ -65,6 +73,31 @@ export function initPreviewState(editor, config) {
     states.set(editor, state);
 
     return state;
+}
+
+/**
+ * The records being previewed, as the host's `selection` takes them
+ * (`VersionController::preview`): the chosen record per node, and the ids of the rows
+ * shown per collection. Null when the canvas shows the example — the host then uses the
+ * type's fixture. The formula preview sends it, so a live result is the one the chosen
+ * records give (CGE-37).
+ */
+export function selectionOf(state) {
+    const nodes = { ...(state?.ids ?? {}) };
+    const collections = {};
+
+    Object.entries(state?.rows ?? {}).forEach(([key, rows]) => {
+        const ids = (rows ?? []).slice(0, PREVIEW_ROW_LIMIT)
+            .map((row) => row?.id)
+            .filter((id) => id !== null && id !== undefined && id !== '')
+            .map(String);
+
+        if (ids.length > 0) {
+            collections[key] = ids;
+        }
+    });
+
+    return Object.keys(nodes).length > 0 || Object.keys(collections).length > 0 ? { nodes, collections } : null;
 }
 
 /** A data field's text: the chosen record's value when there is one, else the example. */
@@ -706,7 +739,7 @@ function createTarget({ target, config, state, url, headers, onChange }) {
 
         if (item) {
             const { id, label, ...values } = item;
-            state.setNode(target.id, values);
+            state.setNode(target.id, values, id);
         } else {
             state.setNode(target.id, null);
         }
