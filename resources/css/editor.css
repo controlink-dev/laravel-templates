@@ -2007,6 +2007,13 @@ select.tpl-pf-input {
     display: grid;
     gap: 0.5rem;
     align-content: start;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.tpl-editor-root .tpl-formula-library > * {
+    min-width: 0;
 }
 
 .tpl-editor-root .tpl-formula-library__tabs {
@@ -2018,7 +2025,9 @@ select.tpl-pf-input {
 }
 
 .tpl-editor-root .tpl-formula-library__tabs button {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
     border: 0;
     border-right: 1px solid var(--tpl-edge-subtle, #e6ebf2);
     padding: 0.3rem 0.5rem;
@@ -2041,6 +2050,7 @@ select.tpl-pf-input {
 
 .tpl-editor-root .tpl-formula-library__search {
     width: 100%;
+    min-width: 0;
     box-sizing: border-box;
     border: 1px solid var(--tpl-edge, #e2e8f0);
     border-radius: 0.5rem;
@@ -2063,6 +2073,7 @@ select.tpl-pf-input {
 
 .tpl-editor-root .tpl-formula-library__group {
     display: grid;
+    min-width: 0;
     gap: 0.125rem;
 }
 
@@ -2079,6 +2090,8 @@ select.tpl-pf-input {
 .tpl-editor-root .tpl-formula-library__function {
     display: block;
     width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     border: 0;
     border-radius: 0.375rem;
     padding: 0.25rem 0.375rem;
@@ -2090,29 +2103,10 @@ select.tpl-pf-input {
     cursor: pointer;
 }
 
-.tpl-editor-root .tpl-formula-library__field {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 0.5rem;
-}
-
 .tpl-editor-root .tpl-formula-library__field span {
+    display: block;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.tpl-editor-root .tpl-formula-library__field small {
-    flex: none;
-    max-width: 50%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.625rem;
-    color: var(--tpl-slate-500, #64748b);
+    overflow-wrap: anywhere;
 }
 
 .tpl-editor-root .tpl-formula-library__function code {

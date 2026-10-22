@@ -230,15 +230,10 @@ export function createFormulaLibrary({ rail, config }) {
                 const shown = !named
                     ? item.display
                     : group.kind === 'totals' ? item.display.slice(1, -1) : String(item.label ?? '').trim();
-                const corner = group.kind === 'totals' ? item.insert.slice(0, item.insert.indexOf('(')) : item.key;
 
-                button.title = item.insert;
+                // The technical key is noise in a narrow rail: it stays in the tooltip only.
+                button.title = item.key && item.key !== shown ? item.key : item.insert;
                 button.append(element('span', '', shown));
-
-                // A field shown by its key already says it.
-                if (corner !== shown) {
-                    button.append(element('small', '', corner));
-                }
                 node.append(button);
             });
 
