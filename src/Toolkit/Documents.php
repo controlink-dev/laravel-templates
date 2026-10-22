@@ -2,6 +2,7 @@
 
 namespace Controlink\Templates\Toolkit;
 
+use Controlink\Templates\Formulas\Formula;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Output\Pdf\LayoutDocument;
 use Controlink\Templates\Output\Pdf\LayoutValidator;
@@ -183,6 +184,59 @@ final class Documents
         return $placed;
     }
 
+    /**
+     * The live preview of formulas for the editor: each one checked as V-19 would at save
+     * and, when it passes, evaluated against the dataset the canvas shows.
+     *
+     * A formula with a `collection` is a column of that collection: it is checked as a
+     * row formula and evaluated on the FIRST row of the dataset's collection, the one row
+     * the canvas draws; with no rows it is empty. One that fails the check comes back as
+     * `value` '' and `error` the translated V-19 message, the one the save would report.
+     * Never throws: that is the contract `Formula::evaluate` keeps at render.
+     *
+     * @param  list<array{source?: mixed, collection?: mixed}>  $items
+     * @param  array<string, mixed>  $dataset
+     * @return list<array{value: string|int|float, error: ?string}>
+     */
+    public function previewFormulas(array $items, array $dataset, TemplateType $type): array
+    {
+        $sources = array_map(
+            fn (array $item): string => is_string($item['source'] ?? null) ? trim($item['source']) : '',
+            $items,
+        );
+
+        [$knownKeys, $collections] = $this->layoutValidator->formulaCatalogue($sources, $type);
+
+        $label   = __('templates::editor.formula.label');
+        $results = [];
+
+        foreach ($items as $index => $item) {
+            $source     = $sources[$index];
+            $collection = is_string($item['collection'] ?? null) && $item['collection'] !== '' ? $item['collection'] : null;
+
+            if ($source === '') {
+                $results[] = ['value' => '', 'error' => __('templates::editor.validation.formula_without_source', ['formula' => $label])];
+
+                continue;
+            }
+
+            $error = Formula::check($source, $knownKeys, $collections, $collection);
+
+            if ($error !== null) {
+                $results[] = ['value' => '', 'error' => $this->layoutValidator->formulaMessage($error, $label)];
+
+                continue;
+            }
+
+            $row = $collection === null ? null : ((array) ($dataset[$collection] ?? []))[0] ?? null;
+
+            $results[] = $collection !== null && ! is_array($row)
+                ? ['value' => '', 'error' => null]
+                : ['value' => Formula::evaluate($source, $dataset, $row, $collection), 'error' => null];
+        }
+
+        return $results;
+    }
     /**
      * The reproducibility anchor over the inputs: same layout and geometry, same hash.
      *

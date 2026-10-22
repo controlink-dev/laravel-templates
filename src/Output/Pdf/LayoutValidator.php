@@ -5,6 +5,7 @@ namespace Controlink\Templates\Output\Pdf;
 use Controlink\Templates\Contracts\BindingResolver;
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
 use Controlink\Templates\Formulas\Formula;
+use Controlink\Templates\Formulas\FormulaException;
 use Controlink\Templates\Formulas\FormulaSet;
 use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Support\PageGeometry;
@@ -460,6 +461,66 @@ class LayoutValidator
     }
 
     /**
+     * What a formula may reference in this type, resolved through the host's graph.
+     *
+     * The keys resolved are the ones the sources read, so a field the type never declared
+     * is known exactly as if it were placed (`documentBindings`). It is the very scope V-19
+     * checks against; the editor's live preview (`Documents::previewFormulas`) has no
+     * layout, so a model-backed collection offers the columns the sources name.
+     *
+     * @param  list<string>  $sources
+     * @return array{0: list<string>, 1: array<string, list<string>>}  singular keys, then collection => columns
+     */
+    public function formulaCatalogue(array $sources, TemplateType $type): array
+    {
+        $keys = [];
+
+        foreach ($sources as $source) {
+            array_push($keys, ...Formula::references($source));
+        }
+
+        return $this->formulaScope($this->bindingsByKey($type, array_values(array_unique($keys))));
+    }
+
+    /**
+     * The V-19 message of a failed `Formula::check`, as the save reports it.
+     *
+     * @param  string  $formula  how the formula is named in the message
+     */
+    public function formulaMessage(FormulaException $error, string $formula): string
+    {
+        return __('templates::editor.validation.'.$this->formulaReasonKey($error), ['formula' => $formula]);
+    }
+
+    private function formulaReasonKey(FormulaException $error): string
+    {
+        return self::FORMULA_REASONS[$error->reason] ?? 'formula_syntax';
+    }
+
+    /**
+     * Splits bindings into the singular keys and the collections with their columns.
+     * `formula.*` is never a known key (no chaining).
+     *
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return array{0: list<string>, 1: array<string, list<string>>}
+     */
+    private function formulaScope(array $bindings, ?LayoutDocument $document = null): array
+    {
+        $knownKeys   = [];
+        $collections = [];
+
+        foreach ($bindings as $key => $binding) {
+            if (($binding['type'] ?? null) === 'collection') {
+                $collections[$key] = $this->collectionColumns($document, $key, $binding, $bindings);
+            } elseif (! str_starts_with((string) $key, 'formula.')) {
+                $knownKeys[] = (string) $key;
+            }
+        }
+
+        return [$knownKeys, $collections];
+    }
+
+    /**
      * V-19: every formula has a source, a key no other formula of its kind uses, and a
      * source the closed language accepts against this document's catalogue.
      *
@@ -481,16 +542,7 @@ class LayoutValidator
             return [];
         }
 
-        $knownKeys   = [];
-        $collections = [];
-
-        foreach ($bindings as $key => $binding) {
-            if (($binding['type'] ?? null) === 'collection') {
-                $collections[$key] = $this->collectionColumns($document, $key, $binding, $bindings);
-            } elseif (! str_starts_with((string) $key, 'formula.')) {
-                $knownKeys[] = (string) $key;
-            }
-        }
+        [$knownKeys, $collections] = $this->formulaScope($bindings, $document);
 
         $problems = [];
         $seen     = ['field' => [], 'column' => []];
@@ -523,7 +575,7 @@ class LayoutValidator
             $error = Formula::check($formula['source'], $knownKeys, $collections, $formula['collection']);
 
             if ($error !== null) {
-                $problems[] = $this->problem('V-19', $formula['block'], self::FORMULA_REASONS[$error->reason] ?? 'formula_syntax', $replacements);
+                $problems[] = $this->problem('V-19', $formula['block'], $this->formulaReasonKey($error), $replacements);
             }
         }
 
@@ -630,7 +682,7 @@ class LayoutValidator
      * @param  array<string, array<string, mixed>>  $bindings
      * @return list<string>
      */
-    private function collectionColumns(LayoutDocument $document, string $key, array $binding, array $bindings): array
+    private function collectionColumns(?LayoutDocument $document, string $key, array $binding, array $bindings): array
     {
         $columns = [];
 
@@ -645,7 +697,7 @@ class LayoutValidator
                 }
             }
 
-            foreach ($document->blocksOfType('line-table') as $table) {
+            foreach ($document?->blocksOfType('line-table') ?? [] as $table) {
                 if (($table['attributes']['data-tpl-collection'] ?? '') === $key) {
                     foreach ($this->tableColumns($table) as $column) {
                         $columns[] = is_string($column['key'] ?? null) ? $column['key'] : '';
