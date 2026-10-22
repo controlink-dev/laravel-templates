@@ -28,7 +28,7 @@ import { roundTo, snapOffsets } from './anchors.js';
  * a template are millimetres and points, never pixels, and the choices a user is
  * offered for a weight should be "Normal" and "Negrito" rather than 100 to 900.
  */
-export function styleManagerSectors(strings) {
+export function styleManagerSectors(strings, remembered = {}) {
     /*
      * Every property carries a default, and that is what makes the panel readable.
      *
@@ -62,6 +62,7 @@ export function styleManagerSectors(strings) {
         default: fallback,
     });
 
+    // The sections the user left open or closed win over the defaults (CGE-53).
     return [
         {
             id: 'tpl-typography',
@@ -134,7 +135,7 @@ export function styleManagerSectors(strings) {
                 colour('border-color', 'border_color', '#000000'),
             ],
         },
-    ];
+    ].map((sector) => ({ ...sector, open: remembered[sector.id] ?? sector.open }));
 }
 
 /**

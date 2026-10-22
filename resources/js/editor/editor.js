@@ -19,6 +19,7 @@ import { createFormatPreview } from './format-preview.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
 import { offsetCopy } from './copy-offset.js';
+import { readSectors, writeSector } from './sector-memory.js';
 import { mountGeometryPanel } from './geometry-panel.js';
 import { icons } from './icons.js';
 import {
@@ -166,6 +167,16 @@ async function mountEditor(el) {
     // the tree) rather than the absolute drag the A4 sheet uses.
     const rollMode = config.geometry?.medium === 'roll';
 
+    // The style sections' open state, kept in this browser (CGE-53). Reading the property
+    // can itself throw where site data is blocked.
+    let sectorStorage = null;
+
+    try {
+        sectorStorage = window.localStorage;
+    } catch {
+        sectorStorage = null;
+    }
+
     const editor = grapesjs.init({
         container: el,
         height: '100%',
@@ -229,13 +240,17 @@ async function mountEditor(el) {
         canvasCss: `:root{--tpl-accent:${accent};--tpl-desk:${desk}}` + canvasDecorations(paper, rollMode, config.editable),
         blockManager: { appendTo: chrome.blocks },
         // Only the reduced set (spec 6.6): no flex, no grid, no transitions.
-        styleManager: { appendTo: chrome.styles, sectors: styleManagerSectors(config.strings) },
+        styleManager: { appendTo: chrome.styles, sectors: styleManagerSectors(config.strings, readSectors(sectorStorage)) },
         traitManager: { appendTo: chrome.traits },
         // No wrapper row: "Body" is not a layer of a printed document.
         layerManager: { appendTo: chrome.layers, showWrapper: false },
         // No font family selector: the catalogue holds exactly one family, and a
         // family the server has no file for would break every truncation measurement.
         selectorManager: { componentFirst: true },
+    });
+
+    editor.StyleManager.getSectors().forEach((sector) => {
+        sector.on('change:open', () => writeSector(sectorStorage, sector.getId(), sector.isOpen()));
     });
 
     /*
@@ -1016,6 +1031,11 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     // Set the moment the user picks a zoom of their own: from then on, fitting is
     // theirs to ask for and the pane resizing may not overrule it.
     let userChoseZoom = false;
+
+    // Set at the user's first touch of the layout (CGE-53). Until then the sheet keeps
+    // fitting while the pane settles; after it, the pane changing size — the validation
+    // strip growing, the tab maximised — never moves the zoom under the user's hand.
+    let layoutTouched = false;
 
     /** Air around the sheet when fitting, in pixels. Dead space is dead space. */
     const AIR = 12;
@@ -2069,7 +2089,11 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
          * the sheet fitted at 59% inside a box that had room for 76%, leaving a
          * hundred-pixel ring of grey on every side.
          */
-        const observer = new ResizeObserver(() => (userChoseZoom ? drawRulers() : fitZoom()));
+        const observer = new ResizeObserver(() => (userChoseZoom || layoutTouched ? drawRulers() : fitZoom()));
+
+        editor.on('component:selected component:drag:start block:drag:start', () => {
+            layoutTouched = true;
+        });
 
         [chrome.canvas, canvasEl].forEach((element) => element && observer.observe(element));
 
