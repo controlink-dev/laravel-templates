@@ -253,6 +253,10 @@ const inserts = (list) => list.map((item) => item.insert);
     assert.ok(inserts(suggestionsAt('up', 2, catalogue)).includes('UPPER('));
     assert.ok(!inserts(suggestionsAt('UP', 2, catalogue)).includes('LOWER('));
 
+    // A function name typed in full, in either case, still completes to its bracket.
+    assert.deepEqual(inserts(suggestionsAt('SUM', 3, catalogue)), ['SUM(']);
+    assert.deepEqual(inserts(suggestionsAt('sum', 3, catalogue)), ['SUM(']);
+
     // A model or a collection is offered with its dot; the group is its label.
     const cu = suggestionsAt('cu', 2, catalogue);
     assert.deepEqual(inserts(cu), ['customer.']);

@@ -185,7 +185,8 @@ export function suggestionsAt(source, caret, catalogue) {
         }));
     } else {
         (catalogue?.functions ?? []).forEach((name) => {
-            if (matches(name)) {
+            // `SUM` typed in full still completes to `SUM(`: the bracket is the suggestion.
+            if (name.toLowerCase().startsWith(prefix) && name + '(' !== token) {
                 found.push({ label: name, insert: name + '(', group: catalogue.functionsLabel ?? '' });
             }
         });
