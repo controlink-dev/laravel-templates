@@ -56,6 +56,27 @@ final class Formula
     }
 
     /**
+     * Every key the formula reads, in order of appearance and without repeats. A formula
+     * that does not parse reads nothing; `check` is what reports why.
+     *
+     * Layer-1 validation needs these before it can call `check`: a referenced field the
+     * type never declared has to be resolved by the host first, like a placed one.
+     *
+     * @return list<string>
+     */
+    public static function references(string $source): array
+    {
+        try {
+            $keys = [];
+            self::collectReferences(Parser::parse($source), $keys);
+
+            return array_values(array_unique($keys));
+        } catch (Throwable) {
+            return [];
+        }
+    }
+
+    /**
      * Never throws: any failure (syntax, missing value, wrong type, division by
      * zero, even a bug) prints as an empty string.
      *
@@ -124,6 +145,29 @@ final class Formula
                 foreach ($node['args'] as $arg) {
                     self::walk($arg, $knownKeys, $collections, $rowCollection, $aggregate);
                 }
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $node
+     * @param  list<string>  $keys
+     */
+    private static function collectReferences(array $node, array &$keys): void
+    {
+        $children = match ($node['type']) {
+            'neg'   => [$node['expr']],
+            'bin'   => [$node['left'], $node['right']],
+            'call'  => $node['args'],
+            default => [],
+        };
+
+        if ($node['type'] === 'ref') {
+            $keys[] = $node['key'];
+        }
+
+        // A plain loop: an arrow function would capture `$keys` by value and lose them.
+        foreach ($children as $child) {
+            self::collectReferences($child, $keys);
         }
     }
 

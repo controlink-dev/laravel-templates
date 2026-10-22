@@ -306,6 +306,18 @@ return [
         'outside_printable' => '«:field» está fora da área imprimível.',
         'occluded'          => '«:field» está coberto por um elemento opaco colocado por cima.',
         'occluded_warning'  => '«:field» está tapado por outro elemento colocado por cima e pode não aparecer impresso.',
+        // V-19 (CGE-37): `:formula` é o cabeçalho da coluna, ou o rótulo genérico de fórmula num campo.
+        'formula_syntax'            => '«:formula»: a fórmula não está bem escrita. Verifique os operadores, os parênteses, as vírgulas entre argumentos, as aspas e o número de argumentos de cada função.',
+        'formula_unknown_function'  => '«:formula»: a fórmula usa uma função que não existe.',
+        'formula_unknown_reference' => '«:formula»: a fórmula usa um campo que não existe neste tipo de documento (ou o resultado de outra fórmula, o que não é permitido).',
+        'formula_scope'             => '«:formula»: aqui, uma coluna das linhas só pode ser usada dentro de SUM ou COUNT.',
+        'formula_duplicate_key'     => '«:formula»: outra fórmula tem a mesma chave e imprimiria o resultado dessa. Apague esta e crie-a de novo.',
+        'formula_without_source'    => '«:formula»: a fórmula está vazia.',
+    ],
+
+    // Campos e colunas de fórmula (CGE-37).
+    'formula' => [
+        'label' => 'Fórmula',
     ],
 
     // Rotas (Http\Controllers\*), mensagens de sucesso.

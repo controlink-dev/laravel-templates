@@ -2,6 +2,7 @@
 
 namespace Controlink\Templates\Tests\Unit;
 
+use Controlink\Templates\Formulas\Formula;
 use Controlink\Templates\Formulas\FormulaException;
 use Controlink\Templates\Formulas\Parser;
 use Controlink\Templates\Tests\TestCase;
@@ -187,5 +188,15 @@ class FormulaParserTest extends TestCase
         } catch (FormulaException $e) {
             $this->assertSame('syntax', $e->reason);
         }
+    }
+
+    public function test_references_lists_every_key_read_once_in_order(): void
+    {
+        $this->assertSame(
+            ['totals.total', 'lines.qty', 'customer.name'],
+            Formula::references('IF(totals.total > SUM(lines.qty), -totals.total, CONCAT(customer.name, "a.b"))'),
+        );
+        $this->assertSame([], Formula::references('totals.total +'));
+        $this->assertSame([], Formula::references(''));
     }
 }

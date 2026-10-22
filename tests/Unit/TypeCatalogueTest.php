@@ -58,7 +58,15 @@ class TypeCatalogueTest extends TestCase
             'binding of undeclared node'   => [function (array &$t) { $t['bindings'][] = ['key' => 'ghost.x', 'label' => 'x', 'type' => 'text']; }, 'node'],
             'duplicate binding key'        => [function (array &$t) { $t['bindings'][] = $t['bindings'][0]; }, 'duplicate'],
             'columns on a non-collection'  => [function (array &$t) { $t['bindings'][0]['columns'] = [['key' => 'a', 'label' => 'a']]; }, 'columns'],
-            'singleton not a string'       => [function (array &$t) { $t['nodes']['emitente']['singleton'] = true; }, 'singleton'],
+            'binding in the formula namespace' => [function (array &$t) { $t['nodes']['formula'] = []; $t['bindings'][] = ['key' => 'formula.abc123', 'label' => 'x', 'type' => 'text']; }, 'formula'],
+            'column in the formula namespace'  => [function (array &$t) {
+                foreach ($t['bindings'] as &$binding) {
+                    if ($binding['type'] === 'collection') {
+                        $binding['columns'][] = ['key' => 'formula_abc123', 'label' => 'x'];
+                    }
+                }
+            }, 'formula'],
+            'singleton not a string'     => [function (array &$t) { $t['nodes']['emitente']['singleton'] = true; }, 'singleton'],
             'empty binding key'            => [function (array &$t) { $t['bindings'][] = ['key' => '', 'label' => 'x', 'type' => 'text']; }, 'no key'],
             'singleton method missing'     => [function (array &$t) { $t['nodes']['emitente']['model'] = \Controlink\Templates\Tests\TestCase::class; $t['nodes']['emitente']['singleton'] = 'nope'; }, 'singleton'],
             'every_page field not in header or footer of the initial layout' => [function (array &$t) { $t['initial_layout']['html'] = str_replace('id="tpl-atcud"', 'id="tpl-atcud" data-moved="1"', preg_replace('/<div class="block block--field"[^>]*data-tpl-binding="documento.atcud"[^>]*>.*?<\/div>/s', '', $t['initial_layout']['html'])); }, 'every_page'],

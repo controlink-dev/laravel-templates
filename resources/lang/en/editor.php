@@ -296,6 +296,18 @@ return [
         'outside_printable' => '":field" is outside the printable area.',
         'occluded'          => '":field" is covered by an opaque element placed on top of it.',
         'occluded_warning'  => '":field" is covered by another element placed on top of it and may not appear when printed.',
+        // V-19 (CGE-37): `:formula` is the column header, or the generic formula label on a field.
+        'formula_syntax'            => '":formula": the formula is not written correctly. Check the operators, brackets, commas between arguments, quotes and the number of arguments of each function.',
+        'formula_unknown_function'  => '":formula": the formula uses a function that does not exist.',
+        'formula_unknown_reference' => '":formula": the formula uses a field that does not exist in this document type (or the result of another formula, which is not allowed).',
+        'formula_scope'             => '":formula": a column of the lines can only be used inside SUM or COUNT here.',
+        'formula_duplicate_key'     => '":formula": another formula has the same key, so it would print that one\'s result. Delete this one and create it again.',
+        'formula_without_source'    => '":formula": the formula is empty.',
+    ],
+
+    // Formula fields and columns (CGE-37).
+    'formula' => [
+        'label' => 'Formula',
     ],
 
     // Routes (Http\Controllers\*), success messages.

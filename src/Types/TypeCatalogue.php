@@ -80,6 +80,18 @@ class TypeCatalogue
 
             $seen[$key] = true;
 
+            // CGE-37: `formula.<id>` and `formula_<id>` are where the editor's formulas put
+            // their results. A catalogue key there would be shadowed by, or shadow, a formula.
+            if (str_starts_with($key, 'formula.')) {
+                $fail("binding [{$key}] uses the reserved formula namespace [formula.]");
+            }
+
+            foreach ((array) ($binding['columns'] ?? []) as $column) {
+                if (str_starts_with((string) ($column['key'] ?? ''), 'formula_')) {
+                    $fail("binding [{$key}] declares column [{$column['key']}] in the reserved formula namespace [formula_]");
+                }
+            }
+
             if (! in_array($binding['type'] ?? null, TemplateType::BINDING_TYPES, true)) {
                 $fail("binding [{$key}] has an unknown type [".($binding['type'] ?? 'null').']');
             }

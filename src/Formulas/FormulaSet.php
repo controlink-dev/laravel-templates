@@ -68,6 +68,18 @@ final class FormulaSet
         return new self($fields, $columns, $stripped);
     }
 
+    /** Whether a data field's binding is a formula key, `formula.<id>`. */
+    public static function isFieldKey(string $key): bool
+    {
+        return preg_match(self::FIELD_KEY, $key) === 1;
+    }
+
+    /** Whether a line-table column key is a formula key, `formula_<id>`. */
+    public static function isColumnKey(string $key): bool
+    {
+        return preg_match(self::COLUMN_KEY, $key) === 1;
+    }
+
     /**
      * Data-field formulas, binding key ⇒ source. Only keys of the exported shape are
      * listed; a field with a valid key but no source maps to '' and so prints empty.
