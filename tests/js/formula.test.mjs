@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {
     applySuggestion, createFormulaPreview, formulaCatalogue, formulaFunctionsOf, freshFormulaKey, isFormulaKey,
-    newFormulaId, suggestionsAt,
+    newFormulaId, selectionHeading, suggestionsAt,
 } from '../../resources/js/editor/formula.js';
 import { initPreviewState, selectionOf } from '../../resources/js/editor/preview-filter.js';
 
@@ -231,6 +231,21 @@ const fakeFetch = (calls, answer = (item) => ({ value: `R(${item.source})`, erro
     assert.equal(selectionOf(undefined), null);
 }
 
+/* --------------------------------------------------------- the panel header */
+
+{
+    // A formula field is named "Fórmula" with its own key, never after the binding it had.
+    const strings = { 'formula.label': 'Fórmula' };
+
+    assert.deepEqual(selectionHeading('formula.ab12cd34', undefined, 'Data de fornecimento', strings),
+        { name: 'Fórmula', meta: ['formula.ab12cd34'] });
+
+    // Any other binding: its catalogue label and key · type, as before.
+    assert.deepEqual(selectionHeading('document.supply_date', { label: 'Supply date', type: 'date' }, 'x', strings),
+        { name: 'Supply date', meta: ['document.supply_date', 'date'] });
+    assert.deepEqual(selectionHeading('', undefined, 'Texto', strings), { name: 'Texto', meta: [] });
+}
+
 /* ------------------------------------------------------------- autocomplete */
 
 /*
@@ -300,9 +315,16 @@ const inserts = (list) => list.map((item) => item.insert);
     const caret = source.indexOf('UP') + 2;
     assert.deepEqual(inserts(suggestionsAt(source, caret, catalogue)), ['UPPER(']);
 
-    // Right after `doc`, the rest of the word does not count.
+    // A caret inside a word offers nothing: applying there would keep the rest of the word
+    // after the insert (`customer.na|me` ⇒ `customer.nameme`).
     const mid = source.indexOf('document') + 3;
-    assert.deepEqual(inserts(suggestionsAt(source, mid, catalogue)), ['document.']);
+    assert.deepEqual(suggestionsAt(source, mid, catalogue), []);
+    assert.deepEqual(suggestionsAt('customer.name', 11, catalogue), []);
+    assert.deepEqual(suggestionsAt('cu.', 2, catalogue), []);
+
+    // Followed by anything else (a bracket, a space, an operator), it completes as usual.
+    assert.deepEqual(inserts(suggestionsAt('SUM(li)', 6, catalogue)), ['lines.']);
+    assert.deepEqual(inserts(suggestionsAt('cu + 1', 2, catalogue)), ['customer.']);
 }
 
 {

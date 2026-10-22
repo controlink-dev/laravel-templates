@@ -85,6 +85,19 @@ export function freshFormulaKey(existingKeys, key, makeId = newFormulaId) {
     return candidate;
 }
 
+/**
+ * The name and the key line of the panel header for a selected block bound to `key`.
+ * A formula field is named "Fórmula" and shows its own key: the binding it had before
+ * the switch is gone, and naming it would say the block prints that field.
+ */
+export function selectionHeading(key, binding, fallbackName, strings) {
+    if (isFormulaKey(key)) {
+        return { name: strings?.['formula.label'] ?? 'Formula', meta: [key] };
+    }
+
+    return { name: binding?.label ?? fallbackName ?? '', meta: [key, binding?.type].filter(Boolean) };
+}
+
 /* ---------------------------------------------------------- autocomplete */
 
 /**
@@ -142,6 +155,8 @@ function tokenStart(source, caret) {
  * - A token without a dot: the models and collections whose key starts with it (inserted
  *   with their dot) and the functions whose name does, case-insensitively (with `(`).
  * - A token with a dot: the fields and collection columns whose full key starts with it.
+ * - A caret inside a word (a key character right after it): nothing — the rest of the
+ *   word would be left after the insert.
  *
  * A suggestion that is exactly the token is left out (there is nothing to complete), and
  * at most `MAX_SUGGESTIONS` come back.
@@ -153,6 +168,11 @@ export function suggestionsAt(source, caret, catalogue) {
     const token = text.slice(start, end);
 
     if (token === '' || !/^[A-Za-z_]/.test(token)) {
+        return [];
+    }
+
+    // A caret inside a word: completing would leave the rest of it after the insert.
+    if (/[A-Za-z0-9_.]/.test(text[end] ?? '')) {
         return [];
     }
 
@@ -495,6 +515,12 @@ export function formulaAssist(input, config) {
                 break;
             case 'Enter':
             case 'Tab':
+                // Only the plain key: Shift+Tab moves focus back, Shift+Enter is a new line.
+                if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) {
+                    close();
+                    break;
+                }
+
                 event.preventDefault();
                 apply(items[active]);
                 break;
@@ -581,16 +607,25 @@ export function registerFormula(editor, config) {
         setInputValue() {},
 
         createInput({ component }) {
+            /*
+             * The same markup as GrapesJS's own checkbox trait ("Várias linhas"): the input
+             * itself is hidden by the stock stylesheet and the box is drawn by the
+             * `.gjs-field-checkbox` rules. A bare checkbox inside the trait's field picked
+             * up the generic `.gjs-field input` rules (no appearance, full width) and
+             * vanished, leaving only its long caption wrapped in the value column. The row
+             * is labelled "Fórmula" like the others; the long sentence is its tooltip.
+             */
             const wrap = document.createElement('label');
-            wrap.className = 'tpl-formula-toggle';
+            wrap.className = 'gjs-field gjs-field-checkbox tpl-formula-toggle';
 
             const input = document.createElement('input');
             input.type = 'checkbox';
+            input.setAttribute('aria-label', strings['formula.toggle'] ?? 'Formula');
 
-            const text = document.createElement('span');
-            text.textContent = strings['formula.toggle'] ?? 'Formula';
+            const icon = document.createElement('i');
+            icon.className = 'gjs-chk-icon';
 
-            wrap.append(input, text);
+            wrap.append(input, icon);
             paintToggle(wrap, component, strings);
 
             return wrap;
@@ -690,7 +725,7 @@ function paintToggle(wrap, component, strings) {
     // asks for. The server would refuse it too (V-02/V-10); the switch says so first.
     input.disabled = legal;
     wrap.classList.toggle('is-disabled', legal);
-    wrap.title = legal ? (strings['formula.legal_locked'] ?? '') : '';
+    wrap.title = legal ? (strings['formula.legal_locked'] ?? '') : (strings['formula.toggle'] ?? '');
 }
 
 /**

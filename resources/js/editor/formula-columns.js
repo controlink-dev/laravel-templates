@@ -29,15 +29,49 @@ function freshKey(taken, makeId) {
     return key;
 }
 
+/** A new formula column's width: an auto width gets 0px in a full fixed-layout table. */
+const NEW_COLUMN_WIDTH = '20mm';
+
 /**
  * The columns with a new, empty formula column at the end. Aligned right and with no
  * format: most formulas are amounts, and the user picks the format once the result is
- * known.
+ * known. A width of its own: the line table is `table-layout: fixed`, and when the
+ * columns already add up to its width an auto column gets none and is not seen.
  */
 export function addFormulaColumn(columns, label = 'Formula', makeId = newFormulaId) {
     const key = freshKey(new Set(columns.map((column) => column.key)), makeId);
 
-    return [...columns, { key, label, formula: '', format: '', formatArgs: {}, align: 'right', width: '' }];
+    return [...columns, { key, label, formula: '', format: '', formatArgs: {}, align: 'right', width: NEW_COLUMN_WIDTH }];
+}
+
+/** A length in millimetres (`12`, `12mm`, `1.2cm`), or null for anything else. */
+function millimetres(value) {
+    const match = String(value ?? '').trim().toLowerCase().match(/^(\d*\.?\d+)(mm|cm)?$/);
+
+    if (!match) {
+        return null;
+    }
+
+    return parseFloat(match[1]) * (match[2] === 'cm' ? 10 : 1);
+}
+
+/**
+ * Whether the visible columns' widths add up to more than the table's: the last ones are
+ * then squeezed out of a fixed-layout table. Columns with no readable width count as
+ * nothing, and a table whose width is not a length in mm is never reported.
+ */
+export function columnsOverflow(columns, tableWidth) {
+    const table = millimetres(tableWidth);
+
+    if (table === null) {
+        return false;
+    }
+
+    const total = columns
+        .filter((column) => !column.hidden)
+        .reduce((sum, column) => sum + (millimetres(column.width) ?? 0), 0);
+
+    return total > table + 0.01;
 }
 
 /**

@@ -221,6 +221,7 @@ class Editor extends Component
             'formula.remove_column'      => __('templates::editor.formula.remove_column'),
             'formula.column_placeholder' => __('templates::editor.formula.column_placeholder'),
             'formula.column_help'        => __('templates::editor.formula.column_help', ['collection' => ':collection']),
+            'formula.columns_overflow'   => __('templates::editor.formula.columns_overflow'),
 
             'fit.contain' => __('templates::editor.fits.contain'),
             'fit.cover'   => __('templates::editor.fits.cover'),

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-    addFormulaColumn, freshFormulaColumns, isFormulaColumn, removeColumn,
+    addFormulaColumn, columnsOverflow, freshFormulaColumns, isFormulaColumn, removeColumn,
 } from '../../resources/js/editor/formula-columns.js';
 import { registerComponents } from '../../resources/js/editor/components.js';
 import { registerTableAndSlot } from '../../resources/js/editor/table.js';
@@ -38,11 +38,31 @@ const catalogue = [
 
     assert.match(added.key, KEY);
     assert.deepEqual({ ...added, key: 'x' }, {
-        key: 'x', label: 'Fórmula', formula: '', format: '', formatArgs: {}, align: 'right', width: '',
+        key: 'x', label: 'Fórmula', formula: '', format: '', formatArgs: {}, align: 'right', width: '20mm',
     });
     assert.ok(isFormulaColumn(added));
     assert.ok(!isFormulaColumn(catalogue[0]));
     assert.ok(!isFormulaColumn(null));
+}
+
+// 1b. The visible columns' widths against the table's: a new formula column (20mm) added
+// to columns that already fill a fixed-layout table would get no room at all, so the
+// editor says so. Hidden columns do not count; a width it cannot read counts as nothing;
+// a table whose width is unknown is never "too narrow".
+{
+    const full = [
+        { key: 'a', width: '100mm' },
+        { key: 'b', width: '80mm' },
+        { key: 'c', width: '50mm', hidden: true },
+    ];
+
+    assert.equal(columnsOverflow(full, '180mm'), false, 'exactly the width');
+    assert.equal(columnsOverflow(addFormulaColumn(full, 'F'), '180mm'), true);
+    assert.equal(columnsOverflow([...full, { key: 'd', width: '' }], '180mm'), false, 'auto width: nothing to add up');
+    assert.equal(columnsOverflow([{ key: 'a', width: '19' }, { key: 'b', width: '2cm' }], '38mm'), true, 'bare number is mm, cm converts');
+    assert.equal(columnsOverflow(addFormulaColumn(full, 'F'), ''), false, 'unknown table width');
+    assert.equal(columnsOverflow(addFormulaColumn(full, 'F'), '100%'), false, 'not a length in mm');
+    assert.equal(columnsOverflow(addFormulaColumn(full, 'F'), undefined), false);
 }
 
 // 2. The key is unique among the given columns: a colliding id is drawn again.

@@ -16,7 +16,7 @@ import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, plainProjectData, refreshPreview, selectionOf } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
-import { createFormulaPreview, formulaFunctionsOf } from './formula.js';
+import { createFormulaPreview, formulaFunctionsOf, selectionHeading } from './formula.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
 import { freeSpotForCopy } from './copy-offset.js';
@@ -1839,13 +1839,15 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             return;
         }
 
-        // getName() first: a fixed text is named after its own words (CGE-53).
-        const name = binding?.label ?? component.getName?.() ?? component.get('name') ?? '';
+        // getName() first: a fixed text is named after its own words (CGE-53). A formula
+        // field is named "Fórmula" with its own key (CGE-37), not after its old binding.
+        const heading = selectionHeading(key, binding, component.getName?.() ?? component.get('name'), config.strings);
+        const name = heading.name;
         const chip = attributes['data-tpl-legal'] === '1'
             ? `<span class="tpl-chip">${icons.shieldCheck} ${escapeHtml(config.strings['chrome.legal_chip'])}</span>`
             : '';
 
-        const meta = [key, binding?.type, scopeLabel(binding, config)].filter(Boolean);
+        const meta = [...heading.meta, scopeLabel(binding, config)].filter(Boolean);
 
         chrome.selected.innerHTML =
             `<p class="tpl-selected-name">${escapeHtml(name)}${chip}</p>`
@@ -1857,6 +1859,9 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     editor.on('component:selected component:deselected', renderSelection);
     // A fixed text is named after its words (CGE-53): the header follows an edit.
     editor.on('component:update:text', (component) => component === editor.getSelected() && renderSelection());
+    // The binding changes under a selected block — another field, or the formula switch
+    // (CGE-37) — and the header has to name what the block now prints.
+    editor.on('component:update:attributes', (component) => component === editor.getSelected() && renderSelection());
 
     /* ------------------------------------------------------------ zone picker */
 

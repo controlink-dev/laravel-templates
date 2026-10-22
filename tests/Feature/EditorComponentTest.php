@@ -164,7 +164,7 @@ class EditorComponentTest extends TestCase
         $strings = (new Editor($template, $version))->strings();
 
         foreach (['label', 'toggle', 'legal_locked', 'source', 'placeholder', 'calculating', 'result', 'blank', 'functions',
-            'column_label', 'add_column', 'remove_column', 'column_placeholder', 'column_help'] as $key) {
+            'column_label', 'add_column', 'remove_column', 'column_placeholder', 'column_help', 'columns_overflow'] as $key) {
             $this->assertArrayHasKey('formula.'.$key, $strings);
             $this->assertStringNotContainsString('templates::editor.', $strings['formula.'.$key], "formula.{$key} reached the browser as a translation key.");
         }

@@ -364,6 +364,22 @@
     margin-top: 0.125rem;
 }
 
+/* The columns are wider than the table (CGE-37): the last ones get no room on the sheet. */
+.tpl-columns__notice {
+    margin: 0 0 0.4rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #f59e0b;
+    border-radius: 0.5rem;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 0.6875rem;
+    line-height: 1.35;
+}
+
+.tpl-columns__notice[hidden] {
+    display: none;
+}
+
 /*
  * The code slot's origin-dependent fields: the two chained node/field selects when
  * dynamic, or the content type and its fields when fixed. One label row per input,
@@ -1854,19 +1870,7 @@ select.tpl-pf-input {
     background: transparent;
 }
 
-.tpl-editor-root .tpl-formula-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.75rem;
-    cursor: pointer;
-}
-
-.tpl-editor-root .tpl-formula-toggle input {
-    height: auto;
-    margin: 0;
-}
-
+/* The switch is a stock checkbox box (`.gjs-field-checkbox`, below); only its locked state is its own. */
 .tpl-editor-root .tpl-formula-toggle.is-disabled {
     cursor: not-allowed;
     opacity: 0.55;

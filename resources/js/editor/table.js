@@ -15,7 +15,7 @@ function columnFormatOf(spec) {
 }
 import { icons } from './icons.js';
 import { previewRows } from './preview-filter.js';
-import { addFormulaColumn, isFormulaColumn, removeColumn } from './formula-columns.js';
+import { addFormulaColumn, columnsOverflow, isFormulaColumn, removeColumn } from './formula-columns.js';
 import { formulaAssist, paintFormulaStatus } from './formula.js';
 
 /**
@@ -350,8 +350,25 @@ function registerColumnsTrait(editor, config) {
             // through `setColumns` like any other edit.
             let dragFrom = null;
 
+            /*
+             * "The columns take more than the table's width" (CGE-37): in a fixed-layout
+             * table the last columns then get no room — a new formula column vanished
+             * from the invoice's full 180mm table. Repainted on every columns write.
+             */
+            const notice = document.createElement('p');
+            notice.className = 'tpl-columns__notice';
+            notice.setAttribute('role', 'status');
+            notice.textContent = config.strings['formula.columns_overflow'] ?? '';
+
+            const paintNotice = () => {
+                notice.hidden = !columnsOverflow(component.columns(), component.getStyle?.()?.width);
+            };
+
+            component.on('change:attributes:data-tpl-columns', paintNotice);
+
             const redraw = () => {
-                wrapper.replaceChildren();
+                wrapper.replaceChildren(notice);
+                paintNotice();
 
                 component.columns().forEach((column, index) => {
                     wrapper.append(columnCard(component, column, index, config, redraw, reorder));

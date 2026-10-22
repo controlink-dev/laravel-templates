@@ -390,6 +390,7 @@ return [
         'remove_column'      => 'Remover coluna de fórmula',
         'column_placeholder' => 'ex.: lines.quantity * lines.unit_price',
         'column_help'        => 'Aqui :collection.<coluna> é o valor desta linha; SUM(:collection.<coluna>) soma todas as linhas. O resultado mostrado é o da primeira linha.',
+        'columns_overflow'   => 'As colunas ocupam mais do que a largura da tabela; reduza ou esconda uma coluna.',
     ],
 
     // Rotas (Http\Controllers\*), mensagens de sucesso.

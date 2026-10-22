@@ -380,6 +380,7 @@ return [
         'remove_column'      => 'Remove formula column',
         'column_placeholder' => 'e.g. lines.quantity * lines.unit_price',
         'column_help'        => 'Here :collection.<column> is the value of this line; SUM(:collection.<column>) adds up every line. The result shown is for the first line.',
+        'columns_overflow'   => 'The columns take more than the width of the table; make one narrower or hide one.',
     ],
 
     // Routes (Http\Controllers\*), success messages.
