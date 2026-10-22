@@ -3,6 +3,7 @@ import {
     applySuggestion, createFormulaPreview, formulaCatalogue, formulaFunctionsOf, formulaLock, freshFormulaKey, isFormulaKey,
     keepsKeyInFormulaBox, newFormulaId, selectionHeading, suggestionsAt,
 } from '../../resources/js/editor/formula.js';
+import { scopedCatalogue } from '../../resources/js/editor/formula-names.js';
 import { initPreviewState, selectionOf } from '../../resources/js/editor/preview-filter.js';
 
 /*
@@ -249,12 +250,13 @@ const fakeFetch = (calls, answer = (item) => ({ value: `R(${item.source})`, erro
 /* ------------------------------------------------------------- autocomplete */
 
 /*
- * The formula box suggests what can be typed at the caret: the token under it is the
- * run of `[A-Za-z0-9_.]` right before it. Without a dot it names a model, a collection
- * or a function; with one, a field of that model or a column of that collection.
+ * The formula box suggests what can be typed at the caret. With the per-place catalogue
+ * (`scopedCatalogue`), letters offer the fields by their readable name and the functions;
+ * a dotted token is a technical key typed by hand and completes to keys. Names after a
+ * `[` are covered in formula-names.test.mjs.
  */
 
-const catalogue = {
+const catalogue = scopedCatalogue({
     nodes: [
         { id: 'customer', label: 'Cliente', fields: [
             { key: 'customer.name', label: 'Nome' },
@@ -262,14 +264,14 @@ const catalogue = {
         ] },
         { id: 'document', label: 'Documento', fields: [{ key: 'document.number', label: 'Número' }] },
     ],
-    collections: [
-        { key: 'lines', label: 'Linhas', columns: [
+    bindings: [
+        { key: 'lines', label: 'Linhas', type: 'collection', columns: [
             { key: 'quantity', label: 'Quantidade' },
             { key: 'unit_price', label: 'Preço unitário' },
         ] },
     ],
-    functions: ['IF', 'SUM', 'UPPER', 'LOWER', 'LEN', 'LEFT'],
-};
+    formulaFunctions: ['IF', 'SUM', 'UPPER', 'LOWER', 'LEN', 'LEFT'],
+});
 
 const inserts = (list) => list.map((item) => item.insert);
 
@@ -283,12 +285,16 @@ const inserts = (list) => list.map((item) => item.insert);
     assert.deepEqual(inserts(suggestionsAt('SUM', 3, catalogue)), ['SUM(']);
     assert.deepEqual(inserts(suggestionsAt('sum', 3, catalogue)), ['SUM(']);
 
-    // A model or a collection is offered with its dot; the group is its label.
-    const cu = suggestionsAt('cu', 2, catalogue);
-    assert.deepEqual(inserts(cu), ['customer.']);
-    assert.equal(cu[0].group, 'Cliente');
-    assert.deepEqual(inserts(suggestionsAt('li', 2, catalogue)), ['lines.']);
-    assert.deepEqual(inserts(suggestionsAt('L', 1, catalogue)), ['lines.', 'LOWER(', 'LEN(', 'LEFT(']);
+    // A field is offered by its label and inserted by its name; the group is its model.
+    const nom = suggestionsAt('nom', 3, catalogue);
+    assert.deepEqual(inserts(nom), ['[Cliente · Nome]']);
+    assert.equal(nom[0].group, 'Cliente');
+    assert.equal(nom[0].label, 'Nome');
+    assert.deepEqual(inserts(suggestionsAt('L', 1, catalogue)), ['LOWER(', 'LEN(', 'LEFT(']);
+
+    // A column of the table is a total here: offered whole, names first, then functions.
+    assert.deepEqual(inserts(suggestionsAt('Q', 1, catalogue)), ['SUM([Linhas · Quantidade])', 'COUNT([Linhas · Quantidade])']);
+    assert.deepEqual(inserts(suggestionsAt('Pre', 3, catalogue)), ['SUM([Linhas · Preço unitário])']);
 }
 
 {
@@ -316,15 +322,17 @@ const inserts = (list) => list.map((item) => item.insert);
     assert.deepEqual(inserts(suggestionsAt(source, caret, catalogue)), ['UPPER(']);
 
     // A caret inside a word offers nothing: applying there would keep the rest of the word
-    // after the insert (`customer.na|me` ⇒ `customer.nameme`).
+    // after the insert (`customer.na|me` ⇒ `customer.nameme`), a label's letters included.
     const mid = source.indexOf('document') + 3;
     assert.deepEqual(suggestionsAt(source, mid, catalogue), []);
     assert.deepEqual(suggestionsAt('customer.name', 11, catalogue), []);
     assert.deepEqual(suggestionsAt('cu.', 2, catalogue), []);
+    assert.deepEqual(suggestionsAt('Núm', 1, catalogue), []);
 
-    // Followed by anything else (a bracket, a space, an operator), it completes as usual.
-    assert.deepEqual(inserts(suggestionsAt('SUM(li)', 6, catalogue)), ['lines.']);
-    assert.deepEqual(inserts(suggestionsAt('cu + 1', 2, catalogue)), ['customer.']);
+    // Followed by anything else (a bracket, a space, an operator), it completes as usual;
+    // right after `SUM(` a total is only its column's name.
+    assert.deepEqual(inserts(suggestionsAt('SUM(Qu)', 6, catalogue)), ['[Linhas · Quantidade]']);
+    assert.deepEqual(inserts(suggestionsAt('Nom + 1', 3, catalogue)), ['[Cliente · Nome]']);
 }
 
 {
@@ -335,24 +343,44 @@ const inserts = (list) => list.map((item) => item.insert);
     assert.deepEqual(suggestionsAt('0.2', 3, catalogue), []);
     assert.deepEqual(suggestionsAt('nothing.', 8, catalogue), []);
     assert.deepEqual(suggestionsAt('customer.name', 13, catalogue), []);
+    assert.deepEqual(suggestionsAt('xyz', 3, catalogue), []);
 }
 
 {
     // Inside a text literal the words are the user's own: nothing is suggested. `""` is an
-    // escaped quote, so the parity of the quotes before the caret says whether it is inside.
+    // escaped quote, so an odd run of quotes before the caret leaves it inside.
     assert.deepEqual(suggestionsAt('"UP', 3, catalogue), []);
     assert.deepEqual(suggestionsAt('"a""UP', 6, catalogue), []);
+    assert.deepEqual(suggestionsAt('"Nom', 4, catalogue), []);
     assert.ok(inserts(suggestionsAt('"a" & UP', 8, catalogue)).includes('UPPER('));
 }
 
 {
-    // At most 20 suggestions.
-    const many = {
+    // At most 20 suggestions, by key or by name.
+    const many = scopedCatalogue({
         nodes: [{ id: 'big', label: 'Big', fields: Array.from({ length: 30 }, (_, i) => ({ key: `big.f${i}`, label: `F${i}` })) }],
-        collections: [],
-        functions: [],
-    };
+    });
     assert.equal(suggestionsAt('big.', 4, many).length, 20);
+    assert.equal(suggestionsAt('F', 1, many).length, 20);
+}
+
+{
+    // The flat catalogue (what the formula box passes until it shows names) still offers
+    // the models and collections with their dot, then the functions: no name is inserted
+    // into a box that stores the source as it is typed.
+    const flat = {
+        nodes: catalogue.nodes,
+        collections: catalogue.collections,
+        functions: ['IF', 'SUM', 'UPPER', 'LOWER', 'LEN', 'LEFT'],
+    };
+    const cu = suggestionsAt('cu', 2, flat);
+    assert.deepEqual(inserts(cu), ['customer.']);
+    assert.equal(cu[0].group, 'Cliente');
+    assert.deepEqual(inserts(suggestionsAt('li', 2, flat)), ['lines.']);
+    assert.deepEqual(inserts(suggestionsAt('L', 1, flat)), ['lines.', 'LOWER(', 'LEN(', 'LEFT(']);
+    assert.deepEqual(inserts(suggestionsAt('SUM(li)', 6, flat)), ['lines.']);
+    assert.deepEqual(suggestionsAt('Nom', 3, flat), []);
+    assert.deepEqual(suggestionsAt('[Cli', 4, flat), []);
 }
 
 {
@@ -368,6 +396,11 @@ const inserts = (list) => list.map((item) => item.insert);
 
     // A caret mid-word keeps what is after it.
     assert.deepEqual(applySuggestion('cusX', 3, { insert: 'customer.' }), { source: 'customer.X', caret: 9 });
+
+    // A label's letters are one word with the rest: `Preç` is replaced whole.
+    assert.deepEqual(applySuggestion('1 + Preç', 8, { insert: '[Linhas · Preço unitário]' }), {
+        source: '1 + [Linhas · Preço unitário]', caret: 29,
+    });
 }
 
 /* ------------------------------------------------------- the catalogue for it */

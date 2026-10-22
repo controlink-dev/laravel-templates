@@ -168,11 +168,79 @@ export function formulaCatalogue(config) {
     return { nodes, collections, functions: [...(config?.formulaFunctions ?? [])] };
 }
 
-/** Where the token that ends at `caret` starts: the run of `[A-Za-z0-9_.]` before it. */
+/**
+ * The formula cut into the pieces the readable names (`formula-names.js`) and the
+ * autocomplete care about, in order:
+ *
+ * - `literal`: `"…"`, `""` being an escaped quote; one not closed runs to the end.
+ * - `name`: `[…]`, closed by `]`; one not closed ends where a `[`, a `"` or a line break
+ *   starts (a label never holds one) or at the end — `closed` says which.
+ * - `code`: everything else.
+ */
+export function formulaSegments(text) {
+    const segments = [];
+    let code = '';
+    let index = 0;
+
+    const flush = () => {
+        if (code !== '') {
+            segments.push({ type: 'code', text: code });
+            code = '';
+        }
+    };
+
+    while (index < text.length) {
+        const char = text[index];
+
+        if (char === '"') {
+            let end = index + 1;
+            let closed = false;
+
+            while (end < text.length && !closed) {
+                if (text[end] !== '"') {
+                    end++;
+                } else if (text[end + 1] === '"') {
+                    end += 2;
+                } else {
+                    end++;
+                    closed = true;
+                }
+            }
+
+            flush();
+            segments.push({ type: 'literal', text: text.slice(index, end), closed });
+            index = end;
+        } else if (char === '[') {
+            let end = index + 1;
+
+            while (end < text.length && !'[]"\n'.includes(text[end])) {
+                end++;
+            }
+
+            const closed = text[end] === ']';
+
+            flush();
+            segments.push({ type: 'name', text: text.slice(index, closed ? end + 1 : end), closed });
+            index = closed ? end + 1 : end;
+        } else {
+            code += char;
+            index++;
+        }
+    }
+
+    flush();
+
+    return segments;
+}
+
+/** A character of a typed word: a key's (`[A-Za-z0-9_.]`) or a label's letter (`Núm`). */
+const WORD_CHAR = /[\p{L}\p{N}_.]/u;
+
+/** Where the word that ends at `caret` starts: the run of `WORD_CHAR` before it. */
 function tokenStart(source, caret) {
     let start = caret;
 
-    while (start > 0 && /[A-Za-z0-9_.]/.test(source[start - 1])) {
+    while (start > 0 && WORD_CHAR.test(source[start - 1])) {
         start--;
     }
 
@@ -180,38 +248,84 @@ function tokenStart(source, caret) {
 }
 
 /**
+ * The token the caret completes, or null inside a text literal (the words there are the
+ * user's own): a `name` from a `[` not closed before the caret — up to its `]` when the
+ * caret is inside one, so applying replaces the whole name — or the `word` before it.
+ */
+function tokenAt(text, caret) {
+    const segments = formulaSegments(text.slice(0, caret));
+    const last = segments[segments.length - 1];
+
+    if (last?.type === 'literal' && !last.closed) {
+        return null;
+    }
+
+    if (last?.type === 'name' && !last.closed) {
+        let end = caret;
+
+        while (end < text.length && !'[]"\n'.includes(text[end])) {
+            end++;
+        }
+
+        return { kind: 'name', start: caret - last.text.length, end: text[end] === ']' ? end + 1 : caret, token: last.text };
+    }
+
+    const start = tokenStart(text, caret);
+
+    return { kind: 'word', start, end: caret, token: text.slice(start, caret) };
+}
+
+/**
  * What can be typed at the caret, as `{label, insert, group}`: `insert` replaces the token
  * before the caret (see `applySuggestion`), `label` is what the user knows it by, `group`
- * the model or collection it belongs to.
+ * the model, collection or list it belongs to.
  *
  * - No token, or one that starts with a digit or a dot (a number): nothing.
- * - Inside a text literal: nothing — the words there are the user's own. `""` is an
- *   escaped quote, so the parity of the quotes before the token tells.
- * - A token without a dot: the models and collections whose key starts with it (inserted
- *   with their dot) and the functions whose name does, case-insensitively (with `(`).
- * - A token with a dot: the fields and collection columns whose full key starts with it.
- * - A caret inside a word (a key character right after it): nothing — the rest of the
+ * - Inside a text literal: nothing — the words there are the user's own (`""` is an
+ *   escaped quote).
+ * - A token with a dot: the models and collections whose key starts with it (with their
+ *   dot), the fields and collection columns whose full key does — a technical key typed
+ *   by hand still completes to keys.
+ * - A caret inside a word (a word character right after it): nothing — the rest of the
  *   word would be left after the insert.
  *
- * A suggestion that is exactly the token is left out (there is nothing to complete), and
- * at most `MAX_SUGGESTIONS` come back.
+ * With a catalogue from `scopedCatalogue` (it has `groups`), names are offered (spec §5):
+ *
+ * - After a `[`: the names whose text, or whose field's label, starts with what follows
+ *   it. A total is offered as its column's name: the user is writing a name, maybe
+ *   already inside `SUM(`.
+ * - A token without a dot: the items whose label starts with it, case-insensitively (an
+ *   item shown by its key: by its key), inserted as shown — a total whole, `SUM([…])`,
+ *   unless the token follows `SUM(` or `COUNT(` — then the functions whose name does.
+ *
+ * With the flat `formulaCatalogue`, a token without a dot offers the models and
+ * collections whose key starts with it (with their dot), then the functions.
+ *
+ * Functions are inserted with `(`. A suggestion that is exactly the token is left out
+ * (there is nothing to complete), and at most `MAX_SUGGESTIONS` come back.
  */
 export function suggestionsAt(source, caret, catalogue) {
     const text = String(source ?? '');
     const end = Math.max(0, Math.min(caret ?? text.length, text.length));
-    const start = tokenStart(text, end);
-    const token = text.slice(start, end);
+    const at = tokenAt(text, end);
+    const named = Array.isArray(catalogue?.groups);
 
-    if (token === '' || !/^[A-Za-z_]/.test(token)) {
+    if (at === null) {
+        return [];
+    }
+
+    if (at.kind === 'name') {
+        return named ? nameSuggestions(at.token, catalogue).slice(0, MAX_SUGGESTIONS) : [];
+    }
+
+    const { start, token } = at;
+
+    if (token === '' || !/^[\p{L}_]/u.test(token)) {
         return [];
     }
 
     // A caret inside a word: completing would leave the rest of it after the insert.
-    if (/[A-Za-z0-9_.]/.test(text[end] ?? '')) {
-        return [];
-    }
-
-    if ((text.slice(0, start).match(/"/g) ?? []).length % 2 === 1) {
+    if (WORD_CHAR.test(text[end] ?? '')) {
         return [];
     }
 
@@ -221,16 +335,18 @@ export function suggestionsAt(source, caret, catalogue) {
     const collections = catalogue?.collections ?? [];
     const found = [];
 
-    nodes.forEach((node) => {
-        if (matches(node.id + '.')) {
-            found.push({ label: node.label, insert: node.id + '.', group: node.label });
-        }
-    });
-    collections.forEach((collection) => {
-        if (matches(collection.key + '.')) {
-            found.push({ label: collection.label, insert: collection.key + '.', group: collection.label });
-        }
-    });
+    if (token.includes('.') || !named) {
+        nodes.forEach((node) => {
+            if (matches(node.id + '.')) {
+                found.push({ label: node.label, insert: node.id + '.', group: node.label });
+            }
+        });
+        collections.forEach((collection) => {
+            if (matches(collection.key + '.')) {
+                found.push({ label: collection.label, insert: collection.key + '.', group: collection.label });
+            }
+        });
+    }
 
     if (token.includes('.')) {
         nodes.forEach((node) => node.fields.forEach((field) => {
@@ -245,30 +361,73 @@ export function suggestionsAt(source, caret, catalogue) {
                 found.push({ label: column.label, insert: key, group: collection.label });
             }
         }));
-    } else {
-        (catalogue?.functions ?? []).forEach((name) => {
-            // `SUM` typed in full still completes to `SUM(`: the bracket is the suggestion.
-            if (name.toLowerCase().startsWith(prefix) && name + '(' !== token) {
-                found.push({ label: name, insert: name + '(', group: catalogue.functionsLabel ?? '' });
-            }
-        });
+
+        return found.slice(0, MAX_SUGGESTIONS);
     }
+
+    if (named) {
+        // Right after `SUM(`, a total is only its column's name: the bracket is already there.
+        const inTotal = /\b(SUM|COUNT)\s*\(\s*$/i.test(text.slice(0, start));
+        const seen = new Set();
+
+        catalogue.groups.forEach((group) => group.items.forEach((item) => {
+            const insert = group.kind === 'totals' && inTotal ? item.display : item.insert;
+            const known = item.display === item.key ? item.key : String(item.label ?? '');
+
+            if (!seen.has(insert) && insert !== token && known.toLowerCase().startsWith(prefix)) {
+                seen.add(insert);
+                found.push({ label: item.label, insert, group: group.label });
+            }
+        }));
+    }
+
+    (catalogue?.functions ?? []).forEach((entry) => {
+        const name = typeof entry === 'string' ? entry : entry.name;
+
+        // `SUM` typed in full still completes to `SUM(`: the bracket is the suggestion.
+        if (name.toLowerCase().startsWith(prefix) && name + '(' !== token) {
+            found.push({ label: name, insert: name + '(', group: catalogue.functionsLabel ?? '' });
+        }
+    });
 
     return found.slice(0, MAX_SUGGESTIONS);
 }
 
+/** The names behind a `[` not closed yet (see `suggestionsAt`), each once. */
+function nameSuggestions(token, catalogue) {
+    const prefix = token.slice(1).trimStart().toLowerCase();
+    const seen = new Set();
+    const found = [];
+
+    catalogue.groups.forEach((group) => group.items.forEach((item) => {
+        const name = item.display;
+
+        if (!name.startsWith('[') || seen.has(name) || name === token) {
+            return;
+        }
+
+        if (name.slice(1, -1).toLowerCase().startsWith(prefix) || String(item.label ?? '').toLowerCase().startsWith(prefix)) {
+            seen.add(name);
+            found.push({ label: item.label, insert: name, group: group.label });
+        }
+    }));
+
+    return found;
+}
+
 /**
- * The source with the token before the caret replaced by the suggestion, and the caret
- * right after it. Only that token: whatever follows the caret stays as it was.
+ * The source with the token at the caret replaced by the suggestion, and the caret right
+ * after it. Only that token: whatever follows the caret stays as it was — except the rest
+ * of a `[…]` name the caret is inside, which the new name replaces whole.
  */
 export function applySuggestion(source, caret, suggestion) {
     const text = String(source ?? '');
     const end = Math.max(0, Math.min(caret ?? text.length, text.length));
-    const start = tokenStart(text, end);
+    const at = tokenAt(text, end) ?? { start: end, end };
 
     return {
-        source: text.slice(0, start) + suggestion.insert + text.slice(end),
-        caret: start + suggestion.insert.length,
+        source: text.slice(0, at.start) + suggestion.insert + text.slice(at.end),
+        caret: at.start + suggestion.insert.length,
     };
 }
 
