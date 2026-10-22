@@ -72,6 +72,41 @@ class FormulaEvaluatorTest extends TestCase
         $this->assertSame('', Formula::evaluate('YEAR(d.x)', ['d.x' => '']));
     }
 
+    public function test_dates_must_be_whole_real_calendar_dates(): void
+    {
+        // The prefix alone is not enough: trailing text is not a date.
+        $this->assertSame('', Formula::evaluate('YEAR(d.x)', ['d.x' => '2026-10-01abc']));
+        $this->assertSame('', Formula::evaluate('YEAR(d.x)', ['d.x' => '2026-10-01 tomorrow']));
+        // Carbon would roll an impossible day over into the next month.
+        $this->assertSame('', Formula::evaluate('YEAR(d.x)', ['d.x' => '2026-02-30']));
+        $this->assertSame('', Formula::evaluate('MONTH(d.x)', ['d.x' => '2026-13-01']));
+        // Real date-times in the usual shapes still read.
+        $this->assertSame(2024, Formula::evaluate('YEAR(d.x)', ['d.x' => '2024-02-29']));
+        $this->assertSame(10, Formula::evaluate('MONTH(d.x)', ['d.x' => '2026-10-01 12:30']));
+        $this->assertSame(1, Formula::evaluate('DAY(d.x)', ['d.x' => '2026-10-01T12:30:45.123Z']));
+        $this->assertSame(1, Formula::evaluate('DAY(d.x)', ['d.x' => '2026-10-01T12:30:45+01:00']));
+    }
+
+    public function test_numeric_equality_tolerates_float_noise(): void
+    {
+        $this->assertSame('TRUE', Formula::evaluate('0.1 + 0.2 = 0.3', []));
+        $this->assertSame('FALSE', Formula::evaluate('0.1 + 0.2 <> 0.3', []));
+        $this->assertSame('TRUE', Formula::evaluate('0.1 + 0.2 <= 0.3', []));
+        $this->assertSame('FALSE', Formula::evaluate('0.1 + 0.2 > 0.3', []));
+        // Real differences are still differences.
+        $this->assertSame('FALSE', Formula::evaluate('0.3 = 0.30001', []));
+        $this->assertSame('TRUE', Formula::evaluate('a.b = 1229999.98', ['a.b' => 999999.99 + 229999.99]));
+    }
+
+    public function test_check_reports_any_failure_while_walking_as_syntax(): void
+    {
+        // A malformed catalogue (columns not a list) must not escape as a TypeError.
+        $error = Formula::check('SUM(lines.qty)', [], ['lines' => 'not-a-list']);
+
+        $this->assertInstanceOf(FormulaException::class, $error);
+        $this->assertSame('syntax', $error->reason);
+    }
+
     public function test_bad_types_and_missing_references_give_empty_string(): void
     {
         $this->assertSame('', Formula::evaluate('"abc" * 2', []));

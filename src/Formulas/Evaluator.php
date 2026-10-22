@@ -121,10 +121,10 @@ final class Evaluator
         $rightEmpty = $right === null || $right === '';
 
         if ($this->isNumeric($left) && $this->isNumeric($right)) {
-            $order = $this->number($left) <=> $this->number($right);
+            $order = $this->numericOrder($this->number($left), $this->number($right));
         } elseif (($leftEmpty && $this->isNumeric($right)) || ($rightEmpty && $this->isNumeric($left))) {
             // A blank cell is 0 next to a number, like in a spreadsheet.
-            $order = $this->number($left) <=> $this->number($right);
+            $order = $this->numericOrder($this->number($left), $this->number($right));
         } else {
             $order = strcmp($this->text($left), $this->text($right)) <=> 0;
         }
@@ -137,6 +137,21 @@ final class Evaluator
             '>' => $order > 0,
             '>=' => $order >= 0,
         };
+    }
+
+    /**
+     * Two numbers within float noise of each other are equal: `0.1 + 0.2 = 0.3`
+     * has to be TRUE on a printed document, as it is in a spreadsheet. The
+     * tolerance is relative so it holds for large amounts as well as small ones,
+     * and it lives in the ordering so `<=`/`>=` agree with `=`/`<>`.
+     */
+    private function numericOrder(int|float $left, int|float $right): int
+    {
+        if (abs($left - $right) <= 1e-9 * max(1, abs($left), abs($right))) {
+            return 0;
+        }
+
+        return $left <=> $right;
     }
 
     /**
@@ -348,7 +363,13 @@ final class Evaluator
     private function date(mixed $value): CarbonImmutable
     {
         $text = trim($this->text($value));
-        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $text) !== 1) {
+        // The whole value, not a prefix: "2026-10-01 tomorrow" is not a date.
+        $pattern = '/^(\d{4})-(\d{2})-(\d{2})(?:[ T]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)?$/';
+        if (preg_match($pattern, $text, $m) !== 1) {
+            throw new FormulaException('type', 'Not a date.');
+        }
+        // Carbon rolls an impossible day over ("2026-02-30" becomes March 2nd).
+        if (! checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
             throw new FormulaException('type', 'Not a date.');
         }
 

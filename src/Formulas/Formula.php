@@ -47,6 +47,9 @@ final class Formula
             self::walk($ast, $knownKeys, $collections, $rowCollection, false);
         } catch (FormulaException $e) {
             return $e;
+        } catch (Throwable) {
+            // Same contract as parsing: the editor gets a reason, never a crash.
+            return new FormulaException('syntax');
         }
 
         return null;
