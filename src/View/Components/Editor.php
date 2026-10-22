@@ -184,6 +184,7 @@ class Editor extends Component
             'trait.code_type'     => __('templates::editor.traits.code_type'),
             'trait.page_format'   => __('templates::editor.traits.page_format'),
             'trait.content'       => __('templates::editor.traits.content'),
+            'trait.wrap'          => __('templates::editor.traits.wrap'),
             'trait.format'        => __('templates::editor.traits.format'),
             'trait.file'          => __('templates::editor.traits.file'),
             'trait.fit'           => __('templates::editor.traits.fit'),
@@ -279,6 +280,7 @@ class Editor extends Component
             'check.hidden'          => __('templates::editor.checks.hidden'),
             'check.scope'           => __('templates::editor.checks.scope'),
             'check.off_sheet'       => __('templates::editor.checks.off_sheet'),
+            'check.text_overflow'   => __('templates::editor.checks.text_overflow'),
             'check.code_incomplete' => __('templates::editor.checks.code_incomplete'),
 
             'error.image_too_large'  => __('templates::editor.errors.image_too_large'),

@@ -25,6 +25,7 @@ import { icons } from './icons.js';
 import {
     checkLegalFieldsLocally,
     checkOffSheetLocally,
+    checkTextOverflowLocally,
     restoreMissingLegalFields,
     snapIntoSheet,
     styleManagerSectors,
@@ -398,7 +399,11 @@ async function mountEditor(el) {
             }
 
             const local = config.editable
-                ? [...checkLegalFieldsLocally(editor, config), ...checkOffSheetLocally(editor, config)]
+                ? [
+                    ...checkLegalFieldsLocally(editor, config),
+                    ...checkOffSheetLocally(editor, config),
+                    ...checkTextOverflowLocally(editor, config),
+                ]
                 : [];
             const problems = mergeProblems(serverProblems, local);
 

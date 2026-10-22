@@ -611,3 +611,25 @@ function format(template, replacements) {
         String(template ?? ''),
     );
 }
+
+/**
+ * Live check: a block on several lines whose text does not fit its box (CGE-52). What does
+ * not fit is cut in the PDF, so this warns; for a legal value the activation refuses it.
+ */
+export function checkTextOverflowLocally(editor, config) {
+    const problems = [];
+
+    editor.getWrapper()?.find('[data-tpl-wrap="1"]').forEach((component) => {
+        const el = component.getEl?.();
+
+        if (el && el.scrollHeight > el.clientHeight + 1) {
+            problems.push({
+                code: 'L-WRAP',
+                componentId: component.getId(),
+                message: format(config.strings['check.text_overflow'], { field: blockLabel(component, config) }),
+            });
+        }
+    });
+
+    return problems;
+}

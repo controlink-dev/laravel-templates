@@ -876,8 +876,10 @@ class LayoutValidator
     /**
      * The block's box relative to its zone, or null when the layout does not state it.
      *
-     * A text block with no height is one line of its own font: blocks never wrap
-     * (`white-space: nowrap` in print.css). That line is measured as its em box, the
+     * A text block with no height is one line of its own font: blocks do not wrap
+     * (`white-space: nowrap` in print.css) unless "Várias linhas" is on, and even then
+     * the first line is always there — the editor gives a wrapped block its height, and
+     * without one the first line is the least it covers. That line is measured as its em box, the
      * font size, not a padded line box: the band under the descenders is where an
      * underline is drawn, and counting it would refuse a rule that only touches the text.
      * A missing width says nothing (auto-width fields are a known gap of the static rule),
