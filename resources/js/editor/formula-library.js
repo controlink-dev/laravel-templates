@@ -75,6 +75,23 @@ export function exampleLine(template, example) {
     return String(template ?? ':example').replace(':example', () => String(example ?? ''));
 }
 
+/**
+ * Whether a group of the library is shown open. While a search is typed every group that
+ * still has matches is open — the search never changes what the user chose. Otherwise
+ * what the user chose for that tab's group (`stateMap`, keyed `tab:groupId`), and by
+ * default only the row group ("Esta linha") open: the rest starts folded, so a long
+ * catalogue reads as a list of headings.
+ */
+export function groupExpanded(stateMap, tab, groupId, query, isRowGroup = false) {
+    if (fold(query).trim() !== '') {
+        return true;
+    }
+
+    const key = tab + ':' + groupId;
+
+    return stateMap?.has(key) ? Boolean(stateMap.get(key)) : Boolean(isRowGroup);
+}
+
 /** English fallbacks, for a host whose strings predate the library. */
 const FALLBACK = {
     'formula.library.heading': 'Fields and functions',
@@ -114,6 +131,9 @@ export function createFormulaLibrary({ rail, config }) {
     let state = null;
     let tab = 'fields';
     let query = '';
+    // `tab:groupId` -> open; kept for the life of the editor (across retargets and
+    // close/open), so a group the user opened stays open the next time.
+    const expanded = new Map();
 
     const container = document.createElement('div');
     container.className = 'tpl-formula-library';
@@ -210,17 +230,53 @@ export function createFormulaLibrary({ rail, config }) {
         return button;
     };
 
-    const section = (label) => {
+    /**
+     * A group: its heading is a button (chevron, name, count) that folds it. Folding acts
+     * on the drawn group in place — no redraw, so the heading keeps the keyboard focus —
+     * and is remembered, unless a search is typed: then every group with matches is open
+     * and a click folds only this view of it.
+     */
+    const section = (id, label, count, isRowGroup = false) => {
         const group = element('div', 'tpl-formula-library__group');
+        const heading = element('button', 'tpl-formula-library__group-head');
+        const body = element('div', 'tpl-formula-library__group-body');
+        let shown = groupExpanded(expanded, tab, id, query, isRowGroup);
 
-        group.append(element('div', 'tpl-formula-library__group-head', label));
+        const show = () => {
+            heading.setAttribute('aria-expanded', String(shown));
+            group.classList.toggle('is-collapsed', !shown);
+            body.hidden = !shown;
+        };
 
-        return group;
+        heading.type = 'button';
+        heading.dataset.group = id;
+        heading.append(
+            element('span', 'tpl-formula-library__chevron'),
+            element('span', 'tpl-formula-library__group-label', label),
+            element('span', 'tpl-formula-library__group-count', '· ' + count),
+        );
+        // Not taking the focus: the caret stays in the formula box. Enter and Space still
+        // fold it once it is reached with Tab (a button's own click).
+        heading.addEventListener('mousedown', (event) => event.preventDefault());
+        heading.addEventListener('click', () => {
+            shown = !shown;
+
+            if (fold(query).trim() === '') {
+                expanded.set(tab + ':' + id, shown);
+            }
+
+            show();
+        });
+
+        show();
+        group.append(heading, body);
+
+        return { group, body };
     };
 
     function renderFields(groups) {
         groups.forEach((group) => {
-            const node = section(group.label);
+            const { group: node, body } = section(group.id, group.label, group.items.length, group.kind === 'row');
 
             group.items.forEach((item) => {
                 const button = choice('tpl-formula-library__field', item.insert);
@@ -234,7 +290,7 @@ export function createFormulaLibrary({ rail, config }) {
                 // The technical key is noise in a narrow rail: it stays in the tooltip only.
                 button.title = item.key && item.key !== shown ? item.key : item.insert;
                 button.append(element('span', '', shown));
-                node.append(button);
+                body.append(button);
             });
 
             list.append(node);
@@ -243,7 +299,7 @@ export function createFormulaLibrary({ rail, config }) {
 
     function renderFunctions(functions) {
         functionGroups(functions).forEach((group) => {
-            const node = section(t('formula.group.' + group.id));
+            const { group: node, body } = section(group.id, t('formula.group.' + group.id), group.functions.length);
 
             group.functions.forEach((fn) => {
                 const button = choice('tpl-formula-library__function', fn.name + '(');
@@ -260,7 +316,7 @@ export function createFormulaLibrary({ rail, config }) {
                     button.append(element('span', 'tpl-formula-library__example', exampleLine(t('formula.library.example'), example)));
                 }
 
-                node.append(button);
+                body.append(button);
             });
 
             list.append(node);

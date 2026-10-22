@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { createFormulaLibrary, exampleLine, filterLibrary, functionGroups } from '../../resources/js/editor/formula-library.js';
+import { createFormulaLibrary, exampleLine, filterLibrary, functionGroups, groupExpanded } from '../../resources/js/editor/formula-library.js';
 
 /*
  * The "Campos e funções" library (CGE-37, spec §6.3): the pure parts — what the search
@@ -211,5 +211,140 @@ describe('createFormulaLibrary', () => {
         assert.equal(library.isOpen(), false);
         assert.equal(library.target(), null);
         assert.equal(rail.find('tpl-formula-library'), null, 'the library left the rail');
+    });
+});
+
+describe('groupExpanded', () => {
+    it('opens only the row group by default', () => {
+        const state = new Map();
+
+        assert.equal(groupExpanded(state, 'fields', 'row', '', true), true);
+        assert.equal(groupExpanded(state, 'fields', 'customer', '', false), false);
+        assert.equal(groupExpanded(state, 'functions', 'math', ''), false);
+    });
+
+    it('follows what the user chose, per tab', () => {
+        const state = new Map([['fields:customer', true], ['fields:row', false]]);
+
+        assert.equal(groupExpanded(state, 'fields', 'customer', '', false), true);
+        assert.equal(groupExpanded(state, 'fields', 'row', '', true), false);
+        assert.equal(groupExpanded(state, 'functions', 'customer', '', false), false, 'another tab is another group');
+    });
+
+    it('opens every group while a search is typed, without changing the choice', () => {
+        const state = new Map([['fields:row', false]]);
+
+        assert.equal(groupExpanded(state, 'fields', 'row', 'quant', true), true);
+        assert.equal(groupExpanded(state, 'fields', 'customer', ' nome ', false), true);
+        assert.equal(groupExpanded(state, 'fields', 'customer', '   ', false), false, 'a blank query is no search');
+        assert.deepEqual([...state], [['fields:row', false]]);
+    });
+});
+
+describe('createFormulaLibrary folding groups', () => {
+    class FakeElement {
+        constructor(tag) {
+            this.tagName = tag.toUpperCase();
+            this.children = [];
+            this.listeners = {};
+            this.dataset = {};
+            this.attributes = {};
+            this.className = '';
+            this.textContent = '';
+            this.value = '';
+            this.hidden = false;
+            this.parent = null;
+            const classes = new Set();
+            this.classList = {
+                add: (name) => classes.add(name),
+                remove: (name) => classes.delete(name),
+                toggle: (name, on) => (on ?? !classes.has(name) ? classes.add(name) : classes.delete(name)),
+                contains: (name) => classes.has(name),
+            };
+        }
+
+        setAttribute(name, value) { this.attributes[name] = String(value); }
+        addEventListener(event, handler) { (this.listeners[event] ??= []).push(handler); }
+        append(...nodes) { nodes.forEach((node) => { node.parent = this; this.children.push(node); }); }
+        replaceChildren(...nodes) { this.children = []; this.append(...nodes); }
+        remove() { if (this.parent) { this.parent.children = this.parent.children.filter((node) => node !== this); this.parent = null; } }
+        contains(node) { return node === this || this.children.some((child) => child.contains(node)); }
+        closest() { return null; }
+        querySelectorAll() { return []; }
+        findAll(className) { return [...(this.className === className ? [this] : []), ...this.children.flatMap((child) => child.findAll(className))]; }
+        fire(event) {
+            let prevented = false;
+            (this.listeners[event] ?? []).forEach((handler) => handler({ preventDefault() { prevented = true; } }));
+
+            return prevented;
+        }
+    }
+
+    const setUp = () => {
+        globalThis.document = { createElement: (tag) => new FakeElement(tag) };
+        const rail = new FakeElement('div');
+        const config = {
+            strings: {},
+            bindings: [{ key: 'lines', label: 'Linhas', type: 'collection', columns: [{ key: 'quantity', label: 'Quantidade' }] }],
+            nodes: [{ id: 'customer', label: 'Cliente', fields: [{ key: 'customer.name', label: 'Nome' }, { key: 'customer.city', label: 'Cidade' }] }],
+        };
+        const target = { isConnected: true, dataset: { formulaOwner: 'f1' }, value: '', setRangeText() {}, focus() {}, dispatchEvent() {} };
+
+        return { rail, target, library: createFormulaLibrary({ rail, config }) };
+    };
+
+    const heads = (rail) => Object.fromEntries(rail.findAll('tpl-formula-library__group-head')
+        .map((head) => [head.dataset.group, head]));
+    const isOpen = (head) => head.attributes['aria-expanded'] === 'true' && head.parent.children[1].hidden === false;
+    const search = (rail, text) => {
+        const input = rail.findAll('tpl-formula-library__search')[0];
+
+        input.value = text;
+        input.fire('input');
+    };
+
+    it('starts with only the row group open, each heading with its count', () => {
+        const { rail, target, library } = setUp();
+
+        library.open({ target, rowCollection: 'lines' });
+        const groups = heads(rail);
+
+        assert.deepEqual(Object.keys(groups), ['row', 'customer', 'totals']);
+        assert.equal(isOpen(groups.row), true);
+        assert.equal(isOpen(groups.customer), false);
+        assert.equal(isOpen(groups.totals), false);
+        assert.equal(groups.customer.findAll('tpl-formula-library__group-count')[0].textContent, '· 2');
+    });
+
+    it('folds on click without taking the focus, and remembers it across close and open', () => {
+        const { rail, target, library } = setUp();
+
+        library.open({ target, rowCollection: 'lines' });
+        assert.equal(heads(rail).customer.fire('mousedown'), true, 'mousedown is prevented');
+        heads(rail).customer.fire('click');
+        heads(rail).row.fire('click');
+        assert.equal(isOpen(heads(rail).customer), true);
+        assert.equal(isOpen(heads(rail).row), false);
+
+        library.open({ target: { ...target }, rowCollection: 'lines' });
+        assert.equal(isOpen(heads(rail).customer), true, 'kept across a retarget');
+
+        library.close();
+        library.open({ target, rowCollection: 'lines' });
+        assert.equal(isOpen(heads(rail).customer), true, 'kept across close and open');
+        assert.equal(isOpen(heads(rail).row), false);
+    });
+
+    it('opens every matching group while searching, and restores the choice after', () => {
+        const { rail, target, library } = setUp();
+
+        library.open({ target, rowCollection: 'lines' });
+        search(rail, 'a');
+        Object.values(heads(rail)).forEach((head) => assert.equal(isOpen(head), true, head.dataset.group));
+
+        heads(rail).customer.fire('click');
+        search(rail, '');
+        assert.equal(isOpen(heads(rail).customer), false, 'a click while searching is not remembered');
+        assert.equal(isOpen(heads(rail).row), true);
     });
 });

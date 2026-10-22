@@ -2073,13 +2073,70 @@ select.tpl-pf-input {
     gap: 0.125rem;
 }
 
+/* The group heading folds its group: a flat button, chevron then name then count. */
 .tpl-editor-root .tpl-formula-library__group-head {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    border: 0;
+    border-radius: 0.375rem;
     padding: 0.375rem 0.125rem 0.125rem;
+    background: transparent;
+    font: inherit;
     font-size: 0.625rem;
     font-weight: 700;
     letter-spacing: 0.08em;
+    text-align: left;
     text-transform: uppercase;
     color: var(--tpl-slate-400, #94a3b8);
+    cursor: pointer;
+}
+
+.tpl-editor-root .tpl-formula-library__group-head:hover {
+    color: var(--tpl-slate-600, #475569);
+}
+
+.tpl-editor-root .tpl-formula-library__group-head:focus-visible {
+    outline: 2px solid var(--tpl-primary, #4f46e5);
+    outline-offset: 1px;
+}
+
+.tpl-editor-root .tpl-formula-library__chevron {
+    flex: none;
+    width: 0.35rem;
+    height: 0.35rem;
+    margin: 0 0.15rem 0 0.1rem;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg) translate(-1px, -1px);
+    transition: transform 0.12s ease;
+}
+
+.tpl-editor-root .tpl-formula-library__group.is-collapsed .tpl-formula-library__chevron {
+    transform: rotate(-45deg);
+}
+
+.tpl-editor-root .tpl-formula-library__group-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.tpl-editor-root .tpl-formula-library__group-count {
+    flex: none;
+    font-weight: 600;
+}
+
+.tpl-editor-root .tpl-formula-library__group-body {
+    display: grid;
+    min-width: 0;
+    gap: 0.125rem;
+}
+
+.tpl-editor-root .tpl-formula-library__group-body[hidden] {
+    display: none;
 }
 
 .tpl-editor-root .tpl-formula-library__field,
