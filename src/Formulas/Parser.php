@@ -46,6 +46,7 @@ final class Parser
         'MONTH' => [1, 1],
         'DAY' => [1, 1],
         'DAYS' => [2, 2],
+        'TEXT' => [2, 3],
     ];
 
     private const REFERENCE = '/^[a-z_][a-z0-9_]*(\.[a-z0-9_]+)+$/';

@@ -76,6 +76,15 @@ class FormulaParserTest extends TestCase
         $this->assertSame('{{ a.b }} {% x %} | ^ %', Parser::parse('"{{ a.b }} {% x %} | ^ %"')['value']);
     }
 
+    public function test_text_literals_accept_utf8(): void
+    {
+        $this->assertSame('à ã € ç', Parser::parse('"à ã € ç"')['value']);
+
+        $ast = Parser::parse('"Os artigos foram colocados à disposição em " & TEXT(d.date, "date")');
+        $this->assertSame('&', $ast['op']);
+        $this->assertSame('TEXT', $ast['right']['name']);
+    }
+
     public function test_if_parses_as_call_with_three_args(): void
     {
         $ast = Parser::parse('IF(a.b > 1, "yes", "no")');
@@ -109,7 +118,7 @@ class FormulaParserTest extends TestCase
         $this->assertArrayNotHasKey('TODAY', Parser::FUNCTIONS);
 
         foreach (['IF', 'AND', 'OR', 'NOT', 'SUM', 'COUNT', 'ROUND', 'ABS', 'MIN', 'MAX', 'UPPER', 'LOWER',
-            'CONCAT', 'LEFT', 'RIGHT', 'LEN', 'TRIM', 'YEAR', 'MONTH', 'DAY', 'DAYS'] as $name) {
+            'CONCAT', 'LEFT', 'RIGHT', 'LEN', 'TRIM', 'YEAR', 'MONTH', 'DAY', 'DAYS', 'TEXT'] as $name) {
             $this->assertArrayHasKey($name, Parser::FUNCTIONS);
         }
     }
