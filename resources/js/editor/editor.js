@@ -18,6 +18,7 @@ import { mountPreviewPanel, plainProjectData, refreshPreview } from './preview-f
 import { createFormatPreview } from './format-preview.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
+import { offsetCopy } from './copy-offset.js';
 import { mountGeometryPanel } from './geometry-panel.js';
 import { icons } from './icons.js';
 import {
@@ -2145,8 +2146,24 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         dropPoint = { x: event.clientX, y: event.clientY };
     });
 
+    /*
+     * The block just dropped is selected, with its Field tab open (CGE-53): it is the one
+     * the user is about to set up, and a small block is hard to click afterwards.
+     */
+    const selectDropped = (component) => {
+        editor.select(component);
+        root.querySelector('[data-tpl-tab="field"]')?.click();
+    };
+
     editor.on('block:drag:stop', (component) => {
-        if (!component || rollMode) {
+        if (!component) {
+            return;
+        }
+
+        // A roll flows: the sorter already placed the block, there is nothing to settle.
+        if (rollMode) {
+            selectDropped(component);
+
             return;
         }
 
@@ -2195,6 +2212,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
                 reparentToZone(editor, config, component);
             }
 
+            selectDropped(component);
+
             return;
         }
 
@@ -2216,6 +2235,45 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         const step = (rescueCascade++ % 6) * 4;
 
         component.addStyle({ left: round(2 + step) + 'mm', top: round(2 + step) + 'mm' });
+        selectDropped(component);
+    });
+
+    /*
+     * A copy (toolbar clone or Ctrl+C/V) is selected and set a few millimetres off the
+     * block it came from (CGE-53). GrapesJS puts it exactly on top and keeps the original
+     * selected, so a copy looked like nothing had happened. The copy's `#id` rule is a
+     * copy of the original's, which is where the offset is read from; the block selected
+     * when pasting is the base, so pasting again from the copy makes a staircase.
+     */
+    let pasted = [];
+
+    editor.on('component:paste', (component) => {
+        const base = editor.getSelected();
+
+        if (!rollMode && base && base !== component) {
+            const el = component.getEl?.();
+            const band = el?.offsetParent;
+            const box = measuredBox(el);
+
+            if (box && band) {
+                component.addStyle(offsetCopy(
+                    base.getStyle(),
+                    { width: box.width, height: box.height },
+                    { width: band.clientWidth / PX_PER_MM, height: band.clientHeight / PX_PER_MM },
+                ));
+            }
+        }
+
+        // Selected once the paste is over: the command ends by refreshing the block it
+        // pasted from, and a paste of several blocks fires once per block.
+        if (!pasted.length) {
+            setTimeout(() => {
+                editor.select(pasted);
+                pasted = [];
+            });
+        }
+
+        pasted.push(component);
     });
 
     return { sync, drawRulers, fitZoom, attach };
