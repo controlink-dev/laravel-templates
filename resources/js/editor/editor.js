@@ -17,6 +17,7 @@ import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, plainProjectData, refreshPreview, selectionOf } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
 import { createFormulaPreview, formulaFunctionsOf, selectionHeading } from './formula.js';
+import { createFormulaLibrary } from './formula-library.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
 import { freeSpotForCopy } from './copy-offset.js';
@@ -141,6 +142,9 @@ async function mountEditor(el) {
 
     config.paper = paper;
     applyPaperVars(root, paper);
+
+    // "Campos e funções" (CGE-37): the formula boxes open it over the blocks rail.
+    config.formulaLibrary = createFormulaLibrary({ rail: chrome.blocks, config });
 
     /*
      * The tenant colour has to be handed to the canvas explicitly: the iframe is a

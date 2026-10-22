@@ -385,6 +385,57 @@ return [
             'TEXT'   => 'O valor escrito como o documento o imprime: data, montante ou número. O terceiro argumento, opcional, é uma opção desse formato (numa data, o padrão).',
         ],
 
+        // A coluna Blocos enquanto se edita uma fórmula: "Campos e funções" (spec §6.3).
+        // `:example` é preenchido no JS.
+        'library' => [
+            'heading'          => 'Campos e funções',
+            'fields'           => 'Campos',
+            'functions'        => 'Funções',
+            'search_fields'    => 'Procurar campo…',
+            'search_functions' => 'Procurar função…',
+            'empty'            => 'Nada encontrado.',
+            'example'          => 'ex.: :example',
+            'this_row'         => 'Esta linha',
+        ],
+
+        // Os grupos de funções da lista (e "Totais da tabela" também nos campos).
+        'groups' => [
+            'math'       => 'Contas',
+            'totals'     => 'Totais da tabela',
+            'conditions' => 'Condições',
+            'text'       => 'Texto',
+            'dates'      => 'Datas',
+            'other'      => 'Outras',
+        ],
+
+        // Um exemplo por função, escrito com chaves técnicas do tipo Documento fiscal; o
+        // editor mostra-o com os nomes legíveis do tipo aberto (os campos que esse tipo
+        // não tem ficam como estão). Texto entre aspas não é traduzido pelo editor.
+        'examples' => [
+            'IF'     => 'IF(lines.quantity > 0, lines.amount, "")',
+            'AND'    => 'IF(AND(lines.quantity > 0, lines.unit_price > 0), "Sim", "Não")',
+            'OR'     => 'IF(OR(totals.tax_total = 0, totals.net_total = 0), "Isento", "")',
+            'NOT'    => 'IF(NOT(totals.tax_total > 0), "Sem IVA", "")',
+            'SUM'    => 'SUM(lines.amount)',
+            'COUNT'  => 'COUNT(lines.code)',
+            'ROUND'  => 'ROUND(totals.net_total * 0.23, 2)',
+            'ABS'    => 'ABS(totals.total_due)',
+            'MIN'    => 'MIN(lines.quantity, 10)',
+            'MAX'    => 'MAX(totals.total_due, 0)',
+            'UPPER'  => 'UPPER(customer.name)',
+            'LOWER'  => 'LOWER(customer.name)',
+            'CONCAT' => 'CONCAT(document.designation, " ", document.number)',
+            'LEFT'   => 'LEFT(lines.description, 40)',
+            'RIGHT'  => 'RIGHT(customer.tax_id, 4)',
+            'LEN'    => 'LEN(lines.description)',
+            'TRIM'   => 'TRIM(customer.address)',
+            'YEAR'   => 'YEAR(document.issue_date)',
+            'MONTH'  => 'MONTH(document.issue_date)',
+            'DAY'    => 'DAY(document.issue_date)',
+            'DAYS'   => 'DAYS(document.supply_date, document.issue_date)',
+            'TEXT'   => '"Total: " & TEXT(totals.total_due, "money")',
+        ],
+
         // Coluna de fórmula da tabela de linhas: calculada para cada linha.
         'column_label'       => 'Fórmula',
         'add_column'         => '+ Coluna de fórmula',

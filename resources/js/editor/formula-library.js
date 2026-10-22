@@ -1,0 +1,318 @@
+/* ============================================================================
+ * "Campos e funções" (CGE-37, spec §6.3): while a formula is edited, the Blocks rail
+ * shows what the formula may use instead of the blocks — the fields, grouped by model and
+ * limited to what this place accepts (§4), and the functions, grouped by kind, each with
+ * its signature, one line and an example. A click inserts at the caret of the formula box.
+ *
+ * Mounted inside the rail the blade already has (`[data-tpl-blocks]` and its
+ * `.tpl-rail-head`): no markup of its own in the view. The blocks are hidden by a class on
+ * the rail, never removed, so GrapesJS's block manager keeps owning them — even when it
+ * renders again while the library is open.
+ * ========================================================================= */
+
+import { keepsKeyInFormulaBox } from './formula.js';
+import { FUNCTION_GROUPS, functionGroupOf, scopedCatalogue, toDisplay } from './formula-names.js';
+
+/** The class on the rail while the library is shown (see editor.css). */
+const OPEN_CLASS = 'is-formula-library';
+
+/** Text compared as the user means it: no case, no accents ("preco" finds "Preço"). */
+function fold(text) {
+    return String(text ?? '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+/**
+ * The library after a search: the field groups keeping the items whose label, shown name
+ * or key contains the query, the functions whose name, signature or description does.
+ * Groups left empty are dropped; a blank query keeps everything. The catalogue given is
+ * not changed.
+ */
+export function filterLibrary(catalogue, query) {
+    const needle = fold(query).trim();
+    const groups = catalogue?.groups ?? [];
+    const functions = catalogue?.functions ?? [];
+
+    if (needle === '') {
+        return { groups, functions };
+    }
+
+    const matches = (...texts) => texts.some((text) => fold(text).includes(needle));
+
+    return {
+        groups: groups
+            .map((group) => ({ ...group, items: group.items.filter((item) => matches(item.label, item.display, item.key)) }))
+            .filter((group) => group.items.length),
+        functions: functions.filter((fn) => matches(fn.name, fn.signature, fn.description)),
+    };
+}
+
+/**
+ * The functions by kind, in the reference's order (`FUNCTION_GROUPS`), then any the
+ * server accepts that the list does not know yet. Each keeps its own order; a kind with
+ * no function is left out.
+ *
+ * @returns {{id: string, functions: object[]}[]}
+ */
+export function functionGroups(functions) {
+    const order = [...Object.keys(FUNCTION_GROUPS), 'other'];
+    const byGroup = new Map(order.map((id) => [id, []]));
+
+    (functions ?? []).forEach((fn) => {
+        const id = fn.group ?? functionGroupOf(fn.name);
+
+        byGroup.get(byGroup.has(id) ? id : 'other').push(fn);
+    });
+
+    return order.filter((id) => byGroup.get(id).length).map((id) => ({ id, functions: byGroup.get(id) }));
+}
+
+/** English fallbacks, for a host whose strings predate the library. */
+const FALLBACK = {
+    'formula.library.heading': 'Fields and functions',
+    'formula.library.fields': 'Fields',
+    'formula.library.functions': 'Functions',
+    'formula.library.search_fields': 'Search fields…',
+    'formula.library.search_functions': 'Search functions…',
+    'formula.library.empty': 'Nothing found.',
+    'formula.library.example': 'e.g. :example',
+    'formula.group.math': 'Arithmetic',
+    'formula.group.totals': 'Table totals',
+    'formula.group.conditions': 'Conditions',
+    'formula.group.text': 'Text',
+    'formula.group.dates': 'Dates',
+    'formula.group.other': 'Other',
+};
+
+/**
+ * The library over the rail `rail` (the `[data-tpl-blocks]` element).
+ *
+ * - `open({target, rowCollection, onInsert})` shows it for the formula box `target` — of
+ *   a column of the table over `rowCollection`, or of a field (null). Called again while
+ *   open, it only retargets: the new box, the new catalogue, the same tab and search.
+ * - `close()` gives the rail its blocks and its heading back; calling it again does nothing.
+ *
+ * A click inserts the item (`item.insert`, or `NAME(` for a function) over the box's
+ * selection, puts the caret after it, gives the box its focus back and fires a bubbling
+ * `input` on it — the same path as typing — then calls `onInsert(text)`.
+ */
+export function createFormulaLibrary({ rail, config }) {
+    const strings = config?.strings ?? {};
+    const t = (key) => strings[key] ?? FALLBACK[key] ?? '';
+    const head = rail?.closest('.tpl-rail')?.querySelector('.tpl-rail-head') ?? null;
+
+    let state = null;
+    let tab = 'fields';
+    let query = '';
+
+    const container = document.createElement('div');
+    container.className = 'tpl-formula-library';
+
+    const tabs = document.createElement('div');
+    tabs.className = 'tpl-formula-library__tabs';
+    tabs.setAttribute('role', 'tablist');
+
+    const tabButton = (id, label) => {
+        const button = document.createElement('button');
+
+        button.type = 'button';
+        button.setAttribute('role', 'tab');
+        button.dataset.tab = id;
+        button.textContent = t(label);
+        // Not taking the focus: the caret stays in the formula box.
+        button.addEventListener('mousedown', (event) => event.preventDefault());
+        button.addEventListener('click', () => {
+            tab = id;
+            render();
+        });
+
+        return button;
+    };
+
+    tabs.append(tabButton('fields', 'formula.library.fields'), tabButton('functions', 'formula.library.functions'));
+
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'tpl-formula-library__search';
+    search.setAttribute('autocomplete', 'off');
+    search.addEventListener('input', () => {
+        query = search.value;
+        renderList();
+    });
+    // Typing here edits the search, never the canvas (Backspace must not delete a block).
+    search.addEventListener('keydown', (event) => {
+        if (keepsKeyInFormulaBox(event)) {
+            event.stopPropagation();
+        }
+    });
+
+    const list = document.createElement('div');
+    list.className = 'tpl-formula-library__list';
+
+    container.append(tabs, search, list);
+
+    function insert(text) {
+        const target = state?.target;
+
+        if (!target) {
+            return;
+        }
+
+        const start = target.selectionStart ?? target.value.length;
+        const end = target.selectionEnd ?? start;
+
+        target.setRangeText(text, start, end, 'end');
+        target.focus();
+        target.dispatchEvent(new Event('input', { bubbles: true }));
+        state.onInsert?.(text);
+    }
+
+    const element = (tag, className, text) => {
+        const node = document.createElement(tag);
+
+        if (className) {
+            node.className = className;
+        }
+
+        if (text !== undefined) {
+            node.textContent = text;
+        }
+
+        return node;
+    };
+
+    const choice = (className, text) => {
+        const button = element('button', className);
+
+        button.type = 'button';
+        button.addEventListener('mousedown', (event) => event.preventDefault());
+        button.addEventListener('click', () => insert(text));
+
+        return button;
+    };
+
+    const section = (label) => {
+        const group = element('div', 'tpl-formula-library__group');
+
+        group.append(element('div', 'tpl-formula-library__group-head', label));
+
+        return group;
+    };
+
+    function renderFields(groups) {
+        groups.forEach((group) => {
+            const node = section(group.label);
+
+            group.items.forEach((item) => {
+                const button = choice('tpl-formula-library__field', item.insert);
+                const name = item.display.startsWith('[') ? item.display.slice(1, -1) : item.display;
+                // The short name of the field, with its model or SUM/COUNT in the corner.
+                const shown = group.kind === 'singular' && name.includes(' · ') ? name.slice(name.indexOf(' · ') + 3) : name;
+                const corner = group.kind === 'totals' ? item.insert.slice(0, item.insert.indexOf('(')) : item.key;
+
+                button.title = item.insert;
+                button.append(element('span', '', shown));
+
+                // A field shown by its key already says it.
+                if (corner !== shown) {
+                    button.append(element('small', '', corner));
+                }
+                node.append(button);
+            });
+
+            list.append(node);
+        });
+    }
+
+    function renderFunctions(functions) {
+        functionGroups(functions).forEach((group) => {
+            const node = section(t('formula.group.' + group.id));
+
+            group.functions.forEach((fn) => {
+                const button = choice('tpl-formula-library__function', fn.name + '(');
+
+                button.append(element('code', '', fn.signature));
+
+                if (fn.description) {
+                    button.append(element('span', '', fn.description));
+                }
+
+                if (fn.example) {
+                    const example = toDisplay(fn.example, state.catalogue);
+
+                    button.append(element('span', 'tpl-formula-library__example', t('formula.library.example').replace(':example', example)));
+                }
+
+                node.append(button);
+            });
+
+            list.append(node);
+        });
+    }
+
+    function renderList() {
+        list.replaceChildren();
+
+        const found = filterLibrary(state.catalogue, query);
+        const empty = tab === 'fields' ? !found.groups.length : !found.functions.length;
+
+        if (empty) {
+            list.append(element('p', 'tpl-formula-library__empty', t('formula.library.empty')));
+        } else if (tab === 'fields') {
+            renderFields(found.groups);
+        } else {
+            renderFunctions(found.functions);
+        }
+    }
+
+    function render() {
+        // GrapesJS may have rendered the blocks again, and with them emptied the rail.
+        if (!rail.contains(container)) {
+            rail.append(container);
+        }
+
+        tabs.querySelectorAll('button').forEach((button) => {
+            const on = button.dataset.tab === tab;
+
+            button.setAttribute('aria-selected', String(on));
+            button.classList.toggle('is-active', on);
+        });
+
+        search.placeholder = t(tab === 'fields' ? 'formula.library.search_fields' : 'formula.library.search_functions');
+        search.setAttribute('aria-label', search.placeholder);
+        search.value = query;
+        renderList();
+    }
+
+    function open({ target, rowCollection = null, onInsert = null } = {}) {
+        if (!state) {
+            // Kept once, on the first open: a retarget must not store our own heading.
+            state = { headText: head?.textContent ?? null };
+            tab = 'fields';
+            query = '';
+            rail.classList.add(OPEN_CLASS);
+
+            if (head) {
+                head.textContent = t('formula.library.heading');
+            }
+        }
+
+        Object.assign(state, { target, rowCollection, onInsert, catalogue: scopedCatalogue(config, rowCollection) });
+        render();
+    }
+
+    function close() {
+        if (!state) {
+            return;
+        }
+
+        if (head && state.headText !== null) {
+            head.textContent = state.headText;
+        }
+
+        rail.classList.remove(OPEN_CLASS);
+        container.remove();
+        state = null;
+    }
+
+    return { open, close, isOpen: () => state !== null };
+}

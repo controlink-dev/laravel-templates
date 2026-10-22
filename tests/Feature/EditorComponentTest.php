@@ -4,6 +4,7 @@ namespace Controlink\Templates\Tests\Feature;
 
 use Controlink\Templates\Contracts\TenantResolver;
 use Controlink\Templates\Formulas\Formula;
+use Controlink\Templates\Formulas\Parser;
 use Controlink\Templates\Tests\Fixtures\Models\EditorTemplate;
 use Controlink\Templates\Tests\Fixtures\Models\GuardedVersion;
 use Controlink\Templates\Tests\TestCase;
@@ -201,14 +202,30 @@ class EditorComponentTest extends TestCase
             $this->assertNotContains('TODAY', $listed);
 
             foreach (Formula::functions() as $name) {
-                foreach (['signature', 'description'] as $kind) {
+                foreach (['signature', 'description', 'example'] as $kind) {
                     $value = $strings["formula.{$kind}.{$name}"] ?? '';
                     $this->assertNotSame('', $value);
                     $this->assertStringNotContainsString('templates::editor.', $value, "{$locale}: formula.{$kind}.{$name} reached the browser as a translation key.");
                 }
 
                 $this->assertStringStartsWith($name.'(', $strings["formula.signature.{$name}"]);
+
+                // The example uses its own function and is a formula the parser accepts.
+                $example = $strings["formula.example.{$name}"];
+                $this->assertStringContainsString($name.'(', $example, "{$locale}: the example of {$name} does not use it.");
+                Parser::parse($example);
             }
+
+            // The "Campos e funções" library: its labels, and one per group of functions.
+            foreach (['heading', 'fields', 'functions', 'search_fields', 'search_functions', 'empty', 'example', 'this_row'] as $key) {
+                $this->assertStringNotContainsString('templates::editor.', $strings['formula.library.'.$key] ?? 'templates::editor.', "{$locale}: formula.library.{$key}");
+            }
+
+            foreach (['math', 'totals', 'conditions', 'text', 'dates', 'other'] as $group) {
+                $this->assertStringNotContainsString('templates::editor.', $strings['formula.group.'.$group] ?? 'templates::editor.', "{$locale}: formula.group.{$group}");
+            }
+
+            $this->assertStringContainsString(':example', $strings['formula.library.example']);
 
             $this->assertStringNotContainsString('templates::editor.', $strings['formula.reference_note']);
             $this->assertStringNotContainsString('templates::editor.', $strings['formula.reference_toggle']);

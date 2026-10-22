@@ -2029,6 +2029,169 @@ select.tpl-pf-input {
 }
 
 /*
+ * "Campos e funções" (CGE-37, spec §6.3): the Blocks rail while a formula is edited. The
+ * blocks stay in the rail, hidden by the class (GrapesJS's grid would win over `hidden`),
+ * and come back as they were. The tabs are the segmented control of the radio traits,
+ * the items the suggestion rows, the group headings the block categories' headings.
+ */
+.tpl-editor-root .tpl-rail-body.is-formula-library > :not(.tpl-formula-library) {
+    display: none;
+}
+
+.tpl-editor-root .tpl-formula-library {
+    display: grid;
+    gap: 0.5rem;
+    align-content: start;
+}
+
+.tpl-editor-root .tpl-formula-library__tabs {
+    display: flex;
+    overflow: hidden;
+    border: 1px solid var(--tpl-edge-subtle, #e6ebf2);
+    border-radius: 0.5rem;
+    background: var(--tpl-surface-muted, #f8f8ff);
+}
+
+.tpl-editor-root .tpl-formula-library__tabs button {
+    flex: 1;
+    border: 0;
+    border-right: 1px solid var(--tpl-edge-subtle, #e6ebf2);
+    padding: 0.3rem 0.5rem;
+    background: transparent;
+    font: inherit;
+    font-size: 0.6875rem;
+    color: var(--tpl-slate-600, #475569);
+    cursor: pointer;
+}
+
+.tpl-editor-root .tpl-formula-library__tabs button:last-child {
+    border-right: 0;
+}
+
+.tpl-editor-root .tpl-formula-library__tabs button.is-active {
+    background: var(--tpl-surface-raised, #fff);
+    color: var(--tpl-slate-900, #0f172a);
+    font-weight: 600;
+}
+
+.tpl-editor-root .tpl-formula-library__search {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 0.5rem;
+    padding: 0.3rem 0.5rem;
+    background: var(--tpl-surface-raised, #fff);
+    font: inherit;
+    font-size: 0.71875rem;
+    color: var(--tpl-slate-900, #0f172a);
+}
+
+.tpl-editor-root .tpl-formula-library__search:focus {
+    outline: none;
+    border-color: var(--tpl-primary, #6d28d9);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--tpl-primary, #6d28d9) 10%, transparent);
+}
+
+.tpl-editor-root .tpl-formula-library__search::placeholder {
+    color: var(--tpl-slate-400, #94a3b8);
+}
+
+.tpl-editor-root .tpl-formula-library__group {
+    display: grid;
+    gap: 0.125rem;
+}
+
+.tpl-editor-root .tpl-formula-library__group-head {
+    padding: 0.375rem 0.125rem 0.125rem;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--tpl-slate-400, #94a3b8);
+}
+
+.tpl-editor-root .tpl-formula-library__field,
+.tpl-editor-root .tpl-formula-library__function {
+    display: block;
+    width: 100%;
+    border: 0;
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.375rem;
+    background: transparent;
+    font: inherit;
+    font-size: 0.71875rem;
+    text-align: left;
+    color: var(--tpl-slate-900, #0f172a);
+    cursor: pointer;
+}
+
+.tpl-editor-root .tpl-formula-library__field {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+}
+
+.tpl-editor-root .tpl-formula-library__field span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tpl-editor-root .tpl-formula-library__field small {
+    flex: none;
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.625rem;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+.tpl-editor-root .tpl-formula-library__function code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.tpl-editor-root .tpl-formula-library__function span {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.6875rem;
+    line-height: 1.35;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+.tpl-editor-root .tpl-formula-library__function .tpl-formula-library__example {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.625rem;
+    color: var(--tpl-slate-600, #475569);
+    overflow-wrap: anywhere;
+}
+
+.tpl-editor-root .tpl-formula-library__field:hover,
+.tpl-editor-root .tpl-formula-library__function:hover {
+    background: var(--tpl-surface-raised, #fff);
+    box-shadow: inset 2px 0 0 var(--tpl-primary, #4f46e5);
+}
+
+.tpl-editor-root .tpl-formula-library__field:focus-visible,
+.tpl-editor-root .tpl-formula-library__function:focus-visible,
+.tpl-editor-root .tpl-formula-library__tabs button:focus-visible {
+    outline: 2px solid var(--tpl-primary, #4f46e5);
+    outline-offset: 1px;
+}
+
+.tpl-editor-root .tpl-formula-library__empty {
+    margin: 0.25rem 0.125rem;
+    font-size: 0.6875rem;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+/*
  * Checkbox traits ("Várias linhas"): a square box that shows its state. The generic field
  * rule above rounds every `.gjs-field` into a pill, and GrapesJS's own check mark is drawn
  * by its stylesheet, which the editor does not load — so the box was round and never

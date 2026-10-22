@@ -224,6 +224,22 @@ class Editor extends Component
             'formula.column_help'        => __('templates::editor.formula.column_help', ['collection' => ':collection']),
             'formula.columns_overflow'   => __('templates::editor.formula.columns_overflow'),
 
+            // The "Campos e funções" library in the Blocks rail (CGE-37). `:example` is filled in JS.
+            'formula.library.heading'          => __('templates::editor.formula.library.heading'),
+            'formula.library.fields'           => __('templates::editor.formula.library.fields'),
+            'formula.library.functions'        => __('templates::editor.formula.library.functions'),
+            'formula.library.search_fields'    => __('templates::editor.formula.library.search_fields'),
+            'formula.library.search_functions' => __('templates::editor.formula.library.search_functions'),
+            'formula.library.empty'            => __('templates::editor.formula.library.empty'),
+            'formula.library.example'          => __('templates::editor.formula.library.example', ['example' => ':example']),
+            'formula.library.this_row'         => __('templates::editor.formula.library.this_row'),
+            'formula.group.math'               => __('templates::editor.formula.groups.math'),
+            'formula.group.totals'             => __('templates::editor.formula.groups.totals'),
+            'formula.group.conditions'         => __('templates::editor.formula.groups.conditions'),
+            'formula.group.text'               => __('templates::editor.formula.groups.text'),
+            'formula.group.dates'              => __('templates::editor.formula.groups.dates'),
+            'formula.group.other'              => __('templates::editor.formula.groups.other'),
+
             'fit.contain' => __('templates::editor.fits.contain'),
             'fit.cover'   => __('templates::editor.fits.cover'),
             'fit.fill'    => __('templates::editor.fits.fill'),
@@ -404,12 +420,13 @@ class Editor extends Component
             $strings['code_field.'.$field] = __('templates::editor.code_fields.'.$field);
         }
 
-        // CGE-37: one signature and one line per function the parser accepts, in its
-        // order. The bundle reads its function list from these keys, so the parser stays
+        // CGE-37: one signature, one line and one example per function the parser accepts,
+        // in its order. The bundle reads its function list from these keys, so the parser stays
         // the only list — the autocomplete never offers a function the save refuses.
         foreach (Formula::functions() as $name) {
             $strings['formula.signature.'.$name]   = __('templates::editor.formula.signatures.'.$name);
             $strings['formula.description.'.$name] = __('templates::editor.formula.descriptions.'.$name);
+            $strings['formula.example.'.$name]     = __('templates::editor.formula.examples.'.$name);
         }
 
         return $strings;
