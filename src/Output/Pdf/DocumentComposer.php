@@ -4,6 +4,7 @@ namespace Controlink\Templates\Output\Pdf;
 
 use Controlink\Templates\Codes\CodeImageGenerator;
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
+use Controlink\Templates\Formulas\FormulaSet;
 use Controlink\Templates\Rendering\TemplateRenderer;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
@@ -42,6 +43,20 @@ class DocumentComposer
      */
     public function compose(string $html, string $css, TemplateType $type, array $dataset = []): string
     {
+        /*
+         * Formulas (CGE-37), before anything else reads the markup.
+         *
+         * Their source is user-typed text sitting in attributes, and a text literal may
+         * well contain `{{`, `{% %}` or `javascript:`. Taken out here, it never reaches
+         * the guard (which would refuse a harmless document) nor Twig (which would try
+         * to run it). The results go into the dataset now, over the WHOLE dataset —
+         * PageStructure slices the collections per sheet next, and a SUM computed after
+         * that would be one sheet's subtotal printed as the document's total.
+         */
+        $formulas = FormulaSet::fromHtml($html);
+        $html     = $formulas->strippedHtml();
+        $dataset  = $formulas->inject($dataset);
+
         $this->guardHtml($html);
         $this->guardCss($css);
 
@@ -255,7 +270,9 @@ class DocumentComposer
      */
     public function assertSafe(string $html, string $css): void
     {
-        $this->guardHtml($html);
+        // The same markup compose() guards: formula sources are removed first there,
+        // so a literal like "javascript:" in one must not fail the layout here either.
+        $this->guardHtml(FormulaSet::fromHtml($html)->strippedHtml());
         $this->guardCss($css);
     }
 
