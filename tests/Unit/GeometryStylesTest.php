@@ -13,7 +13,22 @@ class GeometryStylesTest extends TestCase
     {
         $css = (new DocumentComposer)->geometryStyles(PageGeometry::fromType(['paper_format' => 'A4']));
 
-        $this->assertSame('@page{size: A4;margin:0}', $css);
+        $this->assertStringContainsString('@page{size: A4;margin:0}', $css);
+    }
+
+    /**
+     * CGE-56: the sheet box follows the format. print.css draws `.page` at A4, so an A5
+     * paper carried an A4 box that spilled over several pages. `html .page` because the
+     * saved layout CSS comes later and may carry a `.page{…}` rule of its own.
+     */
+    public function test_named_sheet_sizes_the_page_box_to_its_format(): void
+    {
+        foreach (['A4' => [210, 297], 'A5' => [148, 210], 'A3' => [297, 420]] as $format => [$width, $height]) {
+            $css = (new DocumentComposer)->geometryStyles(PageGeometry::fromType(['paper_format' => $format]));
+
+            $this->assertStringContainsString('@page{size: '.$format.';margin:0}', $css);
+            $this->assertStringContainsString('html .page{width: '.$width.'mm;height: '.$height.'mm}', $css);
+        }
     }
 
     public function test_label_sheet_in_mm_emits_a_fixed_box(): void
