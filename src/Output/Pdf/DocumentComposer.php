@@ -138,7 +138,13 @@ class DocumentComposer
                 .'box-sizing: border-box;padding: '.$padding.'}';
         }
 
-        return '@page{size: '.$g->paperFormat.';margin:0}';
+        // The box too, not only the paper (CGE-56): print.css draws `.page` at A4, and an
+        // A5 paper carrying an A4 box spilled it over several pages. `html .page` for the
+        // reason pageVariables() gives — the saved layout CSS comes later.
+        $size = $g->sheetSizeMm();
+
+        return '@page{size: '.$g->paperFormat.';margin:0}'
+            .'html .page{width: '.$size['width'].'mm;height: '.$size['height'].'mm}';
     }
 
     /**
