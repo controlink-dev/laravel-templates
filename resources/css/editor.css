@@ -1860,20 +1860,45 @@ select.tpl-pf-input {
 }
 
 /*
- * Formula mode of a data field (CGE-37). The switch and the box are custom traits whose
- * input is a wrapper (see formula.js), so they sit in a plain field rather than in the
- * pill the generic `.gjs-field` rule draws round a single control.
+ * "Valor: Campo | Fórmula" of a data field (CGE-37, spec §6.1). The switch and the box are
+ * custom traits whose input is a wrapper (see formula.js), so they sit in a plain field
+ * rather than in the pill the generic `.gjs-field` rule draws round a single control. The
+ * switch is GrapesJS's radio markup, drawn by the segmented `.gjs-radio-items` rules.
  */
-.tpl-editor-root .gjs-field-tpl-formula-toggle,
+.tpl-editor-root .gjs-field-tpl-value-mode,
 .tpl-editor-root .gjs-field-tpl-formula {
     border: 0;
     background: transparent;
 }
 
-/* The switch is a stock checkbox box (`.gjs-field-checkbox`, below); only its locked state is its own. */
-.tpl-editor-root .tpl-formula-toggle.is-disabled {
+/* The last block with a legal or mandatory field: "Fórmula" cannot be chosen (the reason is the tooltip). */
+.tpl-editor-root .tpl-value-mode.is-locked input:disabled + .gjs-radio-item-label {
     cursor: not-allowed;
-    opacity: 0.55;
+    opacity: 0.45;
+}
+
+/* The box has no label of its own (the panel heading says "Fórmula"): the full width. */
+.tpl-editor-root .gjs-trt-trait--tpl-formula {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.tpl-editor-root .gjs-trt-trait--tpl-formula .gjs-field-wrp {
+    width: 100%;
+}
+
+/* Quick examples, then "Concluir" on its own line at the end. */
+.tpl-editor-root .tpl-formula-examples {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.25rem;
+}
+
+.tpl-editor-root .tpl-formula-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
 }
 
 .tpl-editor-root .gjs-field-tpl-formula textarea.tpl-formula-source {
@@ -1914,6 +1939,10 @@ select.tpl-pf-input {
 .tpl-editor-root .tpl-formula-input textarea.tpl-formula-source {
     width: 100%;
     box-sizing: border-box;
+}
+
+/* Room for the ƒx button, where there is one (the formula columns). */
+.tpl-editor-root .tpl-formula-input:has(.tpl-formula-fx) textarea.tpl-formula-source {
     padding-right: 2.25rem;
 }
 

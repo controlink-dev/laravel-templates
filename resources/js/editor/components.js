@@ -16,9 +16,10 @@ import { PX_PER_MM, roundTo } from './anchors.js';
 import { alertDialog } from './dialog.js';
 import { previewValue } from './preview-filter.js';
 import {
-    FORMULA_SOURCE_TRAIT, FORMULA_TOGGLE_TRAIT, formulaLock, freshFormulaKey, isFormulaKey, newFormulaId,
+    FORMULA_SOURCE_TRAIT, VALUE_MODE_TRAIT, formulaLock, freshFormulaKey, isFormulaKey, newFormulaId,
     refreshFormulaTraits, registerFormula,
 } from './formula.js';
+import { quickExamples, scopedCatalogue, toDisplay, toSource } from './formula-names.js';
 import { freshFormulaColumns, isFormulaColumn } from './formula-columns.js';
 import {
     DATE_PATTERNS, DECIMALS, SYMBOLS, defaultSpecFor, expression, specFromAttributes, specToAttributes,
@@ -384,17 +385,47 @@ function registerDataField(editor, config) {
         options: fieldOptionsOf(nodeId),
         changeProp: false,
     });
-    const formulaToggleTrait = {
-        type: 'tpl-formula-toggle',
-        name: FORMULA_TOGGLE_TRAIT,
-        label: config.strings['formula.label'],
+    const valueModeTrait = {
+        type: 'tpl-value-mode',
+        name: VALUE_MODE_TRAIT,
+        label: config.strings['formula.value'] ?? 'Value',
     };
+    // No label: the panel's heading already says "Fórmula" (spec §6.1), and the box takes
+    // the panel's full width.
     const formulaSourceTrait = {
         type: 'tpl-formula',
         name: FORMULA_SOURCE_TRAIT,
-        label: config.strings['formula.source'],
+        label: false,
     };
     const formulaLabel = config.strings['formula.label'] ?? 'Formula';
+
+    /*
+     * What a data field's formula may name, with the readable names (spec §4/§5): built
+     * once, on first use — the catalogue does not change while the editor is open.
+     */
+    let fieldCatalogue = null;
+    const formulaNames = () => (fieldCatalogue ??= scopedCatalogue(config, null));
+
+    /** How many data fields on the sheet but `except` are bound to `binding`. */
+    const carriersOnSheet = (except, binding) => {
+        let count = 0;
+        const walk = (component) => {
+            if (!component) {
+                return;
+            }
+
+            if (component !== except && component.get?.('type') === 'data-field'
+                && component.getAttributes?.()['data-tpl-binding'] === binding) {
+                count++;
+            }
+
+            component.components?.().forEach(walk);
+        };
+
+        walk(editor.getWrapper());
+
+        return count;
+    };
 
     /** Every `formula.*` key on the sheet but `except`'s own. */
     const formulaKeysOnSheet = (except) => {
@@ -515,7 +546,7 @@ function registerDataField(editor, config) {
                  * attributes they round trip through HTML for free.
                  */
                 traits: [
-                    formulaToggleTrait,
+                    valueModeTrait,
                     nodeTrait,
                     bindingTrait(firstNode),
                     {
@@ -594,23 +625,68 @@ function registerDataField(editor, config) {
                 return Boolean(findBinding(config, this.binding())?.legal);
             },
 
-            /** Why this field may not become a formula — `legal`, `mandatory` — or null (CGE-37). */
+            /**
+             * Why this field may not become a formula — `legal`, `mandatory` — or null
+             * (CGE-37, spec §6.1): only while it is the last data field on the sheet carrying
+             * its binding. Asked when the switch is painted (selection, attribute changes).
+             */
             formulaLock() {
-                return formulaLock(findBinding(config, this.binding()));
+                const binding = findBinding(config, this.binding());
+
+                if (formulaLock(binding) === null) {
+                    return null;
+                }
+
+                return formulaLock(binding, carriersOnSheet(this, this.binding()));
+            },
+
+            /** The catalogue of names a data field's formula reads (`scopedCatalogue`). */
+            formulaNames() {
+                return formulaNames();
+            },
+
+            /** A source (this field's, by default) as the box shows it: keys by name. */
+            formulaDisplay(source = this.getAttributes()[FORMULA_SOURCE_TRAIT] ?? '') {
+                return toDisplay(source, formulaNames());
+            },
+
+            /** What the box's text is as a source: names back to keys. */
+            formulaSourceOf(display) {
+                return toSource(display, formulaNames()).source;
+            },
+
+            /**
+             * The box was edited: its text, names turned into keys, is the source. A name
+             * that matches nothing is kept as typed (spec §5) — `formulaStatus` says so
+             * without asking the server, and the save refuses it (V-19).
+             */
+            setFormulaDisplay(display) {
+                const source = this.formulaSourceOf(display);
+
+                if (source !== (this.getAttributes()[FORMULA_SOURCE_TRAIT] ?? '')) {
+                    this.addAttributes({ [FORMULA_SOURCE_TRAIT]: source });
+                }
+            },
+
+            /** The quick examples under the box (spec §6.4), on this type's own fields. */
+            formulaQuickExamples() {
+                return quickExamples(config, formulaNames());
             },
 
             /**
              * The "Fórmula" switch (CGE-37).
              *
-             * On: a fresh `formula.<id>` key and an empty source. Off: the source goes and
+             * On: a fresh `formula.<id>` key, and the source starts as the field it was
+             * bound to (spec §6.1) — the value stays, ready to be wrapped — in the format it
+             * had (§8.1). Off: the source goes and
              * the field is bound again exactly as a freshly dropped one is — the first
              * non-legal field of the default node (see `firstField` above) — because the
              * field it had before is long gone and guessing it back would be a surprise.
              * One attribute write each way, so a single undo reverses it.
              *
-             * A legal or mandatory field never switches on (spec §2/§6): the document would
-             * lose a field the type requires. The switch is disabled for it too; this is the
-             * guard behind it.
+             * The last legal or mandatory field never switches on (spec §6.1): the document
+             * would lose a field the type requires. The switch is disabled for it too; this is
+             * the guard behind it.
              */
             setFormulaMode(on) {
                 if (Boolean(on) === this.isFormula() || (on && this.formulaLock() !== null)) {
@@ -621,7 +697,7 @@ function registerDataField(editor, config) {
 
                 if (on) {
                     attributes['data-tpl-binding'] = freshFormulaKey(formulaKeysOnSheet(this), 'formula.' + newFormulaId());
-                    attributes[FORMULA_SOURCE_TRAIT] = '';
+                    attributes[FORMULA_SOURCE_TRAIT] = this.binding();
                 } else {
                     delete attributes[FORMULA_SOURCE_TRAIT];
                     attributes['data-tpl-node'] = firstNode;
@@ -655,6 +731,8 @@ function registerDataField(editor, config) {
                 } else {
                     if (this.getTrait(FORMULA_SOURCE_TRAIT)) {
                         this.removeTrait(FORMULA_SOURCE_TRAIT);
+                        // The library was inserting into the box just removed.
+                        config.formulaLibrary?.close();
                     }
 
                     if (!this.getTrait('data-tpl-node')) {
@@ -680,6 +758,17 @@ function registerDataField(editor, config) {
 
                 if (String(source).trim() === '') {
                     return { state: 'empty', text: '' };
+                }
+
+                // A name that matches no field: said here, the server never asked (spec §5).
+                const unknown = toSource(source, formulaNames()).unknown;
+
+                if (unknown.length) {
+                    return {
+                        state: 'error',
+                        text: (config.strings['formula.unknown_field'] ?? 'Unknown field: :name')
+                            .replace(':name', () => unknown.join(', ')),
+                    };
                 }
 
                 const result = config.formulaPreview?.result(source, null, this.cid) ?? null;
@@ -751,21 +840,15 @@ function registerDataField(editor, config) {
                     return;
                 }
 
-                const wasFormula = isFormulaKey(this.__pfBinding);
-
                 this.__pfBinding = this.binding();
 
                 /*
-                 * A formula has no declared type, so no default format (CGE-37). Turning
-                 * the switch on starts from none, as a field of unknown type would; a
-                 * copy renamed to its own key (one formula key for another) keeps the
-                 * format it was copied with.
+                 * A formula has no declared type, so no default format of its own (CGE-37).
+                 * It keeps the one it has: turning the switch on starts from the field it
+                 * was, in that field's format (spec §8.1), and a copy renamed to its own key
+                 * keeps the format it was copied with.
                  */
                 if (this.isFormula()) {
-                    if (!wasFormula) {
-                        this.applyFormatSpec(null);
-                    }
-
                     return;
                 }
 

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { filterLibrary, functionGroups } from '../../resources/js/editor/formula-library.js';
+import { exampleLine, filterLibrary, functionGroups } from '../../resources/js/editor/formula-library.js';
 
 /*
  * The "Campos e funções" library (CGE-37, spec §6.3): the pure parts — what the search
@@ -91,5 +91,13 @@ describe('functionGroups', () => {
         const groups = functionGroups([{ name: 'MAX' }, { name: 'DAYS' }]);
 
         assert.deepEqual(groups.map((group) => group.id), ['math', 'dates']);
+    });
+});
+
+describe('exampleLine', () => {
+    it('fills the example in, leaving any $ pattern it holds as written', () => {
+        assert.equal(exampleLine('ex.: :example', 'SUM([Linhas · Valor])'), 'ex.: SUM([Linhas · Valor])');
+        assert.equal(exampleLine('ex.: :example', `"$&" & "$'" & "$1"`), `ex.: "$&" & "$'" & "$1"`);
+        assert.equal(exampleLine(undefined, 'A'), 'A');
     });
 });

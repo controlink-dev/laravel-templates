@@ -26,6 +26,17 @@ use RuntimeException;
  */
 class EditorComponentTest extends TestCase
 {
+    /** The keys of the host's invoice type that the function examples are written with. */
+    private const INVOICE_SINGULAR_KEYS = [
+        'customer.name', 'customer.tax_id', 'customer.address',
+        'document.designation', 'document.number', 'document.issue_date', 'document.supply_date',
+        'totals.net_total', 'totals.tax_total', 'totals.total_due',
+    ];
+
+    private const INVOICE_COLLECTIONS = [
+        'lines' => ['code', 'description', 'quantity', 'unit', 'unit_price', 'vat_rate', 'amount'],
+    ];
+
     /**
      * The hooks the pane behaviour hangs off. Each one is load-bearing: without the
      * root, every lookup would fall back to the document and find another editor's
@@ -214,7 +225,31 @@ class EditorComponentTest extends TestCase
                 $example = $strings["formula.example.{$name}"];
                 $this->assertStringContainsString($name.'(', $example, "{$locale}: the example of {$name} does not use it.");
                 Parser::parse($example);
+
+                // And it is valid in a single data field of the invoice type it is written
+                // for: singular keys, the table's columns only inside SUM/COUNT (V-19 scope).
+                $this->assertNull(
+                    Formula::check($example, self::INVOICE_SINGULAR_KEYS, self::INVOICE_COLLECTIONS),
+                    "{$locale}: the example of {$name} is not valid in a data field.",
+                );
             }
+
+            // The data field's "Valor: Campo | Fórmula", its box and its quick examples.
+            foreach (['value', 'value_field', 'value_formula', 'done', 'unknown_field',
+                'quick.heading', 'quick.text', 'quick.text_source', 'quick.upper', 'quick.total'] as $key) {
+                $this->assertNotSame('', $strings['formula.'.$key] ?? '', "{$locale}: formula.{$key}");
+                $this->assertStringNotContainsString('templates::editor.', $strings['formula.'.$key], "{$locale}: formula.{$key}");
+            }
+
+            $this->assertStringContainsString(':name', $strings['formula.unknown_field']);
+            $this->assertStringContainsString(':field', $strings['formula.quick.text_source']);
+
+            // The text example, filled with a field, is a formula the parser accepts.
+            $this->assertNull(Formula::check(
+                str_replace(':field', 'customer.name', $strings['formula.quick.text_source']),
+                self::INVOICE_SINGULAR_KEYS,
+                self::INVOICE_COLLECTIONS,
+            ));
 
             // The "Campos e funções" library: its labels, and one per group of functions.
             foreach (['heading', 'fields', 'functions', 'search_fields', 'search_functions', 'empty', 'example', 'this_row'] as $key) {

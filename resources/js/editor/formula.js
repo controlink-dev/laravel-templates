@@ -29,7 +29,7 @@ export function formulaFunctionsOf(strings) {
 }
 
 /** The traits' names: the switch has no attribute of its own; the box is the source's. */
-export const FORMULA_TOGGLE_TRAIT = 'tpl-formula-mode';
+export const VALUE_MODE_TRAIT = 'tpl-value-mode';
 export const FORMULA_SOURCE_TRAIT = 'data-tpl-formula';
 
 /** The endpoint refuses a batch above this (FormulaPreviewController::MAX_ITEMS). */
@@ -61,12 +61,22 @@ export function isFormulaKey(key) {
 }
 
 /**
- * Why a field bound to `binding` may not become a formula, or null when it may (spec §2/§6):
+ * Why a field bound to `binding` may not become a formula, or null when it may (spec §6.1):
  * `legal` — the document would lose the field the law asks for — or `mandatory` — the type
  * requires that value placed (V-02). Legal first: every legal field is mandatory too, and
  * the law is the reason the user needs to hear.
+ *
+ * Only the last block carrying the field is held: with `othersCarrying` other data fields
+ * on the same binding, this one is a redundant copy and may become a formula — the rule
+ * that already lets the last legal block alone ask before it is deleted. A block in
+ * Fórmula carries a `formula.*` key, so it never counts. The server still has the last
+ * word (V-02/V-10).
  */
-export function formulaLock(binding) {
+export function formulaLock(binding, othersCarrying = 0) {
+    if (othersCarrying > 0) {
+        return null;
+    }
+
     if (binding?.legal) {
         return 'legal';
     }
@@ -586,36 +596,47 @@ export function createFormulaPreview({
  * Keydowns stop in the textarea: GrapesJS's shortcuts (delete, undo, arrows) act on the
  * selected block and must never fire while the user types a formula. Host chords such as
  * Ctrl+S still get through (see `keepsKeyInFormulaBox`).
+ *
+ * Options:
+ * - `catalogue`: what to suggest — a function returning a `scopedCatalogue`, so the
+ *   suggestions are readable names (the data field), or null for the flat key catalogue
+ *   (the formula columns, until they read names too).
+ * - `reference`: false leaves out the ƒx button and its panel — the data field has the
+ *   "Campos e funções" library instead (spec §6.3); `reference` is then null.
  */
-export function formulaAssist(input, config) {
+export function formulaAssist(input, config, { catalogue = null, reference: withReference = true } = {}) {
     const strings = config.strings ?? {};
 
     const field = document.createElement('div');
     field.className = 'tpl-formula-input';
-
-    const fx = document.createElement('button');
-    fx.type = 'button';
-    fx.className = 'tpl-formula-fx';
-    fx.textContent = 'ƒx';
-    fx.title = strings['formula.reference_toggle'] ?? '';
-    fx.setAttribute('aria-label', fx.title);
-    fx.setAttribute('aria-expanded', 'false');
-
-    field.append(input, fx);
+    field.append(input);
 
     const suggestions = document.createElement('ul');
     suggestions.className = 'tpl-formula-suggest';
     suggestions.setAttribute('role', 'listbox');
     suggestions.hidden = true;
 
-    const reference = formulaReference(config);
-    reference.hidden = true;
+    let reference = null;
 
-    fx.addEventListener('click', () => {
-        reference.hidden = !reference.hidden;
-        fx.setAttribute('aria-expanded', String(!reference.hidden));
-        fx.classList.toggle('is-on', !reference.hidden);
-    });
+    if (withReference) {
+        const fx = document.createElement('button');
+        fx.type = 'button';
+        fx.className = 'tpl-formula-fx';
+        fx.textContent = 'ƒx';
+        fx.title = strings['formula.reference_toggle'] ?? '';
+        fx.setAttribute('aria-label', fx.title);
+        fx.setAttribute('aria-expanded', 'false');
+        field.append(fx);
+
+        reference = formulaReference(config);
+        reference.hidden = true;
+
+        fx.addEventListener('click', () => {
+            reference.hidden = !reference.hidden;
+            fx.setAttribute('aria-expanded', String(!reference.hidden));
+            fx.classList.toggle('is-on', !reference.hidden);
+        });
+    }
 
     let items = [];
     let active = 0;
@@ -672,9 +693,10 @@ export function formulaAssist(input, config) {
     };
 
     const refresh = () => {
-        const catalogue = { ...formulaCatalogue(config), functionsLabel: strings['formula.functions_group'] ?? '' };
+        const scoped = typeof catalogue === 'function' ? catalogue() : catalogue;
+        const offered = { ...(scoped ?? formulaCatalogue(config)), functionsLabel: strings['formula.functions_group'] ?? '' };
 
-        items = suggestionsAt(input.value, input.selectionStart, catalogue);
+        items = suggestionsAt(input.value, input.selectionStart, offered);
         active = 0;
         paint();
     };
@@ -779,70 +801,91 @@ function formulaReference(config) {
 /* ---------------------------------------------------------------- traits */
 
 /**
- * The two traits of a formula field.
+ * The two traits of a data field's value (spec §6.1).
  *
- * Both return a WRAPPER element from `createInput`, not the input itself. GrapesJS's
- * default `onChange` copies `elInput.value` into the trait's value, and the trait writes
- * its value to the component's attribute named after it: a bare checkbox would write
- * `"on"` into an attribute, and a bare textarea would only write on blur. A wrapper has
- * no `value`, so nothing is written behind the component's back — each trait writes
- * through the component's own methods in `onEvent`. `setInputValue` is a no-op for the
- * same reason: GrapesJS would otherwise park the attribute's value on the wrapper as an
- * expando `value`, and the next keystroke would write that stale copy back first.
+ * Both return a WRAPPER element from `createInput`, not an input. GrapesJS's default
+ * `onChange` copies `elInput.value` into the trait's value, and the trait writes its value
+ * to the component's attribute named after it: a bare radio would write `"formula"` into
+ * an attribute, and a bare textarea would only write on blur. A wrapper has no `value`, so
+ * nothing is written behind the component's back — each trait writes through the
+ * component's own methods in `onEvent`. `setInputValue` is a no-op for the same reason:
+ * GrapesJS would otherwise park the attribute's value on the wrapper as an expando
+ * `value`, and the next keystroke would write that stale copy back first.
  */
 export function registerFormula(editor, config) {
     const strings = config.strings;
 
     /*
-     * The "Fórmula" switch. Its state is not stored anywhere: it is read from the binding
-     * (`formula.*` or not), so it can never disagree with what is exported, and undo of
-     * a binding change turns it back by itself.
+     * "Valor: Campo | Fórmula". Its state is not stored anywhere: it is read from the
+     * binding (`formula.*` or not), so it can never disagree with what is exported, and
+     * undo of a binding change turns it back by itself. GrapesJS's own radio markup, so the
+     * segmented look of the style manager's radios (`.gjs-radio-items`) applies as it is.
      */
-    editor.TraitManager.addType('tpl-formula-toggle', {
+    editor.TraitManager.addType('tpl-value-mode', {
         eventCapture: ['change input'],
 
         setInputValue() {},
 
         createInput({ component }) {
-            /*
-             * The same markup as GrapesJS's own checkbox trait ("Várias linhas"): the input
-             * itself is hidden by the stock stylesheet and the box is drawn by the
-             * `.gjs-field-checkbox` rules. A bare checkbox inside the trait's field picked
-             * up the generic `.gjs-field input` rules (no appearance, full width) and
-             * vanished, leaving only its long caption wrapped in the value column. The row
-             * is labelled "Fórmula" like the others; the long sentence is its tooltip.
-             */
-            const wrap = document.createElement('label');
-            wrap.className = 'gjs-field gjs-field-checkbox tpl-formula-toggle';
+            const wrap = document.createElement('div');
+            wrap.className = 'tpl-value-mode';
 
-            const input = document.createElement('input');
-            input.type = 'checkbox';
-            input.setAttribute('aria-label', strings['formula.toggle'] ?? 'Formula');
+            const items = document.createElement('div');
+            items.className = 'gjs-radio-items';
+            items.setAttribute('role', 'radiogroup');
+            items.setAttribute('aria-label', strings['formula.value'] ?? 'Value');
 
-            const icon = document.createElement('i');
-            icon.className = 'gjs-chk-icon';
+            const group = `tpl-value-mode-${component.cid}`;
 
-            wrap.append(input, icon);
-            paintToggle(wrap, component, strings);
+            [['field', 'formula.value_field', 'Field'], ['formula', 'formula.value_formula', 'Formula']]
+                .forEach(([value, key, fallback]) => {
+                    const item = document.createElement('div');
+                    item.className = 'gjs-radio-item';
+
+                    const input = document.createElement('input');
+                    input.type = 'radio';
+                    input.className = 'gjs-sm-radio';
+                    input.name = group;
+                    input.id = `${group}-${value}`;
+                    input.value = value;
+
+                    const label = document.createElement('label');
+                    label.className = 'gjs-radio-item-label';
+                    label.htmlFor = input.id;
+                    label.textContent = strings[key] ?? fallback;
+
+                    item.append(input, label);
+                    items.append(item);
+                });
+
+            wrap.append(items);
+            paintValueMode(wrap, component, strings);
 
             return wrap;
         },
 
         onEvent({ elInput, component }) {
-            component.setFormulaMode?.(elInput.querySelector('input').checked);
-            paintToggle(elInput, component, strings);
+            const chosen = [...elInput.querySelectorAll('input')].find((input) => input.checked)?.value;
+
+            component.setFormulaMode?.(chosen === 'formula');
+            // Repainted whatever happened: a refused switch (a held field) goes back.
+            paintValueMode(elInput, component, strings);
         },
 
         onUpdate({ elInput, component }) {
-            paintToggle(elInput, component, strings);
+            paintValueMode(elInput, component, strings);
         },
     });
 
     /*
-     * The formula box: the source, then a line with what is wrong with it or what it
-     * gives. The attribute is written on every keystroke, so a save is never behind what
-     * the box shows; it is only the server ask that waits (the debounce lives in
-     * `createFormulaPreview`).
+     * The formula box: the formula with readable names (`[Cliente · Nome]`), what is wrong
+     * with it or what it gives, the quick examples and "Concluir". The attribute holds the
+     * technical source and is written on every keystroke, so a save is never behind what
+     * the box shows; only the server ask waits (the debounce is `createFormulaPreview`'s).
+     * The readable text lives in the box only: nothing here writes it anywhere else.
+     *
+     * Focusing the box opens "Campos e funções" over the Blocks rail (spec §6.3); "Concluir"
+     * closes it (as selecting another block does, see editor.js).
      */
     editor.TraitManager.addType('tpl-formula', {
         eventCapture: ['input textarea'],
@@ -857,37 +900,97 @@ export function registerFormula(editor, config) {
             input.rows = 3;
             input.className = 'tpl-textarea tpl-formula-source';
             input.spellcheck = false;
-            input.placeholder = strings['formula.placeholder'] ?? '';
-            input.value = component.getAttributes()['data-tpl-formula'] ?? '';
+            // The example in the placeholder is written with keys; shown by name like the rest.
+            input.placeholder = component.formulaDisplay?.(strings['formula.placeholder'] ?? '') ?? strings['formula.placeholder'] ?? '';
+            input.setAttribute('aria-label', strings['formula.source'] ?? 'Formula');
+            input.value = component.formulaDisplay?.() ?? component.getAttributes()[FORMULA_SOURCE_TRAIT] ?? '';
+
+            input.addEventListener('focus', () => {
+                config.formulaLibrary?.open({ target: input, rowCollection: null });
+            });
 
             const status = document.createElement('p');
             status.className = 'tpl-formula-status';
             status.setAttribute('aria-live', 'polite');
 
-            const functions = document.createElement('p');
-            functions.className = 'tpl-formula-help';
-            functions.textContent = (strings['formula.functions'] ?? ':list')
-                .replace(':list', (config.formulaFunctions ?? []).join(', '));
+            const assist = formulaAssist(input, config, { catalogue: () => component.formulaNames?.() ?? null, reference: false });
 
-            const assist = formulaAssist(input, config);
+            wrap.append(assist.field, assist.suggestions, status);
 
-            wrap.append(assist.field, assist.suggestions, status, functions, assist.reference);
+            const examples = component.formulaQuickExamples?.() ?? [];
+
+            if (examples.length) {
+                const caption = document.createElement('p');
+                caption.className = 'tpl-formula-help';
+                caption.textContent = strings['formula.quick.heading'] ?? '';
+
+                const list = document.createElement('div');
+                list.className = 'tpl-formula-examples';
+
+                examples.forEach((example) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'tpl-btn tpl-btn--secondary tpl-btn--sm tpl-formula-example';
+                    button.textContent = example.label;
+                    button.title = component.formulaDisplay?.(example.source) ?? example.source;
+
+                    // Fills the box and goes the way typing goes: the bubbling `input` is
+                    // what the trait listens to.
+                    button.addEventListener('click', () => {
+                        input.value = component.formulaDisplay?.(example.source) ?? example.source;
+                        input.focus();
+                        input.setSelectionRange(input.value.length, input.value.length);
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                    });
+
+                    list.append(button);
+                });
+
+                wrap.append(caption, list);
+            }
+
+            const actions = document.createElement('div');
+            actions.className = 'tpl-formula-actions';
+
+            const done = document.createElement('button');
+            done.type = 'button';
+            done.className = 'tpl-btn tpl-btn--primary tpl-btn--sm tpl-formula-done';
+            done.textContent = strings['formula.done'] ?? 'Done';
+            done.addEventListener('click', () => {
+                config.formulaLibrary?.close();
+                input.blur();
+            });
+
+            actions.append(done);
+            wrap.append(actions);
+
             paintFormulaStatus(wrap, component.formulaStatus?.(), strings);
 
             return wrap;
         },
 
         onEvent({ elInput, component }) {
-            component.addAttributes({ 'data-tpl-formula': elInput.querySelector('textarea').value });
+            const value = elInput.querySelector('textarea').value;
+
+            if (component.setFormulaDisplay) {
+                component.setFormulaDisplay(value);
+            } else {
+                component.addAttributes({ [FORMULA_SOURCE_TRAIT]: value });
+            }
         },
 
         onUpdate({ elInput, component }) {
             const input = elInput.querySelector('textarea');
-            const value = component.getAttributes()['data-tpl-formula'] ?? '';
+            const value = component.getAttributes()[FORMULA_SOURCE_TRAIT] ?? '';
+            const shown = component.formulaSourceOf ? component.formulaSourceOf(input?.value ?? '') : input?.value;
 
-            // Never while the user types in it: resetting the value moves the caret.
-            if (input && input.value !== value && input.ownerDocument.activeElement !== input) {
-                input.value = value;
+            // Only when the box says something else (an undo): the box shows names, the
+            // attribute keys, so the texts always differ. Never while the user types in it
+            // — resetting the value moves the caret — and never just because an answer
+            // arrived while the focus is in the library's search, or the library would
+            // insert at the end instead of at the caret.
+            if (input && shown !== value && input.ownerDocument.activeElement !== input) {
+                input.value = component.formulaDisplay?.() ?? value;
             }
 
             paintFormulaStatus(elInput, component.formulaStatus?.(), strings);
@@ -897,15 +1000,16 @@ export function registerFormula(editor, config) {
 
 /**
  * Repaint both traits from the component, when what they show changed without their
- * attribute changing: a server answer arrived, or the binding became (or stopped being)
- * legal or mandatory. `trait.el` is the wrapper `createInput` returned; absent until first shown.
+ * attribute changing: a server answer arrived, or the field became (or stopped being) the
+ * last one carrying a legal or mandatory binding. `trait.el` is the wrapper `createInput`
+ * returned; absent until first shown.
  */
 export function refreshFormulaTraits(component, strings) {
-    const toggle = component.getTrait?.(FORMULA_TOGGLE_TRAIT)?.el;
+    const toggle = component.getTrait?.(VALUE_MODE_TRAIT)?.el;
     const box = component.getTrait?.(FORMULA_SOURCE_TRAIT)?.el;
 
     if (toggle) {
-        paintToggle(toggle, component, strings);
+        paintValueMode(toggle, component, strings);
     }
 
     if (box) {
@@ -913,15 +1017,20 @@ export function refreshFormulaTraits(component, strings) {
     }
 }
 
-function paintToggle(wrap, component, strings) {
-    const input = wrap.querySelector('input');
-    const lock = component.formulaLock?.() ?? null;
+function paintValueMode(wrap, component, strings) {
+    const formula = isFormulaKey(component.getAttributes()['data-tpl-binding']);
+    // Only asked of a field: a formula carries no binding to hold.
+    const lock = formula ? null : component.formulaLock?.() ?? null;
 
-    input.checked = isFormulaKey(component.getAttributes()['data-tpl-binding']);
-    // A legal or mandatory field never becomes a formula: the document would lose a field
-    // the type requires. The server would refuse it too (V-02/V-10); the switch says so first.
-    input.disabled = lock !== null;
-    wrap.classList.toggle('is-disabled', lock !== null);
+    wrap.querySelectorAll('input').forEach((input) => {
+        input.checked = input.value === (formula ? 'formula' : 'field');
+        // The last block with a legal or mandatory field never becomes a formula: the
+        // document would lose a field the type requires. The server would refuse it too
+        // (V-02/V-10); the switch says so first, and why, on hover.
+        input.disabled = input.value === 'formula' && lock !== null;
+    });
+
+    wrap.classList.toggle('is-locked', lock !== null);
     wrap.title = strings[lock === null ? 'formula.toggle' : `formula.${lock}_locked`] ?? '';
 }
 

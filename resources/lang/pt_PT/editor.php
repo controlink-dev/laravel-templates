@@ -328,6 +328,21 @@ return [
         'blank'        => 'Sem valor: imprime vazio.',
         'functions'    => 'Funções: :list',
 
+        // "Valor: Campo | Fórmula" do campo de dados e a caixa da fórmula (spec §6.1, §6.4).
+        // `:name` e `:field` são preenchidos no JS.
+        'value'         => 'Valor',
+        'value_field'   => 'Campo',
+        'value_formula' => 'Fórmula',
+        'done'          => 'Concluir',
+        'unknown_field' => 'Campo desconhecido: :name',
+        'quick' => [
+            'heading'     => 'Exemplos rápidos',
+            'text'        => 'Texto com campo no meio',
+            'text_source' => '"Texto antes " & :field & " texto depois"',
+            'upper'       => 'Maiúsculas',
+            'total'       => 'Total da tabela',
+        ],
+
         // As sugestões sob a caixa da fórmula e a referência de funções ƒx.
         'functions_group'   => 'Funções',
         'reference_toggle'  => 'Referência de funções',
@@ -410,24 +425,25 @@ return [
 
         // Um exemplo por função, escrito com chaves técnicas do tipo Documento fiscal; o
         // editor mostra-o com os nomes legíveis do tipo aberto (os campos que esse tipo
-        // não tem ficam como estão). Texto entre aspas não é traduzido pelo editor.
+        // não tem ficam como estão). Texto entre aspas não é traduzido pelo editor. Cada
+        // exemplo vale num campo de dados: colunas da tabela só dentro de SUM/COUNT.
         'examples' => [
-            'IF'     => 'IF(lines.quantity > 0, lines.amount, "")',
-            'AND'    => 'IF(AND(lines.quantity > 0, lines.unit_price > 0), "Sim", "Não")',
+            'IF'     => 'IF(totals.tax_total > 0, totals.total_due, totals.net_total)',
+            'AND'    => 'IF(AND(totals.tax_total > 0, totals.net_total > 0), "Sim", "Não")',
             'OR'     => 'IF(OR(totals.tax_total = 0, totals.net_total = 0), "Isento", "")',
             'NOT'    => 'IF(NOT(totals.tax_total > 0), "Sem IVA", "")',
             'SUM'    => 'SUM(lines.amount)',
             'COUNT'  => 'COUNT(lines.code)',
             'ROUND'  => 'ROUND(totals.net_total * 0.23, 2)',
             'ABS'    => 'ABS(totals.total_due)',
-            'MIN'    => 'MIN(lines.quantity, 10)',
+            'MIN'    => 'MIN(totals.total_due, 1000)',
             'MAX'    => 'MAX(totals.total_due, 0)',
             'UPPER'  => 'UPPER(customer.name)',
             'LOWER'  => 'LOWER(customer.name)',
             'CONCAT' => 'CONCAT(document.designation, " ", document.number)',
-            'LEFT'   => 'LEFT(lines.description, 40)',
+            'LEFT'   => 'LEFT(customer.name, 20)',
             'RIGHT'  => 'RIGHT(customer.tax_id, 4)',
-            'LEN'    => 'LEN(lines.description)',
+            'LEN'    => 'LEN(customer.name)',
             'TRIM'   => 'TRIM(customer.address)',
             'YEAR'   => 'YEAR(document.issue_date)',
             'MONTH'  => 'MONTH(document.issue_date)',

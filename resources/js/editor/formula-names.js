@@ -99,6 +99,14 @@ export function scopedCatalogue(config, rowCollection = null) {
 
     const byName = new Map();
     const byKey = new Map();
+    // A table column by its long name, for the whole argument of SUM/COUNT (`toDisplay`).
+    const longByKey = new Map();
+
+    longNames.forEach((name, key) => {
+        if (usable(name)) {
+            longByKey.set(key, `[${name}]`);
+        }
+    });
 
     [shortNames, fieldNames, longNames].forEach((names) => names.forEach((name, key) => {
         if (usable(name)) {
@@ -120,7 +128,8 @@ export function scopedCatalogue(config, rowCollection = null) {
             kind: 'row',
             items: row.columns.map((column) => {
                 const key = columnKey(row, column);
-                const display = displayOf(shortNames.get(key), key);
+                // As `toDisplay` shows it: short, or long when the short name is shared.
+                const display = byKey.get(key) ?? key;
 
                 return { key, label: column.label, display, insert: display };
             }),
@@ -174,7 +183,7 @@ export function scopedCatalogue(config, rowCollection = null) {
         nodes: flat.nodes,
         collections: flat.collections,
         rowCollection: row ? row.key : null,
-        names: { byKey, byName },
+        names: { byKey, byName, longByKey },
     };
 }
 
@@ -186,12 +195,25 @@ export function scopedCatalogue(config, rowCollection = null) {
  */
 export function toDisplay(source, catalogue) {
     const byKey = catalogue?.names?.byKey ?? new Map();
+    const longByKey = catalogue?.names?.longByKey ?? new Map();
 
     return formulaSegments(String(source ?? '')).map((segment) => (segment.type !== 'code'
         ? segment.text
-        : segment.text.replace(/[A-Za-z0-9_.]+/g, (token) => (/^[A-Za-z_]/.test(token) && byKey.has(token)
-            ? byKey.get(token)
-            : token)))).join('');
+        : segment.text.replace(/[A-Za-z0-9_.]+/g, (token, offset, text) => {
+            if (!/^[A-Za-z_]/.test(token)) {
+                return token;
+            }
+
+            // The whole argument of SUM/COUNT is the table's column, not this line's
+            // value: named long (`SUM([Linhas · Valor])`), as the totals insert it.
+            if (longByKey.has(token)
+                && /\b(SUM|COUNT)\s*\(\s*$/i.test(text.slice(0, offset))
+                && /^\s*\)/.test(text.slice(offset + token.length))) {
+                return longByKey.get(token);
+            }
+
+            return byKey.get(token) ?? token;
+        }))).join('');
 }
 
 /**
@@ -225,4 +247,51 @@ export function toSource(display, catalogue) {
     }).join('');
 
     return { source, unknown };
+}
+
+/**
+ * The quick examples under a data field's formula box (spec §6.4), as technical sources:
+ * a text field in the middle of a sentence, that field in capitals, and a total of the
+ * table. Built on the fields this type has — the first text field, the first column SUM
+ * is offered on — so an example whose field the type lacks is simply not offered.
+ *
+ * @returns {{id: string, label: string, source: string}[]}
+ */
+export function quickExamples(config, catalogue) {
+    const strings = config?.strings ?? {};
+    const types = new Map();
+
+    (config?.nodes ?? []).forEach((node) => (node.fields ?? []).forEach((field) => {
+        if (field.type) {
+            types.set(field.key, field.type);
+        }
+    }));
+    (config?.bindings ?? []).forEach((binding) => {
+        if (binding.type && !types.has(binding.key)) {
+            types.set(binding.key, binding.type);
+        }
+    });
+
+    const groups = catalogue?.groups ?? [];
+    const text = groups.filter((group) => group.kind === 'singular')
+        .flatMap((group) => group.items)
+        .find((item) => types.get(item.key) === 'text');
+    const total = groups.find((group) => group.kind === 'totals')?.items.find((item) => item.insert.startsWith('SUM('));
+    const examples = [];
+
+    if (text) {
+        examples.push({
+            id: 'text',
+            label: strings['formula.quick.text'] ?? 'Text with a field in the middle',
+            source: String(strings['formula.quick.text_source'] ?? '"Text before " & :field & " text after"')
+                .replace(':field', () => text.key),
+        });
+        examples.push({ id: 'upper', label: strings['formula.quick.upper'] ?? 'Capitals', source: `UPPER(${text.key})` });
+    }
+
+    if (total) {
+        examples.push({ id: 'total', label: strings['formula.quick.total'] ?? 'Table total', source: `SUM(${total.key})` });
+    }
+
+    return examples;
 }

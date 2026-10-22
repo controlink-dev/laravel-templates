@@ -459,6 +459,13 @@ const inserts = (list) => list.map((item) => item.insert);
     assert.equal(formulaLock({ key: 'a.b', legal: false, mandatory: false }), null);
     assert.equal(formulaLock({ key: 'a.b' }), null);
     assert.equal(formulaLock(undefined), null);
+
+    // Only the LAST block carrying it is held (spec §6.1): with another data field on the
+    // same binding, a redundant copy may become a formula.
+    assert.equal(formulaLock({ key: 'a.b', legal: true, mandatory: true }, 0), 'legal');
+    assert.equal(formulaLock({ key: 'a.b', legal: true, mandatory: true }, 1), null);
+    assert.equal(formulaLock({ key: 'a.b', mandatory: true }, 2), null);
+    assert.equal(formulaLock({ key: 'a.b' }, 0), null);
 }
 
 {

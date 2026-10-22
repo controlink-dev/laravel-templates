@@ -318,6 +318,21 @@ return [
         'blank'        => 'No value: prints empty.',
         'functions'    => 'Functions: :list',
 
+        // The data field's "Value: Field | Formula" and its formula box (spec §6.1, §6.4).
+        // `:name` and `:field` are filled in JS.
+        'value'         => 'Value',
+        'value_field'   => 'Field',
+        'value_formula' => 'Formula',
+        'done'          => 'Done',
+        'unknown_field' => 'Unknown field: :name',
+        'quick' => [
+            'heading'     => 'Quick examples',
+            'text'        => 'Text with a field in the middle',
+            'text_source' => '"Text before " & :field & " text after"',
+            'upper'       => 'Capitals',
+            'total'       => 'Table total',
+        ],
+
         // The autocomplete under the formula box and the ƒx function reference.
         'functions_group'   => 'Functions',
         'reference_toggle'  => 'Function reference',
@@ -402,22 +417,22 @@ return [
         // type; the editor shows it with the readable names of the open type (fields that
         // type lacks stay as they are). Quoted text is never translated by the editor.
         'examples' => [
-            'IF'     => 'IF(lines.quantity > 0, lines.amount, "")',
-            'AND'    => 'IF(AND(lines.quantity > 0, lines.unit_price > 0), "Yes", "No")',
+            'IF'     => 'IF(totals.tax_total > 0, totals.total_due, totals.net_total)',
+            'AND'    => 'IF(AND(totals.tax_total > 0, totals.net_total > 0), "Yes", "No")',
             'OR'     => 'IF(OR(totals.tax_total = 0, totals.net_total = 0), "Exempt", "")',
             'NOT'    => 'IF(NOT(totals.tax_total > 0), "No VAT", "")',
             'SUM'    => 'SUM(lines.amount)',
             'COUNT'  => 'COUNT(lines.code)',
             'ROUND'  => 'ROUND(totals.net_total * 0.23, 2)',
             'ABS'    => 'ABS(totals.total_due)',
-            'MIN'    => 'MIN(lines.quantity, 10)',
+            'MIN'    => 'MIN(totals.total_due, 1000)',
             'MAX'    => 'MAX(totals.total_due, 0)',
             'UPPER'  => 'UPPER(customer.name)',
             'LOWER'  => 'LOWER(customer.name)',
             'CONCAT' => 'CONCAT(document.designation, " ", document.number)',
-            'LEFT'   => 'LEFT(lines.description, 40)',
+            'LEFT'   => 'LEFT(customer.name, 20)',
             'RIGHT'  => 'RIGHT(customer.tax_id, 4)',
-            'LEN'    => 'LEN(lines.description)',
+            'LEN'    => 'LEN(customer.name)',
             'TRIM'   => 'TRIM(customer.address)',
             'YEAR'   => 'YEAR(document.issue_date)',
             'MONTH'  => 'MONTH(document.issue_date)',

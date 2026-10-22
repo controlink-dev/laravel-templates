@@ -16,7 +16,7 @@ import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, plainProjectData, refreshPreview, selectionOf } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
-import { createFormulaPreview, formulaFunctionsOf, selectionHeading } from './formula.js';
+import { createFormulaPreview, formulaFunctionsOf, refreshFormulaTraits, selectionHeading } from './formula.js';
 import { createFormulaLibrary } from './formula-library.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
@@ -1866,6 +1866,24 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
     // The binding changes under a selected block — another field, or the formula switch
     // (CGE-37) — and the header has to name what the block now prints.
     editor.on('component:update:attributes', (component) => component === editor.getSelected() && renderSelection());
+
+    /*
+     * "Campos e funções" belongs to the formula box of the selected block: selecting
+     * another block (or none) gives the Blocks rail back (spec §6.3).
+     *
+     * The "Valor" switch of the selected data field is held only while it is the last
+     * block carrying a legal or mandatory field (spec §6.1). Whether it is depends on the
+     * OTHER blocks, so it is repainted on selection and whenever any block's attributes
+     * change — a copy switched to Fórmula, or re-bound, holds this one again.
+     */
+    editor.on('component:toggled', () => config.formulaLibrary?.close());
+    editor.on('component:selected component:update:attributes', () => {
+        const selected = editor.getSelected();
+
+        if (selected?.get?.('type') === 'data-field') {
+            refreshFormulaTraits(selected, config.strings);
+        }
+    });
 
     /* ------------------------------------------------------------ zone picker */
 

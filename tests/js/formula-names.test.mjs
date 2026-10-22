@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-    FUNCTION_GROUPS, functionGroupOf, scopedCatalogue, toDisplay, toSource,
+    FUNCTION_GROUPS, functionGroupOf, quickExamples, scopedCatalogue, toDisplay, toSource,
 } from '../../resources/js/editor/formula-names.js';
 import { applySuggestion, suggestionsAt } from '../../resources/js/editor/formula.js';
 
@@ -64,9 +64,16 @@ const column = scopedCatalogue(config, 'lines');
     assert.deepEqual(toSource('[Quantidade]', single), { source: '[Quantidade]', unknown: ['[Quantidade]'] });
     assert.deepEqual(toSource('[Quantidade]', scopedCatalogue(config, 'other')).unknown, ['[Quantidade]']);
 
-    // In a column the long name is accepted too (the totals insert it), and shown short.
+    // In a column the long name is accepted too (the totals insert it), and so is the short.
     assert.deepEqual(toSource('SUM([Linhas · Valor])', column), { source: 'SUM(lines.value)', unknown: [] });
-    assert.equal(toDisplay('SUM(lines.value)', column), 'SUM([Valor])');
+    assert.deepEqual(toSource('SUM([Valor])', column), { source: 'SUM(lines.value)', unknown: [] });
+
+    // The whole argument of SUM/COUNT is the table's column: shown long, as inserted.
+    // Anywhere else — this line's value, or inside a calculation under SUM — short.
+    assert.equal(toDisplay('SUM(lines.value)', column), 'SUM([Linhas · Valor])');
+    assert.equal(toDisplay('COUNT( lines.code ) + lines.value', column), 'COUNT( [Linhas · Código] ) + [Valor]');
+    assert.equal(toDisplay('SUM(lines.value * 2)', column), 'SUM([Valor] * 2)');
+    assert.equal(toDisplay('ROUND(lines.value)', column), 'ROUND([Valor])');
 }
 
 {
@@ -148,6 +155,46 @@ const column = scopedCatalogue(config, 'lines');
     assert.equal(toDisplay('a.n & b.n', twins), 'a.n & b.n');
 }
 
+{
+    // A label holding the separator can collide with a model + field name: every key
+    // claiming that name falls back to its key, in both directions.
+    const dotted = scopedCatalogue({ nodes: [
+        { id: 'a', label: 'A', fields: [{ key: 'a.bc', label: 'B · C' }] },
+        { id: 'ab', label: 'A · B', fields: [{ key: 'ab.c', label: 'C' }, { key: 'ab.d', label: 'D' }] },
+    ] });
+    assert.equal(toDisplay('a.bc & ab.c & ab.d', dotted), 'a.bc & ab.c & [A · B · D]');
+    assert.deepEqual(toSource('[A · B · C]', dotted).unknown, ['[A · B · C]']);
+    assert.deepEqual(toSource('[A · B · D]', dotted), { source: 'ab.d', unknown: [] });
+
+    // A column whose label is a model + field name: short, it collides, so the row item
+    // and the formula both show it long — the same text in the list and in the box.
+    const clash = {
+        nodes: [{ id: 'customer', label: 'Cliente', fields: [{ key: 'customer.name', label: 'Nome' }] }],
+        bindings: [{ key: 'lines', label: 'Linhas', type: 'collection', columns: [{ key: 'client', label: 'Cliente · Nome' }] }],
+    };
+    const clashColumn = scopedCatalogue(clash, 'lines');
+    assert.equal(toDisplay('lines.client & customer.name', clashColumn), '[Linhas · Cliente · Nome] & customer.name');
+    assert.deepEqual(clashColumn.groups[0].items.map((item) => item.display), ['[Linhas · Cliente · Nome]']);
+    assert.deepEqual(toSource('[Linhas · Cliente · Nome] & customer.name', clashColumn), {
+        source: 'lines.client & customer.name', unknown: [],
+    });
+}
+
+{
+    // A label that is a function's name is still a name: brackets keep it apart.
+    const named = scopedCatalogue({
+        nodes: [{ id: 'totals', label: 'Totais', fields: [{ key: 'totals.sum', label: 'SUM' }] }],
+        bindings: [{ key: 'lines', label: 'Linhas', type: 'collection', columns: [{ key: 'count', label: 'COUNT' }] }],
+        formulaFunctions: ['SUM', 'COUNT'],
+    }, 'lines');
+    assert.equal(toDisplay('lines.count + totals.sum', named), '[COUNT] + [Totais · SUM]');
+    assert.deepEqual(toSource('[COUNT] + [Totais · SUM]', named), { source: 'lines.count + totals.sum', unknown: [] });
+    assert.deepEqual(toSource('SUM([COUNT]) + COUNT([Linhas · COUNT])', named), {
+        source: 'SUM(lines.count) + COUNT(lines.count)', unknown: [],
+    });
+    assert.equal(toDisplay('SUM(lines.count)', named), 'SUM([Linhas · COUNT])');
+}
+
 /* ------------------------------------------------------------ catalogue */
 
 {
@@ -203,6 +250,44 @@ const column = scopedCatalogue(config, 'lines');
     assert.equal(single.functions.find((fn) => fn.name === 'UPPER').signature, 'UPPER()');
     assert.equal(functionGroupOf('ROUND'), 'math');
     assert.deepEqual(Object.keys(FUNCTION_GROUPS), ['math', 'totals', 'conditions', 'text', 'dates']);
+}
+
+/* --------------------------------------------------- quick examples (§6.4) */
+
+{
+    // The data field's quick examples, built on the type's own fields: a text field in the
+    // middle of a sentence, that field in capitals, and a total of the table.
+    const typed = {
+        ...config,
+        nodes: config.nodes.map((node) => (node.id === 'customer'
+            ? { ...node, fields: [{ key: 'customer.nif', label: 'NIF', type: 'number' }, { key: 'customer.name', label: 'Nome', type: 'text' }] }
+            : node)),
+        strings: {
+            ...config.strings,
+            'formula.quick.text': 'Texto com campo no meio',
+            'formula.quick.text_source': '"Antes " & :field & " depois $&"',
+            'formula.quick.upper': 'Maiúsculas',
+            'formula.quick.total': 'Total da tabela',
+        },
+    };
+    const catalogue = scopedCatalogue(typed);
+
+    assert.deepEqual(quickExamples(typed, catalogue), [
+        { id: 'text', label: 'Texto com campo no meio', source: '"Antes " & customer.name & " depois $&"' },
+        { id: 'upper', label: 'Maiúsculas', source: 'UPPER(customer.name)' },
+        { id: 'total', label: 'Total da tabela', source: 'SUM(lines.quantity)' },
+    ]);
+    assert.equal(toDisplay(quickExamples(typed, catalogue)[2].source, catalogue), 'SUM([Linhas · Quantidade])');
+
+    // A type with no text field, or no table: those examples are not offered.
+    assert.deepEqual(quickExamples(config, single).map((example) => example.id), ['total']);
+    assert.deepEqual(quickExamples({}, scopedCatalogue({})), []);
+
+    // The field's type may come from the bindings when the node does not carry it.
+    const fromBindings = { nodes: [{ id: 'd', label: 'D', fields: [{ key: 'd.t', label: 'T' }] }], bindings: [{ key: 'd.t', type: 'text' }] };
+    assert.deepEqual(quickExamples(fromBindings, scopedCatalogue(fromBindings)).map((example) => example.source), [
+        '"Text before " & d.t & " text after"', 'UPPER(d.t)',
+    ]);
 }
 
 /* ---------------------------------------------- suggestions with names */

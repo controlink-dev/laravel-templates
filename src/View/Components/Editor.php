@@ -210,6 +210,18 @@ class Editor extends Component
             'formula.blank'        => __('templates::editor.formula.blank'),
             'formula.functions'    => __('templates::editor.formula.functions', ['list' => ':list']),
 
+            // "Valor: Campo | Fórmula" and the box (CGE-37). `:name`/`:field` are filled in JS.
+            'formula.value'             => __('templates::editor.formula.value'),
+            'formula.value_field'       => __('templates::editor.formula.value_field'),
+            'formula.value_formula'     => __('templates::editor.formula.value_formula'),
+            'formula.done'              => __('templates::editor.formula.done'),
+            'formula.unknown_field'     => __('templates::editor.formula.unknown_field', ['name' => ':name']),
+            'formula.quick.heading'     => __('templates::editor.formula.quick.heading'),
+            'formula.quick.text'        => __('templates::editor.formula.quick.text'),
+            'formula.quick.text_source' => __('templates::editor.formula.quick.text_source', ['field' => ':field']),
+            'formula.quick.upper'       => __('templates::editor.formula.quick.upper'),
+            'formula.quick.total'       => __('templates::editor.formula.quick.total'),
+
             // The autocomplete and the ƒx function reference (CGE-37).
             'formula.functions_group'   => __('templates::editor.formula.functions_group'),
             'formula.reference_toggle'  => __('templates::editor.formula.reference_toggle'),

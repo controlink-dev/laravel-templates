@@ -66,6 +66,15 @@ export function functionGroups(functions) {
     return order.filter((id) => byGroup.get(id).length).map((id) => ({ id, functions: byGroup.get(id) }));
 }
 
+/**
+ * The example line of a function: the template with `:example` replaced by the example as
+ * shown. Replaced through a function, so a `$&` or `$'` the example holds (a label, a text
+ * literal) is printed as it is, not expanded by `String.replace`.
+ */
+export function exampleLine(template, example) {
+    return String(template ?? ':example').replace(':example', () => String(example ?? ''));
+}
+
 /** English fallbacks, for a host whose strings predate the library. */
 const FALLBACK = {
     'formula.library.heading': 'Fields and functions',
@@ -204,9 +213,12 @@ export function createFormulaLibrary({ rail, config }) {
 
             group.items.forEach((item) => {
                 const button = choice('tpl-formula-library__field', item.insert);
-                const name = item.display.startsWith('[') ? item.display.slice(1, -1) : item.display;
-                // The short name of the field, with its model or SUM/COUNT in the corner.
-                const shown = group.kind === 'singular' && name.includes(' · ') ? name.slice(name.indexOf(' · ') + 3) : name;
+                const named = item.display.startsWith('[');
+                // A field by its own label (the group heading names the model); a total by
+                // its long name, `Linhas · Valor`; one with no usable name by its key.
+                const shown = !named
+                    ? item.display
+                    : group.kind === 'totals' ? item.display.slice(1, -1) : String(item.label ?? '').trim();
                 const corner = group.kind === 'totals' ? item.insert.slice(0, item.insert.indexOf('(')) : item.key;
 
                 button.title = item.insert;
@@ -239,7 +251,7 @@ export function createFormulaLibrary({ rail, config }) {
                 if (fn.example) {
                     const example = toDisplay(fn.example, state.catalogue);
 
-                    button.append(element('span', 'tpl-formula-library__example', t('formula.library.example').replace(':example', example)));
+                    button.append(element('span', 'tpl-formula-library__example', exampleLine(t('formula.library.example'), example)));
                 }
 
                 node.append(button);
