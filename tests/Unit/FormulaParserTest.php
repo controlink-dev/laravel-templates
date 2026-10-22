@@ -156,6 +156,15 @@ class FormulaParserTest extends TestCase
             'too many args' => ['NOT(1,2)', 'arity'],
             'no args' => ['SUM()', 'arity'],
             'round too many' => ['ROUND(1,2,3)', 'arity'],
+            'tab' => ["1\t+ 2", 'syntax'],
+            'newline' => ["1\n+ 2", 'syntax'],
+            'accented letter' => ['é', 'syntax'],
+            'nbsp' => ["1\u{00A0}+ 2", 'syntax'],
+            'not equal bang' => ['a.b != 1', 'syntax'],
+            'double equals' => ['a.b == 1', 'syntax'],
+            'single quotes' => ["'x'", 'syntax'],
+            'dollar' => ['$a', 'syntax'],
+            'backslash' => ['\\', 'syntax'],
         ];
     }
 

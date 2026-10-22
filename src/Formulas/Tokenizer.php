@@ -54,15 +54,15 @@ final class Tokenizer
                     $value .= $source[$i++];
                 }
                 $tokens[] = ['t' => 'str', 'v' => $value];
-            } elseif (ctype_digit($c)) {
+            } elseif ($c >= '0' && $c <= '9') {
                 preg_match('/\G\d+(?:\.\d+)?/', $source, $m, 0, $i);
                 $i += strlen($m[0]);
                 // `12abc` and `1..5` must not silently split into two tokens.
-                if ($i < $length && (ctype_alpha($source[$i]) || $source[$i] === '_')) {
+                if ($i < $length && self::isWordStart($source[$i])) {
                     throw new FormulaException('syntax', 'Invalid number.');
                 }
                 $tokens[] = ['t' => 'num', 'v' => str_contains($m[0], '.') ? (float) $m[0] : (int) $m[0]];
-            } elseif (ctype_alpha($c) || $c === '_') {
+            } elseif (self::isWordStart($c)) {
                 preg_match('/\G[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)*/', $source, $m, 0, $i);
                 $i += strlen($m[0]);
                 $tokens[] = ['t' => 'ident', 'v' => $m[0]];
@@ -87,5 +87,14 @@ final class Tokenizer
         }
 
         return $tokens;
+    }
+
+    /**
+     * Explicit ASCII check: ctype_alpha() follows the process locale, so a
+     * single byte of a multibyte character could pass on some servers.
+     */
+    private static function isWordStart(string $c): bool
+    {
+        return ($c >= 'a' && $c <= 'z') || ($c >= 'A' && $c <= 'Z') || $c === '_';
     }
 }
