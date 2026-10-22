@@ -26,6 +26,7 @@ import {
     checkLegalFieldsLocally,
     checkOffSheetLocally,
     checkTextOverflowLocally,
+    checkMandatoryTablesLocally,
     restoreMissingLegalFields,
     snapIntoSheet,
     styleManagerSectors,
@@ -403,6 +404,7 @@ async function mountEditor(el) {
                     ...checkLegalFieldsLocally(editor, config),
                     ...checkOffSheetLocally(editor, config),
                     ...checkTextOverflowLocally(editor, config),
+                    ...checkMandatoryTablesLocally(editor, config),
                 ]
                 : [];
             const problems = mergeProblems(serverProblems, local);

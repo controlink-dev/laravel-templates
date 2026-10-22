@@ -281,6 +281,7 @@ class Editor extends Component
             'check.scope'           => __('templates::editor.checks.scope'),
             'check.off_sheet'       => __('templates::editor.checks.off_sheet'),
             'check.text_overflow'   => __('templates::editor.checks.text_overflow'),
+            'check.missing_table'   => __('templates::editor.checks.missing_table'),
             'check.code_incomplete' => __('templates::editor.checks.code_incomplete'),
 
             'error.image_too_large'  => __('templates::editor.errors.image_too_large'),

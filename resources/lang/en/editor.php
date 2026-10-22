@@ -240,6 +240,7 @@ return [
         'scope'     => '":field" has to appear on every page, so it can only sit in the header or the footer.',
         'off_sheet' => 'The field ":field" is off the sheet.',
         'text_overflow' => 'The text of ":field" does not fit its box and will be cut.',
+        'missing_table' => 'The ":field" table is missing. It is required to activate.',
 
         'code_incomplete' => 'This fixed code has required fields left blank. Without them the code is valid but points at nothing.',
     ],

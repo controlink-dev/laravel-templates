@@ -8,7 +8,7 @@
 
 import { resolvePaper } from './editor.js';
 import { defaultSpecFor, specToAttributes } from './formats.js';
-import { roundTo, snapOffsets } from './anchors.js';
+import { PX_PER_MM, roundTo, snapOffsets } from './anchors.js';
 
 /**
  * The Style Manager the user gets: typography, colour, box and position, and nothing
@@ -241,7 +241,96 @@ export function restoreMissingLegalFields(editor, config) {
         });
     });
 
-    return missingFields.length + missingCodes.length;
+    const missingTables = missingMandatoryTables(editor, config);
+    const body = wrapper.find('.zone--body')[0];
+
+    if (body) {
+        missingTables.forEach((binding) => restoreTable(editor, config, body, binding));
+    }
+
+    return missingFields.length + missingCodes.length + (body ? missingTables.length : 0);
+}
+
+/** The mandatory collections (the invoice's lines, its tax summary) with no table bound. */
+function missingMandatoryTables(editor, config) {
+    const bound = new Set(
+        editor.getWrapper().find('[data-tpl-type="line-table"]')
+            .map((component) => component.getAttributes()['data-tpl-collection']),
+    );
+
+    return (config.bindings ?? []).filter(
+        (binding) => binding.type === 'collection' && binding.mandatory && !bound.has(binding.key),
+    );
+}
+
+/**
+ * A mandatory table put back (CGE-52): bound to its collection, under the last table of
+ * the body (the flow stacks tables by their top), the printable width, with the declared
+ * columns — on a talão without those marked `roll: false`, which do not fit 58mm.
+ */
+function restoreTable(editor, config, body, binding) {
+    const tables = body.find('[data-tpl-type="line-table"]');
+    const below = tables.reduce((bottom, table) => {
+        const box = measuredBoxOf(table);
+
+        return box ? Math.max(bottom, box.top + box.height) : bottom;
+    }, -4);
+
+    const margins = config.geometry?.margins ?? config.margins ?? {};
+    const paperWidth = Number(config.paper?.width ?? 210);
+    const width = paperWidth - Number(margins.left ?? 15) - Number(margins.right ?? 15);
+    const isRoll = config.geometry?.medium === 'roll';
+
+    // A talão flows in tree order: the table goes right after the last one, not at the
+    // very end under the certification.
+    const last = tables[tables.length - 1];
+    const parent = isRoll && last ? last.parent() : body;
+    const at = isRoll && last ? last.index() + 1 : undefined;
+
+    const [table] = parent.append({
+        type: 'line-table',
+        attributes: {
+            class: isRoll ? 'flow' : 'block block--lines',
+            'data-tpl-type': 'line-table',
+            'data-tpl-collection': binding.key,
+        },
+        // The starting layouts' table size.
+        style: isRoll ? { 'font-size': '7pt' } : {
+            position: 'absolute',
+            left: '0mm',
+            top: roundTo(below + 4, 0.5) + 'mm',
+            width: roundTo(width, 0.5) + 'mm',
+            'font-size': '7pt',
+        },
+    }, at === undefined ? {} : { at });
+
+    table?.setColumns?.(table.defaultColumns().filter(
+        (column) => !isRoll || binding.columns?.find((declared) => declared.key === column.key)?.roll !== false,
+    ));
+    table?.renderPreview?.();
+}
+
+/** A block's box in mm inside its band, from the canvas (null before it is rendered). */
+function measuredBoxOf(component) {
+    const el = component.getEl?.();
+
+    if (!el) {
+        return null;
+    }
+
+    return { top: el.offsetTop / PX_PER_MM, height: el.offsetHeight / PX_PER_MM };
+}
+
+/**
+ * Live check (CGE-52): a mandatory collection with no table. Its own code, not V-02: a
+ * local V-02 would hide the server's V-02 for single mandatory fields.
+ */
+export function checkMandatoryTablesLocally(editor, config) {
+    return missingMandatoryTables(editor, config).map((binding) => ({
+        code: 'L-02',
+        componentId: '',
+        message: format(config.strings['check.missing_table'], { field: binding.label }),
+    }));
 }
 
 /**

@@ -53,3 +53,15 @@ import { mergeProblems, LOCAL_CHECK_CODES } from '../../resources/js/editor/prob
 assert.ok(LOCAL_CHECK_CODES.has('V-10') && LOCAL_CHECK_CODES.has('V-11') && LOCAL_CHECK_CODES.has('V-13') && LOCAL_CHECK_CODES.has('V-16'));
 
 console.log('problems.test.mjs: all assertions passed');
+
+// 4. The live "missing table" check (CGE-52) has its own code: a server V-02 for a single
+//    mandatory field stays listed beside it.
+{
+    const server = [{ code: 'V-02', componentId: '', message: 'supply date missing' }];
+    const local = [{ code: 'L-02', componentId: '', message: 'tax summary table missing' }];
+
+    const merged = mergeProblems(server, local);
+
+    assert.deepEqual(merged.map((p) => p.code), ['V-02', 'L-02']);
+    assert.equal(LOCAL_CHECK_CODES.has('L-02'), false);
+}
