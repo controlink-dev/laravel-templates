@@ -1855,3 +1855,20 @@ select.tpl-pf-input {
 .tpl-editor-root .gjs-field-checkbox input:checked + .gjs-chk-icon {
     display: block;
 }
+
+/*
+ * The Layers move handle is GrapesJS's 13px icon and nothing more: a press a pixel or two
+ * off it lands on the row, which only selects, so dragging seemed to work at random.
+ * Padding grows the grab area to a comfortable target; the negative margin keeps the icon
+ * exactly where it was.
+ */
+.tpl-editor-root .gjs-layer-move {
+    box-sizing: content-box;
+    padding: 0.5rem;
+    margin: -0.5rem -0.25rem -0.5rem -0.5rem;
+    cursor: grab;
+}
+
+.tpl-editor-root .gjs-layer-move:active {
+    cursor: grabbing;
+}
