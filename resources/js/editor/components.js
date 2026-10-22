@@ -677,8 +677,8 @@ function registerDataField(editor, config) {
              * The "Fórmula" switch (CGE-37).
              *
              * On: a fresh `formula.<id>` key, and the source starts as the field it was
-             * bound to (spec §6.1) — the value stays, ready to be wrapped — in the format it
-             * had (§8.1). Off: the source goes and
+             * bound to (spec §6.1) — the value stays, ready to be wrapped — with no format
+             * yet (see `onBindingPicked`). Off: the source goes and
              * the field is bound again exactly as a freshly dropped one is — the first
              * non-legal field of the default node (see `firstField` above) — because the
              * field it had before is long gone and guessing it back would be a surprise.
@@ -840,15 +840,23 @@ function registerDataField(editor, config) {
                     return;
                 }
 
+                const wasFormula = isFormulaKey(this.__pfBinding);
+
                 this.__pfBinding = this.binding();
 
                 /*
-                 * A formula has no declared type, so no default format of its own (CGE-37).
-                 * It keeps the one it has: turning the switch on starts from the field it
-                 * was, in that field's format (spec §8.1), and a copy renamed to its own key
-                 * keeps the format it was copied with.
+                 * A formula has no declared type, so no default format (CGE-37). Turning
+                 * the switch on starts from none, as the approved design shows: the field
+                 * is there to be wrapped, most often into a sentence, and a text result
+                 * under the field's date or money format would print empty. A copy renamed
+                 * to its own key (one formula key for another) keeps the format it was
+                 * copied with.
                  */
                 if (this.isFormula()) {
+                    if (!wasFormula) {
+                        this.applyFormatSpec(null);
+                    }
+
                     return;
                 }
 

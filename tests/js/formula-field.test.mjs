@@ -136,7 +136,7 @@ const FORMULA_KEY = /^formula\.[a-z][a-z0-9]{7}$/;
     assert.match(field.binding(), FORMULA_KEY);
     assert.equal(field.getAttributes()['data-tpl-formula'], 'doc.total', 'the box starts with the field it had');
     assert.equal(field.formulaDisplay(), '[Document · Total]');
-    assert.equal(field.formatName(), 'money', 'the value it had keeps its format (spec §8.1)');
+    assert.equal(field.formatName(), '', 'a formula starts without a format: a sentence under a date format would print empty');
     assert.deepEqual(field.traitNames().slice(0, 2), [VALUE_MODE_TRAIT, 'data-tpl-formula']);
     assert.ok(!field.traitNames().includes('data-tpl-node'));
     assert.ok(!field.traitNames().includes('data-tpl-binding'));
