@@ -61,6 +61,41 @@ export function isFormulaKey(key) {
 }
 
 /**
+ * Why a field bound to `binding` may not become a formula, or null when it may (spec §2/§6):
+ * `legal` — the document would lose the field the law asks for — or `mandatory` — the type
+ * requires that value placed (V-02). Legal first: every legal field is mandatory too, and
+ * the law is the reason the user needs to hear.
+ */
+export function formulaLock(binding) {
+    if (binding?.legal) {
+        return 'legal';
+    }
+
+    return binding?.mandatory ? 'mandatory' : null;
+}
+
+/** Ctrl/Meta chords that edit text in the box: undo, redo, select all, copy, paste, cut. */
+const TEXT_EDITING_CHORDS = new Set(['z', 'y', 'a', 'c', 'v', 'x']);
+
+/**
+ * Whether a keydown in the formula box must stop there. Plain keys always do: GrapesJS's
+ * shortcuts (Delete, Backspace, arrows) act on the selected block. So do the text-editing
+ * chords above and Ctrl/Meta with a non-character key (Ctrl+Backspace deletes a word,
+ * Ctrl+Arrow moves by one). Any other Ctrl/Meta chord — Ctrl+S above all — reaches the
+ * host's shortcuts. Ctrl+Alt is AltGr on Windows (`€`, `@`, `{`): typing, so it stays.
+ */
+export function keepsKeyInFormulaBox(event) {
+    const chord = (event.ctrlKey || event.metaKey) && !event.altKey;
+    const key = String(event.key ?? '');
+
+    if (!chord || key.length !== 1) {
+        return true;
+    }
+
+    return TEXT_EDITING_CHORDS.has(key.toLowerCase());
+}
+
+/**
  * The key a formula field should carry, given the keys already on the sheet: its own
  * when no other field has it, a new one when it does — which is what a copy is. Two
  * formulas on one key would be refused at save (V-19), and the user could not tell why.
@@ -389,8 +424,9 @@ export function createFormulaPreview({
  * owner's own handler — the trait's `onEvent`, the column card's listener — stores the
  * source and asks for the live result exactly as for a keystroke.
  *
- * Every keydown stops in the textarea: GrapesJS's shortcuts (delete, undo, arrows) act on
- * the selected block and must never fire while the user types a formula.
+ * Keydowns stop in the textarea: GrapesJS's shortcuts (delete, undo, arrows) act on the
+ * selected block and must never fire while the user types a formula. Host chords such as
+ * Ctrl+S still get through (see `keepsKeyInFormulaBox`).
  */
 export function formulaAssist(input, config) {
     const strings = config.strings ?? {};
@@ -500,7 +536,9 @@ export function formulaAssist(input, config) {
     input.addEventListener('click', close);
 
     input.addEventListener('keydown', (event) => {
-        event.stopPropagation();
+        if (keepsKeyInFormulaBox(event)) {
+            event.stopPropagation();
+        }
 
         if (items.length === 0) {
             return;
@@ -701,7 +739,7 @@ export function registerFormula(editor, config) {
 /**
  * Repaint both traits from the component, when what they show changed without their
  * attribute changing: a server answer arrived, or the binding became (or stopped being)
- * legal. `trait.el` is the wrapper `createInput` returned; absent until first shown.
+ * legal or mandatory. `trait.el` is the wrapper `createInput` returned; absent until first shown.
  */
 export function refreshFormulaTraits(component, strings) {
     const toggle = component.getTrait?.(FORMULA_TOGGLE_TRAIT)?.el;
@@ -718,14 +756,14 @@ export function refreshFormulaTraits(component, strings) {
 
 function paintToggle(wrap, component, strings) {
     const input = wrap.querySelector('input');
-    const legal = Boolean(component.isLegalBinding?.());
+    const lock = component.formulaLock?.() ?? null;
 
     input.checked = isFormulaKey(component.getAttributes()['data-tpl-binding']);
-    // A legal field never becomes a formula: the document would lose the field the law
-    // asks for. The server would refuse it too (V-02/V-10); the switch says so first.
-    input.disabled = legal;
-    wrap.classList.toggle('is-disabled', legal);
-    wrap.title = legal ? (strings['formula.legal_locked'] ?? '') : (strings['formula.toggle'] ?? '');
+    // A legal or mandatory field never becomes a formula: the document would lose a field
+    // the type requires. The server would refuse it too (V-02/V-10); the switch says so first.
+    input.disabled = lock !== null;
+    wrap.classList.toggle('is-disabled', lock !== null);
+    wrap.title = strings[lock === null ? 'formula.toggle' : `formula.${lock}_locked`] ?? '';
 }
 
 /**

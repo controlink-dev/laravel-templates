@@ -16,8 +16,8 @@ import { PX_PER_MM, roundTo } from './anchors.js';
 import { alertDialog } from './dialog.js';
 import { previewValue } from './preview-filter.js';
 import {
-    FORMULA_SOURCE_TRAIT, FORMULA_TOGGLE_TRAIT, freshFormulaKey, isFormulaKey, newFormulaId, refreshFormulaTraits,
-    registerFormula,
+    FORMULA_SOURCE_TRAIT, FORMULA_TOGGLE_TRAIT, formulaLock, freshFormulaKey, isFormulaKey, newFormulaId,
+    refreshFormulaTraits, registerFormula,
 } from './formula.js';
 import { freshFormulaColumns, isFormulaColumn } from './formula-columns.js';
 import {
@@ -594,6 +594,11 @@ function registerDataField(editor, config) {
                 return Boolean(findBinding(config, this.binding())?.legal);
             },
 
+            /** Why this field may not become a formula — `legal`, `mandatory` — or null (CGE-37). */
+            formulaLock() {
+                return formulaLock(findBinding(config, this.binding()));
+            },
+
             /**
              * The "Fórmula" switch (CGE-37).
              *
@@ -603,11 +608,12 @@ function registerDataField(editor, config) {
              * field it had before is long gone and guessing it back would be a surprise.
              * One attribute write each way, so a single undo reverses it.
              *
-             * A legal field never switches on: the document would lose the field the law
-             * asks for. The switch is disabled for it too; this is the guard behind it.
+             * A legal or mandatory field never switches on (spec §2/§6): the document would
+             * lose a field the type requires. The switch is disabled for it too; this is the
+             * guard behind it.
              */
             setFormulaMode(on) {
-                if (Boolean(on) === this.isFormula() || (on && this.isLegalBinding())) {
+                if (Boolean(on) === this.isFormula() || (on && this.formulaLock() !== null)) {
                     return;
                 }
 

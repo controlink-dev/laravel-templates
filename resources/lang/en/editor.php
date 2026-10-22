@@ -310,6 +310,7 @@ return [
         'label'        => 'Formula',
         'toggle'       => 'Calculate with a formula',
         'legal_locked' => 'A legal field cannot become a formula: the document would lose the field the law requires.',
+        'mandatory_locked' => 'A mandatory field cannot become a formula: the document would lose a field this document type requires.',
         'source'       => 'Formula',
         'placeholder'  => 'e.g. totals.total_due * 2',
         'calculating'  => 'Calculating…',

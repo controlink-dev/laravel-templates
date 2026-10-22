@@ -320,6 +320,7 @@ return [
         'label'        => 'Fórmula',
         'toggle'       => 'Calcular com uma fórmula',
         'legal_locked' => 'Um campo legal não pode ser uma fórmula: o documento perderia o campo que a lei exige.',
+        'mandatory_locked' => 'Um campo obrigatório não pode ser uma fórmula: o documento perderia um campo que este tipo de documento exige.',
         'source'       => 'Fórmula',
         'placeholder'  => 'ex.: totals.total_due * 2',
         'calculating'  => 'A calcular…',

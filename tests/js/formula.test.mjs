@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {
-    applySuggestion, createFormulaPreview, formulaCatalogue, formulaFunctionsOf, freshFormulaKey, isFormulaKey,
-    newFormulaId, selectionHeading, suggestionsAt,
+    applySuggestion, createFormulaPreview, formulaCatalogue, formulaFunctionsOf, formulaLock, freshFormulaKey, isFormulaKey,
+    keepsKeyInFormulaBox, newFormulaId, selectionHeading, suggestionsAt,
 } from '../../resources/js/editor/formula.js';
 import { initPreviewState, selectionOf } from '../../resources/js/editor/preview-filter.js';
 
@@ -415,6 +415,42 @@ const inserts = (list) => list.map((item) => item.insert);
     assert.deepEqual(formulaFunctionsOf(strings), ['IF', 'SUM']);
     assert.deepEqual(formulaFunctionsOf({}), []);
     assert.deepEqual(formulaFunctionsOf(undefined), []);
+}
+
+
+{
+    // Which bindings may never become a formula (spec §2/§6): a legal one and a mandatory
+    // one, the legal reason first (every legal field is mandatory too).
+    assert.equal(formulaLock({ key: 'a.b', legal: true, mandatory: true }), 'legal');
+    assert.equal(formulaLock({ key: 'a.b', mandatory: true }), 'mandatory');
+    assert.equal(formulaLock({ key: 'a.b', legal: false, mandatory: false }), null);
+    assert.equal(formulaLock({ key: 'a.b' }), null);
+    assert.equal(formulaLock(undefined), null);
+}
+
+{
+    // The formula box keeps plain keys (GrapesJS's Delete, Backspace, arrows) and the
+    // text-editing chords to itself; every other Ctrl/Meta chord — Ctrl+S above all —
+    // reaches the host's shortcuts.
+    const key = (k, mods = {}) => ({ key: k, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+
+    for (const event of [
+        key('a'), key('Delete'), key('Backspace'), key('ArrowLeft'), key('Enter'), key('S', { shiftKey: true }),
+        key('z', { ctrlKey: true }), key('Z', { ctrlKey: true, shiftKey: true }), key('y', { ctrlKey: true }),
+        key('a', { metaKey: true }), key('c', { ctrlKey: true }), key('v', { ctrlKey: true }), key('x', { metaKey: true }),
+        key('Backspace', { ctrlKey: true }), key('ArrowLeft', { ctrlKey: true }), key('Delete', { metaKey: true }),
+        // AltGr arrives as Ctrl+Alt on Windows: `€`, `@`, `{` are typing, not shortcuts.
+        key('€', { ctrlKey: true, altKey: true }), key('@', { ctrlKey: true, altKey: true }),
+    ]) {
+        assert.equal(keepsKeyInFormulaBox(event), true, JSON.stringify(event));
+    }
+
+    for (const event of [
+        key('s', { ctrlKey: true }), key('S', { metaKey: true }), key('s', { ctrlKey: true, shiftKey: true }),
+        key('p', { ctrlKey: true }), key('k', { metaKey: true }), key('1', { ctrlKey: true }),
+    ]) {
+        assert.equal(keepsKeyInFormulaBox(event), false, JSON.stringify(event));
+    }
 }
 
 console.log('formula: ok');

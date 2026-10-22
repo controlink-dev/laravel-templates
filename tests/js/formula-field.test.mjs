@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { registerComponents } from '../../resources/js/editor/components.js';
+import { FORMULA_TOGGLE_TRAIT, refreshFormulaTraits } from '../../resources/js/editor/formula.js';
 
 /*
  * The data field's formula mode (CGE-37), driven through its own methods on a stand-in
@@ -36,13 +37,14 @@ const config = {
     strings,
     formats: ['money'],
     ruleWidths: {},
-    bindings: [{ key: 'doc.title', label: 'Title', legal: true }],
+    bindings: [{ key: 'doc.title', label: 'Title', legal: true }, { key: 'doc.number', label: 'Number', mandatory: true }],
     nodes: [{
         id: 'doc',
         label: 'Document',
         fields: [
             { key: 'doc.title', label: 'Title', legal: true },
             { key: 'doc.total', label: 'Total', type: 'money' },
+            { key: 'doc.number', label: 'Number' },
         ],
     }],
     fixture: { 'doc.total': 10 },
@@ -179,6 +181,52 @@ const FORMULA_KEY = /^formula\.[a-z][a-z0-9]{7}$/;
     field.setFormulaMode(true);
     assert.equal(field.binding(), 'doc.title');
     assert.ok(!('data-tpl-formula' in field.getAttributes()));
+}
+
+// 5b. Nor does a mandatory one (spec §2/§6); the switch says why, per reason.
+{
+    const toggleEl = () => {
+        const input = { checked: false, disabled: false };
+        const classes = new Set();
+
+        return {
+            input,
+            classes,
+            title: '',
+            querySelector: () => input,
+            classList: { toggle: (name, on) => (on ? classes.add(name) : classes.delete(name)) },
+        };
+    };
+    const paint = (field) => {
+        const el = toggleEl();
+        field.traits.find((trait) => trait.name === FORMULA_TOGGLE_TRAIT).el = el;
+        refreshFormulaTraits(field, strings);
+
+        return el;
+    };
+
+    const mandatory = make({ 'data-tpl-node': 'doc', 'data-tpl-binding': 'doc.number', 'data-tpl-format': '' });
+
+    assert.equal(mandatory.formulaLock(), 'mandatory');
+    mandatory.setFormulaMode(true);
+    assert.equal(mandatory.binding(), 'doc.number');
+    assert.ok(!('data-tpl-formula' in mandatory.getAttributes()));
+
+    let el = paint(mandatory);
+    assert.equal(el.input.disabled, true);
+    assert.ok(el.classes.has('is-disabled'));
+    assert.equal(el.title, 'formula.mandatory_locked');
+
+    el = paint(make({ 'data-tpl-node': 'doc', 'data-tpl-binding': 'doc.title', 'data-tpl-format': '' }));
+    assert.equal(el.input.disabled, true);
+    assert.equal(el.title, 'formula.legal_locked');
+
+    const free = make();
+    assert.equal(free.formulaLock(), null);
+    el = paint(free);
+    assert.equal(el.input.disabled, false);
+    assert.ok(!el.classes.has('is-disabled'));
+    assert.equal(el.title, 'formula.toggle');
 }
 
 // 6. A saved formula field opens as it was saved: no node written, its format kept.
