@@ -212,14 +212,18 @@ const cells = (html) => [...html.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((match) 
     assert.equal(cells(table.previewContent(true))[2], 'Fórmula');
     assert.equal(asked.length, 0, 'the example (save/dirty) read never asks the server');
 
-    // 10. Real lines: the server evaluates on the first one only, the others show the label.
+    // 10. Real lines: the server evaluates on the first one only; the others show a dimmed
+    // `…`, not the label, which would read as data.
     lines = [{ quantity: 2, unit_price: 5 }, { quantity: 3, unit_price: 1 }];
     answers['lines.quantity * 3'] = { value: 6, error: null };
     table.syncPreview();
 
     const all = cells(table.get('content'));
     assert.equal(all[2], 'money(6)');
-    assert.equal(all[5], 'Fórmula');
+    assert.equal(all[5], '<span class="tpl-formula-more">…</span>');
+
+    // The saved example keeps the label on its single row.
+    assert.equal(cells(table.previewContent(true))[2], 'Fórmula');
     lines = [{ quantity: 2, unit_price: 5 }];
 
     // 11. The trait hears about every redraw, so its status lines can follow the answers.

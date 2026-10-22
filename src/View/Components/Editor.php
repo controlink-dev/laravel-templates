@@ -4,6 +4,7 @@ namespace Controlink\Templates\View\Components;
 
 use Carbon\CarbonImmutable;
 use Closure;
+use Controlink\Templates\Formulas\Formula;
 use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Types\TemplateType;
 use Illuminate\Contracts\View\View;
@@ -208,6 +209,12 @@ class Editor extends Component
             'formula.blank'        => __('templates::editor.formula.blank'),
             'formula.functions'    => __('templates::editor.formula.functions', ['list' => ':list']),
 
+            // The autocomplete and the ƒx function reference (CGE-37).
+            'formula.functions_group'   => __('templates::editor.formula.functions_group'),
+            'formula.reference_toggle'  => __('templates::editor.formula.reference_toggle'),
+            'formula.reference_heading' => __('templates::editor.formula.reference_heading'),
+            'formula.reference_note'    => __('templates::editor.formula.reference_note'),
+
             // Formula columns of the line table (CGE-37). `:collection` is filled in JS.
             'formula.column_label'       => __('templates::editor.formula.column_label'),
             'formula.add_column'         => __('templates::editor.formula.add_column'),
@@ -393,6 +400,14 @@ class Editor extends Component
 
         foreach (array_keys((array) __('templates::editor.code_fields')) as $field) {
             $strings['code_field.'.$field] = __('templates::editor.code_fields.'.$field);
+        }
+
+        // CGE-37: one signature and one line per function the parser accepts, in its
+        // order. The bundle reads its function list from these keys, so the parser stays
+        // the only list — the autocomplete never offers a function the save refuses.
+        foreach (Formula::functions() as $name) {
+            $strings['formula.signature.'.$name]   = __('templates::editor.formula.signatures.'.$name);
+            $strings['formula.description.'.$name] = __('templates::editor.formula.descriptions.'.$name);
         }
 
         return $strings;

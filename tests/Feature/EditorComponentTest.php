@@ -3,6 +3,7 @@
 namespace Controlink\Templates\Tests\Feature;
 
 use Controlink\Templates\Contracts\TenantResolver;
+use Controlink\Templates\Formulas\Formula;
 use Controlink\Templates\Tests\Fixtures\Models\EditorTemplate;
 use Controlink\Templates\Tests\Fixtures\Models\GuardedVersion;
 use Controlink\Templates\Tests\TestCase;
@@ -172,6 +173,48 @@ class EditorComponentTest extends TestCase
         $this->assertStringContainsString(':value', $strings['formula.result']);
         $this->assertStringContainsString(':list', $strings['formula.functions']);
         $this->assertStringContainsString(':collection', $strings['formula.column_help']);
+    }
+
+    /**
+     * The function reference and the autocomplete (CGE-37) list exactly the functions the
+     * parser accepts: the bundle reads the list from these keys, so the parser is the only
+     * list there is, and every function carries a signature and a one-line description.
+     */
+    public function test_every_formula_function_reaches_the_bundle_with_a_signature_and_a_description(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        foreach (['en', 'pt_PT'] as $locale) {
+            app()->setLocale($locale);
+
+            $strings = (new Editor($template, $version))->strings();
+
+            $listed = [];
+
+            foreach (array_keys($strings) as $key) {
+                if (str_starts_with($key, 'formula.signature.')) {
+                    $listed[] = substr($key, strlen('formula.signature.'));
+                }
+            }
+
+            $this->assertSame(Formula::functions(), $listed, "{$locale}: the bundle's function list is not the parser's.");
+            $this->assertNotContains('TODAY', $listed);
+
+            foreach (Formula::functions() as $name) {
+                foreach (['signature', 'description'] as $kind) {
+                    $value = $strings["formula.{$kind}.{$name}"] ?? '';
+                    $this->assertNotSame('', $value);
+                    $this->assertStringNotContainsString('templates::editor.', $value, "{$locale}: formula.{$kind}.{$name} reached the browser as a translation key.");
+                }
+
+                $this->assertStringStartsWith($name.'(', $strings["formula.signature.{$name}"]);
+            }
+
+            $this->assertStringNotContainsString('templates::editor.', $strings['formula.reference_note']);
+            $this->assertStringNotContainsString('templates::editor.', $strings['formula.reference_toggle']);
+            $this->assertStringNotContainsString('templates::editor.', $strings['formula.reference_heading']);
+            $this->assertStringNotContainsString('templates::editor.', $strings['formula.functions_group']);
+        }
     }
 
     /**

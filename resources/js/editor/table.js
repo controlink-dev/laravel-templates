@@ -16,7 +16,7 @@ function columnFormatOf(spec) {
 import { icons } from './icons.js';
 import { previewRows } from './preview-filter.js';
 import { addFormulaColumn, isFormulaColumn, removeColumn } from './formula-columns.js';
-import { FORMULA_FUNCTIONS, paintFormulaStatus } from './formula.js';
+import { formulaAssist, paintFormulaStatus } from './formula.js';
 
 /**
  * @param {object} editor  GrapesJS instance
@@ -255,12 +255,15 @@ function registerLineTable(editor, config) {
                      * that read on every dirty check, and an answer arriving would otherwise
                      * change the saved layout. Live, the server's result goes on the first
                      * row only — it is the row it was evaluated on; the others would show a
-                     * value that is not theirs.
+                     * value that is not theirs, and the label would read as data, so they
+                     * show a dimmed `…` (`.tpl-formula-more`, canvas only).
                      */
                     if (isFormulaColumn(column)) {
-                        return example || index > 0
-                            ? escapeText(String(column.label ?? ''))
-                            : this.formulaCell(column);
+                        if (example) {
+                            return escapeText(String(column.label ?? ''));
+                        }
+
+                        return index > 0 ? '<span class="tpl-formula-more">…</span>' : this.formulaCell(column);
                     }
 
                     const value = row[column.key];
@@ -675,9 +678,11 @@ function formulaBox(component, column, index, config) {
     help.className = 'tpl-formula-help';
     help.textContent = (strings['formula.column_help'] ?? '').replaceAll(':collection', component.collectionKey())
         + ' ' + (strings['formula.functions'] ?? ':list')
-            .replace(':list', (config.formulaFunctions ?? FORMULA_FUNCTIONS).join(', '));
+            .replace(':list', (config.formulaFunctions ?? []).join(', '));
 
-    box.append(caption, input, status, help);
+    const assist = formulaAssist(input, config);
+
+    box.append(caption, assist.field, assist.suggestions, status, help, assist.reference);
     paintFormulaStatus(box, component.formulaColumnStatus?.(column), strings);
 
     return box;

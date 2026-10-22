@@ -16,7 +16,7 @@ import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, plainProjectData, refreshPreview, selectionOf } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
-import { FORMULA_FUNCTIONS, createFormulaPreview } from './formula.js';
+import { createFormulaPreview, formulaFunctionsOf } from './formula.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
 import { freeSpotForCopy } from './copy-offset.js';
@@ -819,6 +819,15 @@ function canvasDecorations(paper, rollMode = false, editable = true) {
         .tpl-formula-error {
             color: #b91c1c;
             font-style: italic;
+        }
+
+        /*
+         * A formula column on the lines after the first: the server answers for the first
+         * line only, so the rest show a dimmed ellipsis that cannot be read as data.
+         * Canvas only, like the error above.
+         */
+        .tpl-formula-more {
+            color: #94a3b8;
         }
 
         /*
@@ -2505,8 +2514,9 @@ function readConfig(el) {
         // Optional: checks and evaluates formula fields for the canvas (CGE-37). Without
         // it a formula field shows its label, and the save still checks it (V-19).
         formulaPreviewUrl: el.dataset.formulaPreviewUrl || '',
-        // The reminder under the formula box; the language itself is closed on the server.
-        formulaFunctions: FORMULA_FUNCTIONS,
+        // The functions the formula box offers and explains: the server's own list, read
+        // off the strings it sends (one signature per function the parser accepts).
+        formulaFunctions: formulaFunctionsOf(parseJson(el.dataset.strings, {})),
         // `__FORMAT__` is replaced with the chosen format id on an in-place format switch.
         formatSwitchUrl: el.dataset.formatSwitchUrl,
         printStylesheet: el.dataset.printStylesheet,

@@ -9,13 +9,24 @@
  * shows, and draws whatever comes back — the value, or the reason it has none.
  * ========================================================================= */
 
-/** The functions of Linguagem v1, listed under the formula box as a reminder. */
-export const FORMULA_FUNCTIONS = [
-    'IF', 'AND', 'OR', 'NOT', 'SUM', 'COUNT', 'ROUND', 'ABS', 'MIN', 'MAX', 'UPPER', 'LOWER',
-    'CONCAT', 'LEFT', 'RIGHT', 'LEN', 'TRIM', 'YEAR', 'MONTH', 'DAY', 'DAYS', 'TEXT',
-];
-
 const FORMULA_PREFIX = 'formula.';
+
+const SIGNATURE_PREFIX = 'formula.signature.';
+
+/** The autocomplete never offers more than this; typing one more letter narrows it. */
+const MAX_SUGGESTIONS = 20;
+
+/**
+ * The functions of the language, in the server's order. There is no list in JS: the host
+ * sends one signature per function the parser accepts (`Editor::strings()` walks
+ * `Formula::functions()`), and the names are read off those keys — so the autocomplete
+ * and the reference never offer a function the save would refuse, nor miss one.
+ */
+export function formulaFunctionsOf(strings) {
+    return Object.keys(strings ?? {})
+        .filter((key) => key.startsWith(SIGNATURE_PREFIX))
+        .map((key) => key.slice(SIGNATURE_PREFIX.length));
+}
 
 /** The traits' names: the switch has no attribute of its own; the box is the source's. */
 export const FORMULA_TOGGLE_TRAIT = 'tpl-formula-mode';
@@ -65,6 +76,137 @@ export function freshFormulaKey(existingKeys, key, makeId = newFormulaId) {
     } while (taken.has(candidate));
 
     return candidate;
+}
+
+/* ---------------------------------------------------------- autocomplete */
+
+/**
+ * What a formula may name, from the editor config: the reachable models with their fields
+ * (as the "Model" select offers them), the collections with their columns, and the
+ * functions. Never `formula.*` — a formula cannot read another formula's result — and a
+ * collection the graph also lists as a node is offered once, as a collection.
+ *
+ * @returns {{nodes: Array<{id, label, fields: Array<{key, label}>}>,
+ *            collections: Array<{key, label, columns: Array<{key, label}>}>, functions: string[]}}
+ */
+export function formulaCatalogue(config) {
+    const collections = (config?.bindings ?? [])
+        .filter((binding) => binding.type === 'collection')
+        .map((binding) => ({
+            key: binding.key,
+            label: binding.label ?? binding.key,
+            columns: (binding.columns ?? []).map((column) => ({ key: column.key, label: column.label ?? column.key })),
+        }));
+    const collectionKeys = new Set(collections.map((collection) => collection.key));
+
+    const nodes = (config?.nodes ?? [])
+        .filter((node) => !node.collection && node.reachable !== false)
+        .filter((node) => !collectionKeys.has(node.id) && !isFormulaKey(node.id + '.'))
+        .map((node) => ({
+            id: node.id,
+            label: node.label ?? node.id,
+            fields: (node.fields ?? [])
+                .filter((field) => !isFormulaKey(field.key))
+                .map((field) => ({ key: field.key, label: field.label ?? field.key })),
+        }));
+
+    return { nodes, collections, functions: [...(config?.formulaFunctions ?? [])] };
+}
+
+/** Where the token that ends at `caret` starts: the run of `[A-Za-z0-9_.]` before it. */
+function tokenStart(source, caret) {
+    let start = caret;
+
+    while (start > 0 && /[A-Za-z0-9_.]/.test(source[start - 1])) {
+        start--;
+    }
+
+    return start;
+}
+
+/**
+ * What can be typed at the caret, as `{label, insert, group}`: `insert` replaces the token
+ * before the caret (see `applySuggestion`), `label` is what the user knows it by, `group`
+ * the model or collection it belongs to.
+ *
+ * - No token, or one that starts with a digit or a dot (a number): nothing.
+ * - Inside a text literal: nothing — the words there are the user's own. `""` is an
+ *   escaped quote, so the parity of the quotes before the token tells.
+ * - A token without a dot: the models and collections whose key starts with it (inserted
+ *   with their dot) and the functions whose name does, case-insensitively (with `(`).
+ * - A token with a dot: the fields and collection columns whose full key starts with it.
+ *
+ * A suggestion that is exactly the token is left out (there is nothing to complete), and
+ * at most `MAX_SUGGESTIONS` come back.
+ */
+export function suggestionsAt(source, caret, catalogue) {
+    const text = String(source ?? '');
+    const end = Math.max(0, Math.min(caret ?? text.length, text.length));
+    const start = tokenStart(text, end);
+    const token = text.slice(start, end);
+
+    if (token === '' || !/^[A-Za-z_]/.test(token)) {
+        return [];
+    }
+
+    if ((text.slice(0, start).match(/"/g) ?? []).length % 2 === 1) {
+        return [];
+    }
+
+    const prefix = token.toLowerCase();
+    const matches = (candidate) => candidate.toLowerCase().startsWith(prefix) && candidate !== token;
+    const nodes = catalogue?.nodes ?? [];
+    const collections = catalogue?.collections ?? [];
+    const found = [];
+
+    nodes.forEach((node) => {
+        if (matches(node.id + '.')) {
+            found.push({ label: node.label, insert: node.id + '.', group: node.label });
+        }
+    });
+    collections.forEach((collection) => {
+        if (matches(collection.key + '.')) {
+            found.push({ label: collection.label, insert: collection.key + '.', group: collection.label });
+        }
+    });
+
+    if (token.includes('.')) {
+        nodes.forEach((node) => node.fields.forEach((field) => {
+            if (matches(field.key)) {
+                found.push({ label: field.label, insert: field.key, group: node.label });
+            }
+        }));
+        collections.forEach((collection) => collection.columns.forEach((column) => {
+            const key = collection.key + '.' + column.key;
+
+            if (matches(key)) {
+                found.push({ label: column.label, insert: key, group: collection.label });
+            }
+        }));
+    } else {
+        (catalogue?.functions ?? []).forEach((name) => {
+            if (matches(name)) {
+                found.push({ label: name, insert: name + '(', group: catalogue.functionsLabel ?? '' });
+            }
+        });
+    }
+
+    return found.slice(0, MAX_SUGGESTIONS);
+}
+
+/**
+ * The source with the token before the caret replaced by the suggestion, and the caret
+ * right after it. Only that token: whatever follows the caret stays as it was.
+ */
+export function applySuggestion(source, caret, suggestion) {
+    const text = String(source ?? '');
+    const end = Math.max(0, Math.min(caret ?? text.length, text.length));
+    const start = tokenStart(text, end);
+
+    return {
+        source: text.slice(0, start) + suggestion.insert + text.slice(end),
+        caret: start + suggestion.insert.length,
+    };
 }
 
 /**
@@ -207,6 +349,202 @@ export function createFormulaPreview({
     };
 }
 
+/* ------------------------------------------------- the box's assistance */
+
+/**
+ * The autocomplete and the ƒx reference of one formula box — the data field's and every
+ * formula column's (CGE-37). Returns the pieces for the caller to place: `field` (the
+ * textarea, moved into a wrapper with the ƒx button), `suggestions` (the list, right under
+ * it) and `reference` (the panel the button opens).
+ *
+ * Applying a suggestion writes the textarea and dispatches a bubbling `input`, so the
+ * owner's own handler — the trait's `onEvent`, the column card's listener — stores the
+ * source and asks for the live result exactly as for a keystroke.
+ *
+ * Every keydown stops in the textarea: GrapesJS's shortcuts (delete, undo, arrows) act on
+ * the selected block and must never fire while the user types a formula.
+ */
+export function formulaAssist(input, config) {
+    const strings = config.strings ?? {};
+
+    const field = document.createElement('div');
+    field.className = 'tpl-formula-input';
+
+    const fx = document.createElement('button');
+    fx.type = 'button';
+    fx.className = 'tpl-formula-fx';
+    fx.textContent = 'ƒx';
+    fx.title = strings['formula.reference_toggle'] ?? '';
+    fx.setAttribute('aria-label', fx.title);
+    fx.setAttribute('aria-expanded', 'false');
+
+    field.append(input, fx);
+
+    const suggestions = document.createElement('ul');
+    suggestions.className = 'tpl-formula-suggest';
+    suggestions.setAttribute('role', 'listbox');
+    suggestions.hidden = true;
+
+    const reference = formulaReference(config);
+    reference.hidden = true;
+
+    fx.addEventListener('click', () => {
+        reference.hidden = !reference.hidden;
+        fx.setAttribute('aria-expanded', String(!reference.hidden));
+        fx.classList.toggle('is-on', !reference.hidden);
+    });
+
+    let items = [];
+    let active = 0;
+
+    const close = () => {
+        items = [];
+        suggestions.hidden = true;
+        suggestions.replaceChildren();
+    };
+
+    const paint = () => {
+        suggestions.replaceChildren();
+
+        let group = null;
+
+        items.forEach((item, index) => {
+            if (item.group && item.group !== group) {
+                group = item.group;
+
+                const head = document.createElement('li');
+                head.className = 'tpl-formula-suggest__group';
+                head.setAttribute('role', 'presentation');
+                head.textContent = group;
+                suggestions.append(head);
+            }
+
+            const option = document.createElement('li');
+            option.className = 'tpl-formula-suggest__item' + (index === active ? ' is-active' : '');
+            option.setAttribute('role', 'option');
+            option.setAttribute('aria-selected', String(index === active));
+
+            const code = document.createElement('code');
+            code.textContent = item.insert;
+            option.append(code);
+
+            if (item.label && item.label !== item.insert && item.label + '(' !== item.insert) {
+                const label = document.createElement('span');
+                label.textContent = item.label;
+                option.append(label);
+            }
+
+            // On mousedown, not click: a click lands after the textarea's blur, and the
+            // blur would have closed the list (and run the owner's `change`) first.
+            option.addEventListener('mousedown', (event) => {
+                event.preventDefault();
+                apply(item);
+            });
+
+            suggestions.append(option);
+        });
+
+        suggestions.hidden = items.length === 0;
+        suggestions.querySelector('.is-active')?.scrollIntoView?.({ block: 'nearest' });
+    };
+
+    const refresh = () => {
+        const catalogue = { ...formulaCatalogue(config), functionsLabel: strings['formula.functions_group'] ?? '' };
+
+        items = suggestionsAt(input.value, input.selectionStart, catalogue);
+        active = 0;
+        paint();
+    };
+
+    function apply(item) {
+        const next = applySuggestion(input.value, input.selectionStart, item);
+
+        input.value = next.source;
+        input.focus();
+        input.setSelectionRange(next.caret, next.caret);
+        // Bubbling, so a trait's delegated `input textarea` handler hears it too. It also
+        // comes back through `refresh`: after `customer.` the list goes on to its fields.
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    input.addEventListener('input', refresh);
+    input.addEventListener('blur', close);
+    input.addEventListener('click', close);
+
+    input.addEventListener('keydown', (event) => {
+        event.stopPropagation();
+
+        if (items.length === 0) {
+            return;
+        }
+
+        switch (event.key) {
+            case 'ArrowDown':
+            case 'ArrowUp':
+                event.preventDefault();
+                active = (active + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+                paint();
+                break;
+            case 'Enter':
+            case 'Tab':
+                event.preventDefault();
+                apply(items[active]);
+                break;
+            case 'Escape':
+                event.preventDefault();
+                close();
+                break;
+            case 'ArrowLeft':
+            case 'ArrowRight':
+            case 'Home':
+            case 'End':
+                // The caret leaves the token: what was suggested no longer applies.
+                close();
+                break;
+            default:
+        }
+    });
+
+    return { field, suggestions, reference };
+}
+
+/**
+ * The ƒx panel: every function with its signature and one line on what it gives, then the
+ * two rules people trip on (the decimal dot and the comma between arguments). Text only.
+ */
+function formulaReference(config) {
+    const strings = config.strings ?? {};
+
+    const panel = document.createElement('div');
+    panel.className = 'tpl-formula-reference';
+
+    const heading = document.createElement('p');
+    heading.className = 'tpl-formula-reference__heading';
+    heading.textContent = strings['formula.reference_heading'] ?? '';
+
+    const list = document.createElement('dl');
+
+    (config.formulaFunctions ?? []).forEach((name) => {
+        const term = document.createElement('dt');
+        const code = document.createElement('code');
+        code.textContent = strings['formula.signature.' + name] ?? name + '()';
+        term.append(code);
+
+        const description = document.createElement('dd');
+        description.textContent = strings['formula.description.' + name] ?? '';
+
+        list.append(term, description);
+    });
+
+    const note = document.createElement('p');
+    note.className = 'tpl-formula-reference__note';
+    note.textContent = strings['formula.reference_note'] ?? '';
+
+    panel.append(heading, list, note);
+
+    return panel;
+}
+
 /* ---------------------------------------------------------------- traits */
 
 /**
@@ -289,9 +627,11 @@ export function registerFormula(editor, config) {
             const functions = document.createElement('p');
             functions.className = 'tpl-formula-help';
             functions.textContent = (strings['formula.functions'] ?? ':list')
-                .replace(':list', (config.formulaFunctions ?? FORMULA_FUNCTIONS).join(', '));
+                .replace(':list', (config.formulaFunctions ?? []).join(', '));
 
-            wrap.append(input, status, functions);
+            const assist = formulaAssist(input, config);
+
+            wrap.append(assist.field, assist.suggestions, status, functions, assist.reference);
             paintFormulaStatus(wrap, component.formulaStatus?.(), strings);
 
             return wrap;

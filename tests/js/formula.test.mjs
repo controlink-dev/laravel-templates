@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
-    createFormulaPreview, freshFormulaKey, isFormulaKey, newFormulaId,
+    applySuggestion, createFormulaPreview, formulaCatalogue, formulaFunctionsOf, freshFormulaKey, isFormulaKey,
+    newFormulaId, suggestionsAt,
 } from '../../resources/js/editor/formula.js';
 import { initPreviewState, selectionOf } from '../../resources/js/editor/preview-filter.js';
 
@@ -217,6 +218,166 @@ const fakeFetch = (calls, answer = (item) => ({ value: `R(${item.source})`, erro
     state.setRows('lines', []);
     assert.equal(selectionOf(state), null);
     assert.equal(selectionOf(undefined), null);
+}
+
+/* ------------------------------------------------------------- autocomplete */
+
+/*
+ * The formula box suggests what can be typed at the caret: the token under it is the
+ * run of `[A-Za-z0-9_.]` right before it. Without a dot it names a model, a collection
+ * or a function; with one, a field of that model or a column of that collection.
+ */
+
+const catalogue = {
+    nodes: [
+        { id: 'customer', label: 'Cliente', fields: [
+            { key: 'customer.name', label: 'Nome' },
+            { key: 'customer.nif', label: 'NIF' },
+        ] },
+        { id: 'document', label: 'Documento', fields: [{ key: 'document.number', label: 'Número' }] },
+    ],
+    collections: [
+        { key: 'lines', label: 'Linhas', columns: [
+            { key: 'quantity', label: 'Quantidade' },
+            { key: 'unit_price', label: 'Preço unitário' },
+        ] },
+    ],
+    functions: ['IF', 'SUM', 'UPPER', 'LOWER', 'LEN', 'LEFT'],
+};
+
+const inserts = (list) => list.map((item) => item.insert);
+
+{
+    // "UP": the functions whose name starts with it, case-insensitively, inserted with `(`.
+    assert.ok(inserts(suggestionsAt('UP', 2, catalogue)).includes('UPPER('));
+    assert.ok(inserts(suggestionsAt('up', 2, catalogue)).includes('UPPER('));
+    assert.ok(!inserts(suggestionsAt('UP', 2, catalogue)).includes('LOWER('));
+
+    // A model or a collection is offered with its dot; the group is its label.
+    const cu = suggestionsAt('cu', 2, catalogue);
+    assert.deepEqual(inserts(cu), ['customer.']);
+    assert.equal(cu[0].group, 'Cliente');
+    assert.deepEqual(inserts(suggestionsAt('li', 2, catalogue)), ['lines.']);
+    assert.deepEqual(inserts(suggestionsAt('L', 1, catalogue)), ['lines.', 'LOWER(', 'LEN(', 'LEFT(']);
+}
+
+{
+    // "customer.": that model's fields, by their full key, grouped under the model.
+    const list = suggestionsAt('customer.', 9, catalogue);
+    assert.deepEqual(inserts(list), ['customer.name', 'customer.nif']);
+    assert.deepEqual(list.map((item) => item.group), ['Cliente', 'Cliente']);
+    assert.deepEqual(list.map((item) => item.label), ['Nome', 'NIF']);
+    assert.deepEqual(inserts(suggestionsAt('customer.n', 10, catalogue)), ['customer.name', 'customer.nif']);
+    assert.deepEqual(inserts(suggestionsAt('customer.na', 11, catalogue)), ['customer.name']);
+}
+
+{
+    // "SUM(lines.": the token starts after the bracket — the collection's columns.
+    const source = 'SUM(lines.';
+    const list = suggestionsAt(source, source.length, catalogue);
+    assert.deepEqual(inserts(list), ['lines.quantity', 'lines.unit_price']);
+    assert.ok(list.every((item) => item.group === 'Linhas'));
+}
+
+{
+    // A caret in the middle of the text reads only the token under it.
+    const source = 'customer.name & UP & document.number';
+    const caret = source.indexOf('UP') + 2;
+    assert.deepEqual(inserts(suggestionsAt(source, caret, catalogue)), ['UPPER(']);
+
+    // Right after `doc`, the rest of the word does not count.
+    const mid = source.indexOf('document') + 3;
+    assert.deepEqual(inserts(suggestionsAt(source, mid, catalogue)), ['document.']);
+}
+
+{
+    // Nothing to complete: no token, an operator or a space before the caret, a number,
+    // an unknown model, or a token that already is the whole suggestion.
+    assert.deepEqual(suggestionsAt('', 0, catalogue), []);
+    assert.deepEqual(suggestionsAt('1 + ', 4, catalogue), []);
+    assert.deepEqual(suggestionsAt('0.2', 3, catalogue), []);
+    assert.deepEqual(suggestionsAt('nothing.', 8, catalogue), []);
+    assert.deepEqual(suggestionsAt('customer.name', 13, catalogue), []);
+}
+
+{
+    // Inside a text literal the words are the user's own: nothing is suggested. `""` is an
+    // escaped quote, so the parity of the quotes before the caret says whether it is inside.
+    assert.deepEqual(suggestionsAt('"UP', 3, catalogue), []);
+    assert.deepEqual(suggestionsAt('"a""UP', 6, catalogue), []);
+    assert.ok(inserts(suggestionsAt('"a" & UP', 8, catalogue)).includes('UPPER('));
+}
+
+{
+    // At most 20 suggestions.
+    const many = {
+        nodes: [{ id: 'big', label: 'Big', fields: Array.from({ length: 30 }, (_, i) => ({ key: `big.f${i}`, label: `F${i}` })) }],
+        collections: [],
+        functions: [],
+    };
+    assert.equal(suggestionsAt('big.', 4, many).length, 20);
+}
+
+{
+    // Applying a suggestion replaces only the token before the caret and puts the caret
+    // after what was inserted.
+    const source = 'customer.name & UP & 1';
+    const caret = source.indexOf('UP') + 2;
+    const applied = applySuggestion(source, caret, { insert: 'UPPER(' });
+    assert.deepEqual(applied, { source: 'customer.name & UPPER( & 1', caret: source.indexOf('UP') + 6 });
+
+    const sum = applySuggestion('SUM(lines.qu)', 12, { insert: 'lines.quantity' });
+    assert.deepEqual(sum, { source: 'SUM(lines.quantity)', caret: 18 });
+
+    // A caret mid-word keeps what is after it.
+    assert.deepEqual(applySuggestion('cusX', 3, { insert: 'customer.' }), { source: 'customer.X', caret: 9 });
+}
+
+/* ------------------------------------------------------- the catalogue for it */
+
+{
+    // Built from the editor config: reachable models only, collections from the bindings
+    // (not twice when the graph also lists them as nodes), and never `formula.*` — a
+    // formula cannot read another formula.
+    const config = {
+        nodes: [
+            { id: 'customer', label: 'Cliente', collection: false, reachable: true, fields: [
+                { key: 'customer.name', label: 'Nome' },
+                { key: 'formula.ab12cd34', label: 'Fórmula' },
+            ] },
+            { id: 'lines', label: 'Linhas', collection: true, fields: [] },
+            { id: 'orphan', label: 'Solto', collection: false, reachable: false, fields: [{ key: 'orphan.x', label: 'X' }] },
+            { id: 'formula', label: 'Fórmulas', fields: [{ key: 'formula.zz', label: 'Z' }] },
+        ],
+        bindings: [
+            { key: 'lines', label: 'Linhas', type: 'collection', columns: [{ key: 'quantity', label: 'Quantidade' }] },
+            { key: 'customer.name', label: 'Nome', type: 'text' },
+        ],
+        formulaFunctions: ['SUM', 'IF'],
+    };
+
+    assert.deepEqual(formulaCatalogue(config), {
+        nodes: [{ id: 'customer', label: 'Cliente', fields: [{ key: 'customer.name', label: 'Nome' }] }],
+        collections: [{ key: 'lines', label: 'Linhas', columns: [{ key: 'quantity', label: 'Quantidade' }] }],
+        functions: ['SUM', 'IF'],
+    });
+    assert.deepEqual(formulaCatalogue({}), { nodes: [], collections: [], functions: [] });
+}
+
+{
+    // The function list comes from the server's strings (Formula::functions() on the PHP
+    // side), one signature per function, in its order: PHP holds the only list.
+    const strings = {
+        'formula.label': 'Fórmula',
+        'formula.signature.IF': 'IF(condição, se_verdadeiro, se_falso)',
+        'formula.description.IF': 'Escolhe.',
+        'formula.signature.SUM': 'SUM(coluna)',
+        'formula.description.SUM': 'Soma.',
+    };
+
+    assert.deepEqual(formulaFunctionsOf(strings), ['IF', 'SUM']);
+    assert.deepEqual(formulaFunctionsOf({}), []);
+    assert.deepEqual(formulaFunctionsOf(undefined), []);
 }
 
 console.log('formula: ok');
