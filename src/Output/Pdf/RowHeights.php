@@ -145,10 +145,20 @@ class RowHeights
         return array_values(array_filter($columns, fn (mixed $column): bool => is_array($column) && empty($column['hidden'])));
     }
 
-    /** @param array<string, mixed> $column */
+    /**
+     * Printed as typed: no format, no formula — including a calculated column saved
+     * before `formulaKey` existed, which only its `formula_` key gives away. The editor's
+     * `isTextColumn`.
+     *
+     * @param  array<string, mixed>  $column
+     */
     private static function isText(array $column): bool
     {
-        return ($column['format'] ?? '') === '' && empty($column['formula']);
+        $printed = (string) ($column['formulaKey'] ?? $column['key'] ?? '');
+
+        return ($column['format'] ?? '') === ''
+            && empty($column['formula'])
+            && ! str_starts_with($printed, 'formula_');
     }
 
     /** The sheet's width between its side margins: what a table with no stated width spans. */

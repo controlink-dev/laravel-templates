@@ -800,8 +800,7 @@ function canvasDecorations(paper, rollMode = false, editable = true) {
          * what makes a column's width take effect; the cell rules are not optional with it:
          * white-space:nowrap + overflow:hidden force every row to one clipped line, so a
          * long value can never wrap and grow the row. Without them the table ran to the foot
-         * of the page with overlapping text. A row is at most one line tall, so the table's
-         * height is bounded by its row count, never by its content.
+         * of the page with overlapping text. Only the text columns wrap, below (CGE-89).
          */
         table.lines {
             width: 100%;
@@ -817,6 +816,18 @@ function canvasDecorations(paper, rollMode = false, editable = true) {
             box-sizing: border-box;
             padding: 0 1mm;
             vertical-align: middle;
+        }
+
+        /*
+         * A text column's cells break into lines and grow the row (CGE-89), as the
+         * compositor lets them in the PDF — which counts those lines with the same
+         * breaking and line height. Formatted and formula columns stay on one line.
+         */
+        table.lines td.tpl-wrap {
+            white-space: pre-line;
+            overflow-wrap: anywhere;
+            text-overflow: clip;
+            line-height: 1.2;
         }
 
         /*

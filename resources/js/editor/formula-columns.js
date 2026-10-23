@@ -34,6 +34,14 @@ export function isFormulaColumn(column) {
 }
 
 /**
+ * Whether the column's cells break into lines instead of being cut (CGE-89): visible,
+ * printed as typed (no format) and not a formula. The server's `RowHeights::isText`.
+ */
+export function isTextColumn(column) {
+    return Boolean(column) && !column.hidden && !column.format && !column.formula && !isFormulaColumn(column);
+}
+
+/**
  * Whether the column exists only for its formula — new (`key === formulaKey`) or saved
  * before `formulaKey` existed (a `formula_<id>` key alone). It is removed with its own
  * button and never switched to Field: there is no field to go back to.

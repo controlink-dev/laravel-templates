@@ -12,7 +12,7 @@ import { icons } from './icons.js';
 import { previewRows } from './preview-filter.js';
 import {
     addFormulaColumn, addLinkedColumn, columnsOverflow, defaultColumns as defaultColumnsOf, isCalculatedColumn,
-    isFormulaColumn, isRemovableColumn, printedKeyOf, relinkColumn, removeColumn, setColumnFormulaMode,
+    isFormulaColumn, isTextColumn, isRemovableColumn, printedKeyOf, relinkColumn, removeColumn, setColumnFormulaMode,
 } from './formula-columns.js';
 import { columnPicker } from './column-picker.js';
 import { formulaAssist, newFormulaId, paintFormulaStatus } from './formula.js';
@@ -374,7 +374,8 @@ function registerLineTable(editor, config) {
 
                 const body = (rows.length > 0 ? rows : [{}])
                     .map((row, index) => '<tr>' + columns
-                        .map((column) => `<td style="text-align:${column.align || 'left'}">`
+                        // A text column wraps like in the PDF (CGE-89); `tpl-wrap` is canvas-only.
+                        .map((column) => `<td${isTextColumn(column) ? ' class="tpl-wrap"' : ''} style="text-align:${column.align || 'left'}">`
                             + `${cell(row, column, index)}</td>`)
                         .join('') + '</tr>')
                     .join('');

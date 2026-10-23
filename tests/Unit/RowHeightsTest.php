@@ -71,11 +71,13 @@ class RowHeightsTest extends TestCase
             ['key' => 'amount', 'width' => '10mm', 'format' => 'money'],
             ['key' => 'calc', 'width' => '10mm', 'format' => '', 'formula' => 'lines.a & lines.b'],
             ['key' => 'hidden', 'width' => '10mm', 'format' => '', 'hidden' => true],
+            // A calculated column saved before `formulaKey` existed: its key alone says so.
+            ['key' => 'formula_ab12', 'width' => '10mm', 'format' => ''],
         ]);
 
         $long = str_repeat('texto longo ', 20);
 
-        $this->assertNull(RowHeights::of($table, $this->type, ['lines' => [['amount' => $long, 'calc' => $long, 'hidden' => $long]]]));
+        $this->assertNull(RowHeights::of($table, $this->type, ['lines' => [['amount' => $long, 'calc' => $long, 'hidden' => $long, 'formula_ab12' => $long]]]));
     }
 
     public function test_auto_columns_share_the_remaining_width(): void
