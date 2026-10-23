@@ -11,6 +11,7 @@
 
 import { icons } from './icons.js';
 import { staticTextName } from './layer-names.js';
+import { pageNumberText } from './page-number.js';
 import { measuredBox } from './position-panel.js';
 import { PX_PER_MM, roundTo } from './anchors.js';
 import { alertDialog } from './dialog.js';
@@ -125,6 +126,7 @@ function registerPageNumber(editor, config) {
                         options: [
                             { id: 'x', name: config.strings['page_format.x'] },
                             { id: 'x-of-y', name: config.strings['page_format.x_of_y'] },
+                            { id: 'x-slash-y', name: config.strings['page_format.x_slash_y'] },
                         ],
                     },
                 ],
@@ -138,9 +140,7 @@ function registerPageNumber(editor, config) {
 
             /** The canvas shows a plausible number, not the expression. */
             renderPreviewText() {
-                const text = this.getAttributes()['data-tpl-format'] === 'x-of-y'
-                    ? `1 ${config.strings['page_format.of']} 3`
-                    : '1';
+                const text = pageNumberText(this.getAttributes()['data-tpl-format'], config.strings, '1', '3');
 
                 if (this.components().length) {
                     this.components().reset();
@@ -152,9 +152,13 @@ function registerPageNumber(editor, config) {
             },
 
             toHTML() {
-                const expression = this.getAttributes()['data-tpl-format'] === 'x-of-y'
-                    ? `{{ pagina.numero }} ${escapeText(config.strings['page_format.of'])} {{ pagina.total }}`
-                    : '{{ pagina.numero }}';
+                const expression = pageNumberText(
+                    this.getAttributes()['data-tpl-format'],
+                    config.strings,
+                    '{{ pagina.numero }}',
+                    '{{ pagina.total }}',
+                    escapeText,
+                );
 
                 return `<div${attributesToHTML(this)}>${expression}</div>`;
             },

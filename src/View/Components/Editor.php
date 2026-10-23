@@ -194,6 +194,7 @@ class Editor extends Component
 
             'page_format.x'      => __('templates::editor.page_formats.x'),
             'page_format.x_of_y' => __('templates::editor.page_formats.x_of_y'),
+            'page_format.x_slash_y' => __('templates::editor.page_formats.x_slash_y'),
             'page_format.of'     => __('templates::editor.page_formats.of'),
 
             'format.none' => __('templates::editor.formats.none'),

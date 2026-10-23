@@ -248,6 +248,7 @@ return [
     'page_formats' => [
         'x'      => 'Page number',
         'x_of_y' => 'Number and total (1 of 3)',
+        'x_slash_y' => 'Number and total (1 / 3)',
         'of'     => 'of',
     ],
 
