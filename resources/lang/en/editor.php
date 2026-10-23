@@ -47,6 +47,7 @@ return [
         'wrap'          => 'Multiple lines',
         'format'        => 'Format',
         'file'          => 'File',
+        'remove_image'  => 'Remove image',
         'fit'           => 'Fit',
         'thickness'     => 'Thickness',
         'filled'        => 'Filled',

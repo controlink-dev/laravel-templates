@@ -12,6 +12,7 @@
 import { icons } from './icons.js';
 import { staticTextName } from './layer-names.js';
 import { pageNumberText } from './page-number.js';
+import { looksFilled } from './rule-shape.js';
 import { measuredBox } from './position-panel.js';
 import { PX_PER_MM, roundTo } from './anchors.js';
 import { alertDialog } from './dialog.js';
@@ -1232,7 +1233,24 @@ function registerFileTrait(editor, config) {
                 reader.readAsDataURL(file);
             });
 
-            return input;
+            // Takes the picture out and keeps the block, so a layout can ship an empty logo
+            // slot and a licence can empty it again. The transparent pixel is what a freshly
+            // dropped image holds: still a data: source, so V-05 has nothing to report.
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'tpl-btn tpl-btn--secondary tpl-btn--sm';
+            remove.dataset.tplRemoveImage = '1';
+            remove.textContent = config.strings['trait.remove_image'];
+            remove.addEventListener('click', () => {
+                input.value = '';
+                component.addAttributes({ src: TRANSPARENT_PIXEL });
+            });
+
+            const wrapper = document.createElement('div');
+            wrapper.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start';
+            wrapper.append(input, remove);
+
+            return wrapper;
         },
     });
 }
@@ -1287,8 +1305,28 @@ function registerRule(editor, config) {
             },
 
             init() {
+                // A rectangle has to come back as one however the layout was loaded (CGE-76).
+                // 	pl-filled is a model prop, so it is lost when a version is rebuilt from
+                // its HTML (a seeded version has no project data), and a rule whose height or
+                // colour was set in the style panel without ticking "Filled" was flattened
+                // back to a thin black line on the next load. The export now carries the flag,
+                // and a shape that is clearly not a line is read as filled.
+                if (!this.get('tpl-filled') && (this.getAttributes()['data-tpl-filled'] === '1' || looksFilled(this.getStyle()))) {
+                    this.set('tpl-filled', true, { silent: true });
+                }
+
                 this.on('change:tpl-width change:tpl-filled', this.applyGeometry);
+                this.on('change:tpl-filled', this.writeFilledFlag);
                 this.applyGeometry();
+                this.writeFilledFlag();
+            },
+
+            writeFilledFlag() {
+                if (this.get('tpl-filled')) {
+                    this.addAttributes({ 'data-tpl-filled': '1' });
+                } else if (this.getAttributes()['data-tpl-filled'] !== undefined) {
+                    this.removeAttributes('data-tpl-filled');
+                }
             },
 
             /**
