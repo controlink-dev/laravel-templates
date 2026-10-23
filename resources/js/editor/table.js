@@ -8,16 +8,13 @@
 
 import { TRANSPARENT_PIXEL, nodeOptionsOf, fieldsOfNode, nodeOfBinding, formatArgumentTraitsFor } from './components.js';
 import { defaultSpecFor, expression, specFromColumn, specToColumnArgs } from './formats.js';
-
-/** A column's `format` + `formatArgs` for a spec (or none). */
-function columnFormatOf(spec) {
-    return { format: spec?.name ?? '', formatArgs: specToColumnArgs(spec) };
-}
 import { icons } from './icons.js';
 import { previewRows } from './preview-filter.js';
 import {
-    addFormulaColumn, columnsOverflow, isCalculatedColumn, isFormulaColumn, printedKeyOf, removeColumn, setColumnFormulaMode,
+    addFormulaColumn, addLinkedColumn, columnsOverflow, defaultColumns as defaultColumnsOf, isCalculatedColumn,
+    isFormulaColumn, isRemovableColumn, printedKeyOf, relinkColumn, removeColumn, setColumnFormulaMode,
 } from './formula-columns.js';
+import { columnPicker } from './column-picker.js';
 import { formulaAssist, newFormulaId, paintFormulaStatus } from './formula.js';
 import { columnQuickExamples, scopedCatalogue, toDisplay, toSource } from './formula-names.js';
 
@@ -198,23 +195,12 @@ function registerLineTable(editor, config) {
             },
 
             /**
-             * Every column the catalogue declares for the collection, in its order.
+             * Every column the catalogue declares for the collection, in its order, but
+             * a link's optional fields (CGE-85, `defaultColumns` in formula-columns.js).
              * A table that starts empty is a table the user has to build twice.
              */
             defaultColumns() {
-                const binding = config.bindings.find((item) => item.key === this.collectionKey());
-
-                return (binding?.columns ?? []).map((column) => ({
-                    key: column.key,
-                    label: column.label,
-                    width: '',
-                    align: column.default_format === 'money' || column.default_format === 'number'
-                        ? 'right'
-                        : 'left',
-                    // CGE-49: the column type's default format, written out in full.
-                    ...columnFormatOf(defaultSpecFor(column.default_format)
-                        ?? (column.default_format ? { name: column.default_format } : null)),
-                }));
+                return defaultColumnsOf(config.bindings.find((item) => item.key === this.collectionKey()));
             },
 
             onCollectionChange() {
@@ -462,6 +448,10 @@ function registerColumnsTrait(editor, config) {
             // through `setColumns` like any other edit.
             let dragFrom = null;
 
+            // The "Add column" picker (CGE-85): open or not, its search and the groups the
+            // user opened, kept across the redraws a column edit makes.
+            const picking = { open: false, query: '', expanded: new Set() };
+
             /*
              * "The columns take more than the table's width" (CGE-37): in a fixed-layout
              * table the last columns then get no room — a new formula column vanished
@@ -504,15 +494,44 @@ function registerColumnsTrait(editor, config) {
                     return;
                 }
 
+                /*
+                 * "Add column" (CGE-85): a tree of the collection's fields — its own, then
+                 * each linked table's — with a search, and the calculated column at the end.
+                 * A pick adds the column and closes the picker.
+                 */
                 const add = document.createElement('button');
                 add.type = 'button';
                 add.className = 'tpl-btn tpl-btn--secondary tpl-btn--sm tpl-columns__add';
-                add.textContent = config.strings['formula.add_column'];
+                add.textContent = config.strings['trait.add_column'];
+                add.setAttribute('aria-expanded', String(picking.open));
                 add.addEventListener('click', () => {
-                    component.setColumns(addFormulaColumn(component.columns(), config.strings['formula.column_label']));
+                    picking.open = !picking.open;
+                    picking.query = '';
                     redraw();
+                    wrapper.querySelector('.tpl-picker__search')?.focus();
                 });
                 wrapper.append(add);
+
+                if (!picking.open) {
+                    return;
+                }
+
+                const close = (columns) => {
+                    picking.open = false;
+                    picking.query = '';
+                    component.setColumns(columns);
+                    redraw();
+                };
+
+                wrapper.append(columnPicker({
+                    binding: bindingOf(config, component),
+                    columns: component.columns(),
+                    strings: config.strings,
+                    state: picking,
+                    icons: { chevron: chevronIcon(), link: linkIcon(), calculator: calculatorIcon() },
+                    onPick: (entry) => close(addLinkedColumn(component.columns(), entry)),
+                    onCalculated: () => close(addFormulaColumn(component.columns(), config.strings['formula.column_label'])),
+                }));
             };
 
             /*
@@ -554,7 +573,12 @@ function registerColumnsTrait(editor, config) {
             };
 
             redraw();
-            component.on('change:attributes:data-tpl-collection', redraw);
+            component.on('change:attributes:data-tpl-collection', () => {
+                // Another collection, other fields: the picker starts again closed.
+                picking.open = false;
+                picking.query = '';
+                redraw();
+            });
 
             return wrapper;
         },
@@ -574,6 +598,7 @@ function columnCard(component, column, index, config, redraw, reorder) {
     const isHidden = column.hidden === true;
     const isFormula = isFormulaColumn(column);
     const isCalculated = isCalculatedColumn(column);
+    const isRemovable = isRemovableColumn(column);
 
     if (isHidden) {
         card.classList.add('tpl-col--hidden');
@@ -633,12 +658,13 @@ function columnCard(component, column, index, config, redraw, reorder) {
         redraw();
     });
 
-    // A calculated column is the user's own, so it is removed, not hidden (CGE-37). A
-    // catalogue column in Formula is still the catalogue's: hidden, like the others.
+    // A calculated column is the user's own, so it is removed, not hidden (CGE-37); so is a
+    // column picked with "Add column" (CGE-85). A catalogue column in Formula is still the
+    // catalogue's: hidden, like the others.
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'tpl-col__toggle tpl-col__remove';
-    remove.title = config.strings['formula.remove_column'];
+    remove.title = config.strings[isCalculated ? 'formula.remove_column' : 'trait.column_remove'];
     remove.setAttribute('aria-label', remove.title);
     remove.innerHTML = trashIcon();
     remove.addEventListener('click', () => {
@@ -646,7 +672,7 @@ function columnCard(component, column, index, config, redraw, reorder) {
         redraw();
     });
 
-    head.append(grip, key, isCalculated ? remove : toggle);
+    head.append(grip, key, isRemovable ? remove : toggle);
 
     const labelField = columnField(config.strings['trait.column_label']);
     const label = document.createElement('input');
@@ -768,10 +794,79 @@ function columnCard(component, column, index, config, redraw, reorder) {
     formatField.append(format);
     renderArgs();
 
-    card.append(head, valueModeField(component, column, index, config, redraw), labelField,
+    card.append(head, ...linkedFieldRow(component, column, index, config, redraw),
+        valueModeField(component, column, index, config, redraw), labelField,
         ...(isFormula ? [formulaBox(component, column, index, config)] : []), two, formatField, argsWrap);
 
     return card;
+}
+
+/** The catalogue entry of the table's collection (`config.bindings`), if any. */
+function bindingOf(config, component) {
+    return config.bindings.find((item) => item.key === component.collectionKey());
+}
+
+/**
+ * A linked column's row under its header (CGE-85): `<link> ›` and a select of that link's
+ * fields (every catalogue entry of the same alias), which binds the column to another one
+ * (`relinkColumn`) without losing its width, alignment or format. None for a column with
+ * no link. Locked while the column is in Formula: its source names the current field. A
+ * field another column already shows is not offered twice.
+ */
+function linkedFieldRow(component, column, index, config, redraw) {
+    const entries = bindingOf(config, component)?.columns ?? [];
+    const current = entries.find((entry) => entry.key === column.key);
+    const link = current?.linked;
+
+    if (!link) {
+        return [];
+    }
+
+    const row = document.createElement('div');
+    row.className = 'tpl-col__link';
+
+    const caption = document.createElement('span');
+    caption.className = 'tpl-col__link-label';
+    caption.innerHTML = linkIcon();
+    caption.append(document.createTextNode(`${link.label} ›`));
+
+    const taken = new Set(component.columns().map((other) => other.key));
+    const select = document.createElement('select');
+    select.className = 'gjs-field';
+    select.setAttribute('aria-label', config.strings['trait.column_linked_field'] ?? link.label);
+    select.disabled = isFormulaColumn(column);
+
+    entries
+        .filter((entry) => entry.linked?.alias === link.alias)
+        .forEach((entry) => {
+            const option = document.createElement('option');
+            option.value = entry.key;
+            option.textContent = entry.linked.field_label ?? entry.label;
+            option.selected = entry.key === column.key;
+            option.disabled = entry.key !== column.key && taken.has(entry.key);
+            select.append(option);
+        });
+
+    // Not bubbling to the trait: GrapesJS's own `change` handler would copy the wrapper's
+    // stale `value` into `data-tpl-columns`.
+    select.addEventListener('input', (event) => event.stopPropagation());
+    select.addEventListener('change', (event) => {
+        event.stopPropagation();
+
+        const chosen = entries.find((entry) => entry.key === select.value);
+        const columns = component.columns();
+
+        // Read now, not from the column this card was drawn with.
+        if (chosen && columns[index]?.key === column.key) {
+            component.setColumns(relinkColumn(columns, index, chosen, current));
+        }
+
+        redraw();
+    });
+
+    row.append(caption, select);
+
+    return [row];
 }
 
 /**
@@ -993,6 +1088,25 @@ function eyeOffIcon() {
         + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
         + '<path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a13.3 13.3 0 0 1-2.16 2.92M6.1 6.1A13.3 13.3 0 0 0 2 11s3.5 7 10 7a9 9 0 0 0 4.9-1.4M1 1l22 22"/>'
         + '<path d="M9.5 9.54a3 3 0 0 0 4.24 4.24"/></svg>';
+}
+
+function linkIcon() {
+    return '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor"'
+        + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/>'
+        + '<path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg>';
+}
+
+function chevronIcon() {
+    return '<svg class="tpl-picker__chevron" viewBox="0 0 24 24" width="13" height="13" fill="none"'
+        + ' stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"'
+        + ' aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+}
+
+function calculatorIcon() {
+    return '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"'
+        + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h2M14 12h2M8 16h2M14 16h2"/></svg>';
 }
 
 function trashIcon() {

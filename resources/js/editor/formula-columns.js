@@ -17,6 +17,7 @@
  * ========================================================================= */
 
 import { newFormulaId } from './formula.js';
+import { defaultSpecFor, specToColumnArgs } from './formats.js';
 
 const COLUMN_PREFIX = 'formula_';
 
@@ -138,12 +139,78 @@ export function columnsOverflow(columns, tableWidth) {
 }
 
 /**
- * The columns without the one at `index` — when it is a calculated column. A catalogue
- * column is never removed, in Formula or not (it is hidden instead), so for one the
- * columns come back as they were.
+ * Whether the column is the user's own, removed with the trash rather than hidden: a
+ * calculated column, or one picked with "Add column" (CGE-85, `origin: 'added'`). Calculated
+ * columns are recognised by their key, as they always were, so they carry no marker.
+ */
+export function isRemovableColumn(column) {
+    return isCalculatedColumn(column) || column?.origin === 'added';
+}
+
+/**
+ * A catalogue entry as a column: its key and label, an auto width, and the alignment and
+ * format of its type (CGE-49, the format written out in full). The one shape both the
+ * default columns and an added one start from.
+ */
+function columnOf(entry) {
+    const spec = defaultSpecFor(entry.default_format) ?? (entry.default_format ? { name: entry.default_format } : null);
+
+    return {
+        key: entry.key,
+        label: entry.label,
+        width: '',
+        align: entry.default_format === 'money' || entry.default_format === 'number' ? 'right' : 'left',
+        format: spec?.name ?? '',
+        formatArgs: specToColumnArgs(spec),
+    };
+}
+
+/**
+ * Every column the catalogue declares for the collection (`binding.columns`), in its order —
+ * a table that starts empty is a table the user has to build twice — except the ones marked
+ * `optional`: a linked table's other fields (CGE-85), offered by "Add column" only.
+ */
+export function defaultColumns(binding) {
+    return (binding?.columns ?? []).filter((entry) => entry.optional !== true).map(columnOf);
+}
+
+/**
+ * The columns with the catalogue `entry` added at the end ("Add column", CGE-85): the
+ * default shape, marked `origin: 'added'` so it is removed, not hidden, and a width of its
+ * own for the same reason as a calculated column's (`NEW_COLUMN_WIDTH`).
+ */
+export function addLinkedColumn(columns, entry) {
+    return [...columns, { ...columnOf(entry), width: NEW_COLUMN_WIDTH, origin: 'added' }];
+}
+
+/**
+ * The column at `index` bound to another field of its link (CGE-85): only the key changes —
+ * width, alignment, format, visibility and origin are the user's. The label follows the
+ * field only while it is still `oldEntry`'s default label; without `oldEntry` nothing says
+ * it is, so it stays. The same array when there is no column there, or the column is in
+ * Formula: its source names the old key, and swapping the key under it would mislead.
+ */
+export function relinkColumn(columns, index, newEntry, oldEntry = null) {
+    const column = columns[index];
+
+    if (!column || !newEntry || isFormulaColumn(column)) {
+        return columns;
+    }
+
+    const next = [...columns];
+    const defaultLabel = oldEntry !== null && column.label === oldEntry.label;
+    next[index] = { ...column, key: newEntry.key, ...(defaultLabel ? { label: newEntry.label } : {}) };
+
+    return next;
+}
+
+/**
+ * The columns without the one at `index` — when it is the user's own (`isRemovableColumn`).
+ * A catalogue column is never removed, in Formula or not (it is hidden instead), so for
+ * one the columns come back as they were.
  */
 export function removeColumn(columns, index) {
-    if (!isCalculatedColumn(columns[index])) {
+    if (!isRemovableColumn(columns[index])) {
         return [...columns];
     }
 
