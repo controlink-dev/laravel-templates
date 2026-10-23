@@ -336,7 +336,7 @@ class DocumentComposer
      * Absolute paths (the package's own default font) are used as they are; relative
      * ones are relative to the host's public directory, where the canvas loads them.
      */
-    private static function fontPath(string $path): string
+    public static function fontPath(string $path): string
     {
         return preg_match('/^([a-zA-Z]:[\\\\\/]|\/)/', $path) === 1 ? $path : public_path($path);
     }
