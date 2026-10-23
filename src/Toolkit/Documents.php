@@ -152,7 +152,7 @@ final class Documents
             $data,
             $seconds,
             $codeSlotBoxes,
-            $this->placedFormats((array) ($layout['project_data'] ?? [])),
+            $this->placedFormats((array) ($layout['project_data'] ?? []), (string) ($layout['html'] ?? '')),
         );
     }
 
@@ -160,13 +160,18 @@ final class Documents
      * Every placed data field's format, by binding. A format that does not parse is left
      * out: V-01 refuses it before a render is ever validated.
      *
+     * A version that was never opened in the editor (a seeded one) has no project data,
+     * only its HTML — and that HTML carries the same `data-tpl-format*` attributes. Read
+     * there, a date placed as "2026/12/31" is looked for as such, not in the binding's
+     * default format, which would report it missing (R-02) and refuse the activation.
+     *
      * @param  array<string, mixed>  $projectData
      * @return array<string, list<FormatSpec|null>>
      */
-    private function placedFormats(array $projectData): array
+    private function placedFormats(array $projectData, string $html = ''): array
     {
         if ($projectData === []) {
-            return [];
+            return $this->placedFormatsInHtml($html);
         }
 
         $placed = [];
@@ -176,6 +181,45 @@ final class Documents
 
             try {
                 $placed[$key][] = FormatSpec::fromAttributes($field['attributes']);
+            } catch (InvalidArgumentException) {
+                continue;
+            }
+        }
+
+        return $placed;
+    }
+
+    /**
+     * `placedFormats` for a layout known only by its HTML.
+     *
+     * @return array<string, list<FormatSpec|null>>
+     */
+    private function placedFormatsInHtml(string $html): array
+    {
+        if (! str_contains($html, 'data-tpl-type="data-field"')) {
+            return [];
+        }
+
+        $document = new \DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $document->loadHTML('<?xml encoding="UTF-8"><body>'.$html.'</body>', LIBXML_NOERROR | LIBXML_NOWARNING);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        $placed = [];
+
+        foreach ((new \DOMXPath($document))->query('//*[@data-tpl-type="data-field"]') ?: [] as $node) {
+            if (! $node instanceof \DOMElement) {
+                continue;
+            }
+
+            $attributes = [];
+            foreach ($node->attributes as $attribute) {
+                $attributes[$attribute->name] = $attribute->value;
+            }
+
+            try {
+                $placed[(string) ($attributes['data-tpl-binding'] ?? '')][] = FormatSpec::fromAttributes($attributes);
             } catch (InvalidArgumentException) {
                 continue;
             }

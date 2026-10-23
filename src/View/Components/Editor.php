@@ -172,6 +172,7 @@ class Editor extends Component
 
             'trait.collection'    => __('templates::editor.traits.collection'),
             'trait.columns'       => __('templates::editor.traits.columns'),
+            'trait.anchor_last_page' => __('templates::editor.traits.anchor_last_page'),
             'trait.column_label'  => __('templates::editor.traits.column_label'),
             'trait.column_width'  => __('templates::editor.traits.column_width'),
             'trait.column_remove' => __('templates::editor.traits.column_remove'),
@@ -188,12 +189,14 @@ class Editor extends Component
             'trait.wrap'          => __('templates::editor.traits.wrap'),
             'trait.format'        => __('templates::editor.traits.format'),
             'trait.file'          => __('templates::editor.traits.file'),
+            'trait.remove_image'  => __('templates::editor.traits.remove_image'),
             'trait.fit'           => __('templates::editor.traits.fit'),
             'trait.thickness'     => __('templates::editor.traits.thickness'),
             'trait.filled'        => __('templates::editor.traits.filled'),
 
             'page_format.x'      => __('templates::editor.page_formats.x'),
             'page_format.x_of_y' => __('templates::editor.page_formats.x_of_y'),
+            'page_format.x_slash_y' => __('templates::editor.page_formats.x_slash_y'),
             'page_format.of'     => __('templates::editor.page_formats.of'),
 
             'format.none' => __('templates::editor.formats.none'),

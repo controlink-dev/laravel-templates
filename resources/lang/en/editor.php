@@ -47,6 +47,8 @@ return [
         'wrap'          => 'Multiple lines',
         'format'        => 'Format',
         'file'          => 'File',
+        'remove_image'  => 'Remove image',
+        'anchor_last_page' => 'Fixed on the last page',
         'fit'           => 'Fit',
         'thickness'     => 'Thickness',
         'filled'        => 'Filled',
@@ -248,6 +250,7 @@ return [
     'page_formats' => [
         'x'      => 'Page number',
         'x_of_y' => 'Number and total (1 of 3)',
+        'x_slash_y' => 'Number and total (1 / 3)',
         'of'     => 'of',
     ],
 
