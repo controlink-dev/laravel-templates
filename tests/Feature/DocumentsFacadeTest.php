@@ -91,6 +91,31 @@ class DocumentsFacadeTest extends TestCase
         $this->assertSame(['R-07'], array_column($problems, 'code'));
     }
 
+    /**
+     * A seeded version has no project data, only HTML: R-02 must still look for a date in
+     * the pattern its field was placed with, read from the HTML's `data-tpl-format*`.
+     */
+    public function test_render_validation_reads_placed_formats_from_html_without_project_data(): void
+    {
+        $this->skipWithoutPdfEngine();
+
+        $fields = [['key' => 'documento.data', 'label' => 'Data', 'type' => 'date', 'mandatory' => true, 'legal' => false, 'default_format' => 'date']];
+        $data   = ['documento.data' => '2026-12-31'];
+        $html   = '<div class="page"><div class="zone zone--header" data-tpl-zone="header">'
+            .'<div class="block block--field" data-tpl-type="data-field" data-tpl-binding="documento.data" data-tpl-format="date" data-tpl-format-pattern="yyyy/MM/dd" id="tpl-date" style="top:0;left:0">'
+            ."{{ documento.data|date('yyyy/MM/dd') }}</div></div>"
+            .'<div class="zone zone--body" data-tpl-zone="body"></div><div class="zone zone--footer" data-tpl-zone="footer"></div></div>';
+        $layout = ['html' => $html, 'css' => '', 'project_data' => []];
+
+        $documents = app(Documents::class);
+        $pdf       = $documents->render($layout, $data, $this->geometry(), '', $fields);
+
+        $this->assertSame([], $documents->validateRender($pdf, $fields, $data, $this->geometry(), 1.0, [], $layout));
+
+        // Without the layout, the date is looked for in the default format, and is not there.
+        $this->assertContains('R-02', array_column($documents->validateRender($pdf, $fields, $data, $this->geometry(), 1.0), 'code'));
+    }
+
     public function test_render_for_activation_returns_pdf_hash_and_seconds(): void
     {
         $this->skipWithoutPdfEngine();
