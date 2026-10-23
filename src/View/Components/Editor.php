@@ -180,6 +180,13 @@ class Editor extends Component
             'trait.column_reorder' => __('templates::editor.traits.column_reorder'),
             'trait.column_hide'   => __('templates::editor.traits.column_hide'),
             'trait.column_show'   => __('templates::editor.traits.column_show'),
+            // "Add column" of the line table (CGE-85).
+            'trait.add_column'          => __('templates::editor.traits.add_column'),
+            'trait.column_search'       => __('templates::editor.traits.column_search'),
+            'trait.column_linked_field' => __('templates::editor.traits.column_linked_field'),
+            'trait.column_no_match'     => __('templates::editor.traits.column_no_match'),
+            'trait.already_in_table'    => __('templates::editor.traits.already_in_table'),
+            'trait.calculated_column'   => __('templates::editor.traits.calculated_column'),
             'trait.node'          => __('templates::editor.traits.node'),
             'trait.field_source'  => __('templates::editor.traits.field_source'),
             'trait.code_source'   => __('templates::editor.traits.code_source'),

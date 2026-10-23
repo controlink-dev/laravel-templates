@@ -61,6 +61,13 @@ return [
         'column_reorder' => 'Drag to reorder',
         'column_hide'   => 'Hide column',
         'column_show'   => 'Show column',
+        // "Add column" of the line table (CGE-85): own fields, linked tables' fields, a calculated column.
+        'add_column'          => '+ Add column',
+        'column_search'       => 'Search fields…',
+        'column_linked_field' => 'Field of the linked table',
+        'column_no_match'     => 'No field matches the search.',
+        'already_in_table'    => 'already in the table',
+        'calculated_column'   => 'Calculated column',
         'node'          => 'Model',
         'field_source'  => 'Data source',
         'code_source'   => 'Source',
