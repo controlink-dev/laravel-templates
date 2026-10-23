@@ -42,6 +42,9 @@ export function initPreviewState(editor, config) {
         rows: {},
         // the merged `nodes`, the one lookup a block does
         values: {},
+        // collection binding key -> the Amostra's query for the PDF (CGE-84): its active
+        // filters, `[]` for "all records"; absent while the collection shows the example
+        queries: {},
 
         isActive() {
             return Object.keys(this.values).length > 0 || Object.keys(this.rows).length > 0;
@@ -68,6 +71,14 @@ export function initPreviewState(editor, config) {
                 this.rows[key] = rows;
             } else {
                 delete this.rows[key];
+            }
+        },
+
+        setQuery(key, filters) {
+            if (Array.isArray(filters)) {
+                this.queries[key] = filters.map(({ field, op, value }) => ({ field, op, value }));
+            } else {
+                delete this.queries[key];
             }
         },
     };
@@ -101,6 +112,41 @@ export function selectionOf(state) {
     });
 
     return Object.keys(nodes).length > 0 || Object.keys(collections).length > 0 ? { nodes, collections } : null;
+}
+
+/**
+ * What the PDF preview renders with (CGE-84): the chosen record per node, and per
+ * collection the Amostra's QUERY — its filters, none for "all records" — so the PDF
+ * prints every row the query gives, not just the few the canvas draws. The host bounds it
+ * by the type's page limit. Null when nothing real is chosen: the host uses the fixture.
+ */
+export function pdfSelectionOf(state) {
+    const nodes = { ...(state?.ids ?? {}) };
+    const queries = {};
+
+    Object.entries(state?.queries ?? {}).forEach(([key, filters]) => {
+        queries[key] = { filters: filters.map((filter) => ({ ...filter })) };
+    });
+
+    return Object.keys(nodes).length > 0 || Object.keys(queries).length > 0 ? { nodes, queries } : null;
+}
+
+/**
+ * The warning a PDF preview comes back with when the type's page limit cut rows off
+ * (`X-Preview-Truncated: shown/total`, `X-Preview-Max-Pages`), or null when nothing was.
+ */
+export function truncationNotice(headers, strings) {
+    const match = /^(\d+)\/(\d+)$/.exec(headers?.get?.('X-Preview-Truncated') ?? '');
+
+    if (!match) {
+        return null;
+    }
+
+    return fill(strings?.previewTruncated ?? 'The PDF shows :shown of :total lines (at most :pages pages).', {
+        shown: match[1],
+        total: match[2],
+        pages: headers.get('X-Preview-Max-Pages') ?? '',
+    });
 }
 
 /** A data field's text: the chosen record's value when there is one, else the example. */
@@ -405,6 +451,7 @@ export function mountPreviewPanel({ editor, config, root, headers }) {
 
                 if (entry.target.kind === 'collection') {
                     state.setRows(entry.target.id, []);
+                    state.setQuery(entry.target.id, null);
                 } else {
                     state.setNode(entry.target.id, null);
                 }
@@ -502,6 +549,7 @@ function createTarget({ target, config, state, url, headers, onChange }) {
         status: 'idle',       // idle | loading | ready | unavailable | error
         chosen: null,         // node: the picked candidate
         applied: false,       // collection: its rows are on the canvas
+        all: false,           // collection: "all records" chosen; filters only refine it
         seq: 0,
     };
 
@@ -527,7 +575,20 @@ function createTarget({ target, config, state, url, headers, onChange }) {
     addButton.type = 'button';
     addButton.append(el('span', 'tpl-pf-add-icon', '+'), el('span', '', text(config, 'add_filter', 'Add filter')));
     const resultsEl = el('div', 'tpl-pf-results');
-    body.append(filtersEl, addButton, resultsEl);
+    // Collection: "Example" or "All records" (CGE-84). A filter typed while on the
+    // example also switches to real rows: it refines all the records.
+    const modeEl = el('div', 'tpl-pf-mode');
+    const exampleButton = el('button', 'tpl-pf-mode-btn', text(config, 'example_mode', 'Example'));
+    const allButton = el('button', 'tpl-pf-mode-btn', text(config, 'all_records', 'All records'));
+    exampleButton.type = 'button';
+    allButton.type = 'button';
+    modeEl.append(exampleButton, allButton);
+
+    if (isNode) {
+        body.append(filtersEl, addButton, resultsEl);
+    } else {
+        body.append(modeEl, filtersEl, addButton, resultsEl);
+    }
     root.append(headBar, body);
 
     root.hidden = true;
@@ -554,17 +615,45 @@ function createTarget({ target, config, state, url, headers, onChange }) {
 
     const activeFilters = () => model.filters.filter((filter) => filter.field && filter.value.trim() !== '');
 
+    // Collection: real rows are wanted — "all records", or a filter that refines them.
+    const isReal = () => model.all || activeFilters().length > 0;
+
+    exampleButton.addEventListener('click', () => {
+        model.all = false;
+        model.filters = [];
+        renderFilters();
+        load(false);
+    });
+
+    allButton.addEventListener('click', () => {
+        model.all = true;
+        load(false);
+    });
+
+    function renderMode() {
+        const real = isReal();
+
+        exampleButton.setAttribute('aria-pressed', String(!real));
+        exampleButton.classList.toggle('is-active', !real);
+        allButton.setAttribute('aria-pressed', String(real));
+        allButton.classList.toggle('is-active', real);
+    }
+
     function renderBadge() {
         let label = text(config, 'example', 'Example');
 
         if (isNode && model.chosen) {
             label = model.chosen.label;
         } else if (!isNode && model.applied) {
-            label = fill(text(config, 'lines_badge', ':count lines'), { count: Math.min(model.items.length, PREVIEW_ROW_LIMIT) });
+            label = fill(text(config, activeFilters().length > 0 ? 'badge_filtered' : 'badge_all', ':total records'), { total: model.total });
         }
 
         badge.textContent = label;
         badge.classList.toggle('is-real', (isNode && model.chosen !== null) || (!isNode && model.applied));
+
+        if (!isNode) {
+            renderMode();
+        }
     }
 
     function renderFilters() {
@@ -726,8 +815,8 @@ function createTarget({ target, config, state, url, headers, onChange }) {
         }
 
         // Collection: only filtered rows are shown, and applied.
-        if (activeFilters().length === 0) {
-            resultsEl.append(el('p', 'tpl-pf-note', text(config, 'collection_hint', 'Add a filter to preview real lines.')));
+        if (!isReal()) {
+            resultsEl.append(el('p', 'tpl-pf-note', text(config, 'collection_hint', 'Choose All records, or add a filter, to preview real lines.')));
 
             return;
         }
@@ -798,10 +887,14 @@ function createTarget({ target, config, state, url, headers, onChange }) {
             return;
         }
 
-        const rows = activeFilters().length > 0 && model.status === 'ready' ? model.items.slice(0, PREVIEW_ROW_LIMIT) : [];
+        const rows = isReal() && model.status === 'ready' ? model.items.slice(0, PREVIEW_ROW_LIMIT) : [];
 
         model.applied = rows.length > 0;
         state.setRows(target.id, rows);
+        // The PDF prints the whole query, not these rows (CGE-84).
+        state.setQuery(target.id, model.applied
+            ? activeFilters().map((filter) => ({ field: filter.field, op: operatorOf(filter), value: filter.value.trim() }))
+            : null);
         renderBadge();
         onChange();
     }

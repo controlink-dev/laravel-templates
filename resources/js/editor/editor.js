@@ -14,7 +14,7 @@ import grapesjs from 'grapesjs';
 import grapesjsMjml from 'grapesjs-mjml';
 import { registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
-import { mountPreviewPanel, plainProjectData, refreshPreview, selectionOf } from './preview-filter.js';
+import { mountPreviewPanel, pdfSelectionOf, plainProjectData, refreshPreview, selectionOf, truncationNotice } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
 import { createFormulaPreview, formulaFunctionsOf, refreshFormulaTraits, selectionHeading } from './formula.js';
 import { createFormulaLibrary } from './formula-library.js';
@@ -548,11 +548,16 @@ async function mountEditor(el) {
                 announce(false);
             }
 
-            const url = await renderPreview(config);
+            const { url, notice } = await renderPreview(config);
 
             window.open(url, '_blank');
             renderStatus('', root);
             root.dispatchEvent(new CustomEvent('templates:preview-ready', { detail: { url }, bubbles: true }));
+
+            // The type's page limit left rows of the Amostra's query out (CGE-84).
+            if (notice) {
+                notify(root, config, { level: 'warning', message: notice });
+            }
         } catch (error) {
             if (error.cancelled) {
                 renderStatus(config.strings.unsaved, root);
@@ -3100,7 +3105,7 @@ async function mountEmailEditor(el, config, chrome) {
             }
 
             // The email preview endpoint serves the stored HTML; a blob URL opens it as a page.
-            const url = await renderPreview(config);
+            const { url } = await renderPreview(config);
 
             window.open(url, '_blank');
             renderStatus('', root);
@@ -3169,9 +3174,13 @@ async function saveVersion(editor, config) {
 
 /** @returns {Promise<string>} a blob URL for the rendered PDF. */
 async function renderPreview(config) {
+    // The Amostra's records, when any are chosen (CGE-84); none renders the fixture.
+    const selection = pdfSelectionOf(config.preview);
+
     const response = await fetch(config.previewUrl, {
         method: 'POST',
-        headers: requestHeaders(config),
+        headers: selection ? { ...requestHeaders(config), 'Content-Type': 'application/json' } : requestHeaders(config),
+        ...(selection ? { body: JSON.stringify({ selection }) } : {}),
     });
 
     if (!response.ok) {
@@ -3180,7 +3189,10 @@ async function renderPreview(config) {
         throw new Error(payload.message || config.strings.previewFailed);
     }
 
-    return URL.createObjectURL(await response.blob());
+    return {
+        url: URL.createObjectURL(await response.blob()),
+        notice: truncationNotice(response.headers, config.strings),
+    };
 }
 
 /**
