@@ -37,7 +37,7 @@ import { mergeProblems } from './problems.js';
 import { confirmDialog } from './dialog.js';
 import { saveConfirmingWarnings } from './save.js';
 import { placementInZone, round, topInZone, zoneAt, zonesFor } from './zones.js';
-import { clampMove, wheelMove } from './pan.js';
+import { anchorShift, clampMove, wheelMove, wheelZoomFactor } from './pan.js';
 
 /*
  * Mounting, and the four things that made a workspace pane hostile.
@@ -1185,10 +1185,16 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
      * scroll behind. GrapesJS also re-dispatches the frame's wheel on the canvas element,
      * carrying the original as `_parentEvent`; that copy is skipped or one tick would pan
      * twice. A wheel that moves nothing is left alone, so the page still scrolls when the
-     * sheet fits. Ctrl/Meta is the browser's zoom, not ours.
+     * sheet fits. With Ctrl/Meta the wheel zooms the sheet instead (`zoomByWheel`).
      */
     const panByWheel = (event) => {
-        if (event._parentEvent || event.ctrlKey || event.metaKey) {
+        if (event._parentEvent) {
+            return;
+        }
+
+        if (event.ctrlKey || event.metaKey) {
+            zoomByWheel(event);
+
             return;
         }
 
@@ -1215,6 +1221,67 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         const coords = editor.Canvas.getCoords();
 
         editor.Canvas.setCoords(coords.x + move.x, coords.y + move.y);
+    };
+
+    /*
+     * Ctrl + wheel, and a trackpad pinch (a wheel with ctrlKey), zoom the sheet about the
+     * mouse instead of the browser zooming the whole page (CGE-82). It is only bound inside
+     * the editor, so elsewhere the browser keeps its own zoom.
+     *
+     * A bare `Canvas.setZoom`, not `setZoom`: `fitViewport` would re-centre the sheet and
+     * lose the spot under the mouse. The boxes are measured either side of the zoom and the
+     * sheet moved so that spot comes back under the mouse (see pan.js), then held inside the
+     * air like the plain wheel.
+     */
+    const zoomByWheel = (event) => {
+        const canvasEl = editor.Canvas.getElement?.();
+        const frameEl = editor.Canvas.getFrameEl?.();
+
+        // Always: even at a limit, the browser must not zoom the page instead.
+        event.preventDefault();
+
+        if (!canvasEl || !frameEl) {
+            return;
+        }
+
+        const current = editor.Canvas.getZoom() || 100;
+        const factor = wheelZoomFactor(event);
+
+        // The zoom is whole percents, so a pinch's 0.6% would round back to nothing:
+        // every event that zooms at all moves at least one percent.
+        const raw = current * factor;
+        const step = factor > 1 ? Math.max(raw, current + 1) : factor < 1 ? Math.min(raw, current - 1) : current;
+        const next = clampZoom(step);
+
+        if (next === Math.floor(current)) {
+            return;
+        }
+
+        const before = frameEl.getBoundingClientRect();
+
+        // A wheel over the sheet reports the point in the frame's own pixels, which the
+        // zoom transform scales; over the grey it is already in the page's.
+        const inFrame = event.view && event.view !== window;
+        const scale = frameEl.offsetWidth ? before.width / frameEl.offsetWidth : 1;
+        const point = inFrame
+            ? { x: before.left + event.clientX * scale, y: before.top + event.clientY * scale }
+            : { x: event.clientX, y: event.clientY };
+
+        userChoseZoom = true;
+        editor.Canvas.setZoom(next);
+
+        const shift = anchorShift(point, before, frameEl.getBoundingClientRect());
+        const coords = editor.Canvas.getCoords();
+
+        editor.Canvas.setCoords(coords.x + shift.x, coords.y + shift.y);
+
+        const back = clampMove(canvasEl.getBoundingClientRect(), frameEl.getBoundingClientRect(), { x: 0, y: 0 }, AIR);
+
+        if (back.x || back.y) {
+            const moved = editor.Canvas.getCoords();
+
+            editor.Canvas.setCoords(moved.x + back.x, moved.y + back.y);
+        }
     };
 
     // The frame is rebuilt on a format change, and its old document goes with it, so this

@@ -33,6 +33,42 @@ export function wheelMove({ deltaX = 0, deltaY = 0, deltaMode = 0, shiftKey = fa
     return { x: -deltaX * unit || 0, y: -deltaY * unit || 0 };
 }
 
+/** How hard a wheel pixel zooms, and the most one event may: the step of the buttons. */
+const ZOOM_PER_PIXEL = 0.002;
+const MAX_ZOOM_STEP = 1.25;
+
+/**
+ * How much one Ctrl + wheel event scales the zoom, as a factor (CGE-82).
+ *
+ * Exponential in the delta, so a mouse notch (≈100px) is a step of about 20% and a
+ * trackpad pinch, which Chrome sends as a wheel with ctrlKey and small deltas, zooms
+ * smoothly. Wheel up zooms in. A burst is held to the 25% the buttons step by.
+ */
+export function wheelZoomFactor({ deltaY = 0, deltaMode = 0 }) {
+    const unit = deltaMode === 1 ? LINE : deltaMode === 2 ? PAGE : 1;
+    const factor = Math.exp(-deltaY * unit * ZOOM_PER_PIXEL);
+
+    return Math.min(MAX_ZOOM_STEP, Math.max(1 / MAX_ZOOM_STEP, factor));
+}
+
+/**
+ * How far to move the sheet, in screen pixels, so the spot of it under `point` before a
+ * zoom is under `point` again after it. `before` and `after` are the frame's boxes either
+ * side of the zoom: the spot is the same fraction of the box in both.
+ */
+export function anchorShift(point, before, after) {
+    const axis = (p, start, size, newStart, newSize) => {
+        const fraction = size ? (p - start) / size : 0.5;
+
+        return Math.round(p - (newStart + fraction * newSize)) || 0;
+    };
+
+    return {
+        x: axis(point.x, before.left, before.width, after.left, after.width),
+        y: axis(point.y, before.top, before.height, after.top, after.height),
+    };
+}
+
 /**
  * The part of `move` the sheet may make, per axis.
  *
