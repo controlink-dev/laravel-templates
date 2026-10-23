@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { formulaReferences } from '../../resources/js/editor/formula-names.js';
-import { collectTargets, plainProjectData, refreshPreview } from '../../resources/js/editor/preview-filter.js';
+import { collectTargets, initPreviewState, pdfSelectionOf, plainProjectData, refreshPreview, rowSummary, selectionOf, truncationNotice } from '../../resources/js/editor/preview-filter.js';
 
 /*
  * While GrapesJS loads another format's saved project data it drops the old page before
@@ -89,3 +89,59 @@ import { collectTargets, plainProjectData, refreshPreview } from '../../resource
 }
 
 console.log('preview-filter: ok');
+
+/*
+ * CGE-84: what the PDF preview sends. A node by its chosen record's id; a collection by
+ * its QUERY (the Amostra's filters, none for "all records"), so the PDF prints every row
+ * the query gives rather than the canvas's first few. The formula preview's
+ * `selectionOf` keeps sending the canvas rows' ids.
+ */
+{
+    const editor = {};
+    const state = initPreviewState(editor, {});
+
+    assert.equal(pdfSelectionOf(state), null);
+
+    state.setNode('subject', { 'subject.name': 'Parafuso' }, 3);
+    state.setRows('items', [{ id: 7, name: 'Porca' }]);
+    state.setQuery('items', [{ field: 'name', op: 'contains', value: 'Par' }]);
+
+    assert.deepEqual(pdfSelectionOf(state), {
+        nodes: { subject: '3' },
+        queries: { items: { filters: [{ field: 'name', op: 'contains', value: 'Par' }] } },
+    });
+    assert.deepEqual(selectionOf(state), { nodes: { subject: '3' }, collections: { items: ['7'] } });
+
+    // "All records": a query with no filters.
+    state.setQuery('items', []);
+    assert.deepEqual(pdfSelectionOf(state).queries, { items: { filters: [] } });
+
+    // Back to the example: the collection is not queried; nothing chosen is null again.
+    state.setQuery('items', null);
+    state.setNode('subject', null);
+    assert.equal(pdfSelectionOf(state), null);
+}
+
+/*
+ * CGE-84: the cut warning, from the preview response's headers. None when nothing was
+ * left out; the shown/total/pages filled in when it was.
+ */
+{
+    const headersOf = (values) => ({ get: (name) => values[name] ?? null });
+    const strings = { previewTruncated: 'Mostra :shown de :total (máx. :pages páginas)' };
+
+    assert.equal(truncationNotice(headersOf({}), strings), null);
+    assert.equal(
+        truncationNotice(headersOf({ 'X-Preview-Truncated': '12/20', 'X-Preview-Max-Pages': '50' }), strings),
+        'Mostra 12 de 20 (máx. 50 páginas)',
+    );
+    assert.equal(truncationNotice(headersOf({ 'X-Preview-Truncated': 'nonsense' }), strings), null);
+}
+
+/*
+ * A collection row in the Amostra list: its first three values, never the record id the
+ * PDF/formula selection carries alongside them.
+ */
+{
+    assert.equal(rowSummary({ id: '01abc', code: 'T1', name: 'Porca', cost: '', price: '2,00', unit: 'UN' }), 'T1 · Porca · 2,00');
+}
