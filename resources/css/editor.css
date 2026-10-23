@@ -405,15 +405,22 @@
     overflow: hidden;
 }
 
-.tpl-picker__search {
-    width: 100%;
+/*
+ * A field of its own, inset from the picker's edge rather than flush with it (CGE-87). The
+ * picker sits inside the columns trait's `.gjs-field`, whose `.gjs-field input { width: 100% }`
+ * outranks a lone class: the box came out wider than the picker, and focusing it scrolled
+ * the clipped picker sideways. Hence the second class.
+ */
+.tpl-picker .tpl-picker__search {
+    display: block;
+    width: calc(100% - 1rem);
     box-sizing: border-box;
-    border: 0;
-    border-bottom: 1px solid var(--tpl-edge, #e2e8f0);
-    border-radius: 0;
+    margin: 0.5rem;
+    padding: 0 0.5rem;
 }
 
 .tpl-picker__tree {
+    border-top: 1px solid var(--tpl-edge, #e2e8f0);
     display: flex;
     flex-direction: column;
     max-height: 18rem;
