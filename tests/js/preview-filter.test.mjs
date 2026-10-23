@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { formulaReferences } from '../../resources/js/editor/formula-names.js';
-import { collectTargets, initPreviewState, pdfSelectionOf, plainProjectData, refreshPreview, selectionOf, truncationNotice } from '../../resources/js/editor/preview-filter.js';
+import { collectTargets, initPreviewState, pdfSelectionOf, plainProjectData, refreshPreview, rowSummary, selectionOf, truncationNotice } from '../../resources/js/editor/preview-filter.js';
 
 /*
  * While GrapesJS loads another format's saved project data it drops the old page before
@@ -136,4 +136,12 @@ console.log('preview-filter: ok');
         'Mostra 12 de 20 (máx. 50 páginas)',
     );
     assert.equal(truncationNotice(headersOf({ 'X-Preview-Truncated': 'nonsense' }), strings), null);
+}
+
+/*
+ * A collection row in the Amostra list: its first three values, never the record id the
+ * PDF/formula selection carries alongside them.
+ */
+{
+    assert.equal(rowSummary({ id: '01abc', code: 'T1', name: 'Porca', cost: '', price: '2,00', unit: 'UN' }), 'T1 · Porca · 2,00');
 }

@@ -149,6 +149,15 @@ export function truncationNotice(headers, strings) {
     });
 }
 
+/** A collection row as the Amostra lists it: its first three values, not its record id. */
+export function rowSummary(row) {
+    return Object.entries(row ?? {})
+        .filter(([key, value]) => key !== 'id' && String(value ?? '') !== '')
+        .map(([, value]) => String(value))
+        .slice(0, 3)
+        .join(' · ');
+}
+
 /** A data field's text: the chosen record's value when there is one, else the example. */
 export function previewValue(config, key) {
     const values = config.preview?.values;
@@ -834,7 +843,7 @@ function createTarget({ target, config, state, url, headers, onChange }) {
         const ul = el('ul', 'tpl-pf-list');
 
         shown.forEach((row) => {
-            ul.append(el('li', 'tpl-pf-row', Object.values(row).filter((value) => String(value) !== '').slice(0, 3).join(' · ')));
+            ul.append(el('li', 'tpl-pf-row', rowSummary(row)));
         });
 
         resultsEl.append(ul);
