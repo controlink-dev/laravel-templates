@@ -48,6 +48,7 @@ return [
         'format'        => 'Formato',
         'file'          => 'Ficheiro',
         'remove_image'  => 'Remover imagem',
+        'anchor_last_page' => 'Fixa na última página',
         'fit'           => 'Ajuste',
         'thickness'     => 'Espessura',
         'filled'        => 'Preenchido',

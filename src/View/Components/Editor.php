@@ -172,6 +172,7 @@ class Editor extends Component
 
             'trait.collection'    => __('templates::editor.traits.collection'),
             'trait.columns'       => __('templates::editor.traits.columns'),
+            'trait.anchor_last_page' => __('templates::editor.traits.anchor_last_page'),
             'trait.column_label'  => __('templates::editor.traits.column_label'),
             'trait.column_width'  => __('templates::editor.traits.column_width'),
             'trait.column_remove' => __('templates::editor.traits.column_remove'),

@@ -65,6 +65,17 @@ function registerLineTable(editor, config) {
                         options: collections,
                     },
                     {
+                        // CGE-67: drawn here on the last page instead of after the table above
+                        // it — the tax summary beside the totals. The compositor only honours
+                        // it inside the bottom reserve and when every row fits; otherwise the
+                        // table flows as before (see PageStructure::splitFixed).
+                        type: 'checkbox',
+                        name: 'data-tpl-anchor',
+                        label: config.strings['trait.anchor_last_page'],
+                        valueTrue: 'last-page',
+                        valueFalse: '',
+                    },
+                    {
                         type: 'tpl-columns',
                         name: 'data-tpl-columns',
                         label: config.strings['trait.columns'],

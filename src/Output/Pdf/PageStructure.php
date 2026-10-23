@@ -34,6 +34,9 @@ class PageStructure
 {
     private const ZONES = ['header', 'body', 'footer'];
 
+    /** `data-tpl-anchor` of a line table drawn at its own place on the last page (CGE-67). */
+    public const ANCHOR_LAST_PAGE = 'last-page';
+
     /**
      * The document, as one page template per sheet plus the dataset each needs.
      *
@@ -62,13 +65,18 @@ class PageStructure
             ];
         }
 
+        // A table fixed on the last page (CGE-67) that fits its slot leaves the flow: it is
+        // drawn where the canvas put it, with all its rows, like the totals. One that does
+        // not fit flows as any other table, so it is never clipped nor drawn over a block.
+        [$flowing, $fixed] = $this->splitFixed($tables, $type, $dataset);
+
         // One table (or none) paginates exactly as it always has: a single DOM round-trip
         // is never taken, so the emitted strings are byte-for-byte what they were.
-        if (count($tables) <= 1) {
-            return $this->buildSingle($zones, $tables[0] ?? null, $type, $dataset);
+        if (count($flowing) <= 1) {
+            return $this->buildSingle($zones, $flowing[0] ?? null, $type, $dataset);
         }
 
-        return $this->buildStacked($zones, $tables, $type, $dataset);
+        return $this->buildStacked($zones, $flowing, $type, $dataset, $fixed);
     }
 
     /**
@@ -115,7 +123,7 @@ class PageStructure
      * @param  array<string, mixed>  $dataset
      * @return array{pages: array<int, array{template: string, dataset: array<string, mixed>}>, css: string}
      */
-    private function buildStacked(array $zones, array $tables, TemplateType $type, array $dataset): array
+    private function buildStacked(array $zones, array $tables, TemplateType $type, array $dataset, array $fixed = []): array
     {
         $placements = $this->flow($tables, $type, $dataset);
         $total      = count($placements);
@@ -144,7 +152,7 @@ class PageStructure
             }
 
             $pages[] = [
-                'template' => $this->wrapPage($zones, $this->stackedBody($zones['body'], $page, $isLast)),
+                'template' => $this->wrapPage($zones, $this->stackedBody($zones['body'], $page, $isLast, $fixed)),
                 'dataset'  => $this->datasetFor($dataset, $chunkMap, $index + 1, $total),
             ];
         }
@@ -275,24 +283,73 @@ class PageStructure
      */
     private function rowsThatFit(TemplateType $type, float $cursorMm): int
     {
-        $margins = $type->pdf['margins'] ?? [];
-        $zones   = $type->initialLayout['zones'] ?? [];
-
-        $sheetHeight = PageGeometry::fromType($type->pdf)->sheetSizeMm()['height'];
-
-        $bodyHeight = $sheetHeight
-            - (float) ($margins['top'] ?? 15)
-            - (float) ($margins['bottom'] ?? 15)
-            - (float) ($zones['header_height'] ?? 35)
-            - (float) ($zones['footer_height'] ?? 20);
-
         $rowHeight = max(1.0, (float) ($type->pdf['line_row_height_mm'] ?? 4.5));
-        $available = $bodyHeight
+        $available = $this->bodyHeight($type)
             - $cursorMm
             - (float) ($type->pdf['body_reserve_mm'] ?? 0)
             - $rowHeight;
 
         return (int) floor($available / $rowHeight);
+    }
+
+    /** The body band's height on a sheet: the page minus its margins and both bands. */
+    private function bodyHeight(TemplateType $type): float
+    {
+        $margins = $type->pdf['margins'] ?? [];
+        $zones   = $type->initialLayout['zones'] ?? [];
+
+        $sheetHeight = PageGeometry::fromType($type->pdf)->sheetSizeMm()['height'];
+
+        return $sheetHeight
+            - (float) ($margins['top'] ?? 15)
+            - (float) ($margins['bottom'] ?? 15)
+            - (float) ($zones['header_height'] ?? 35)
+            - (float) ($zones['footer_height'] ?? 20);
+    }
+
+    /**
+     * Splits the body's tables into the ones that flow and the collections of the ones
+     * fixed on the last page (CGE-67).
+     *
+     * A fixed table stays where the canvas drew it, with every row, on the last page only
+     * — the way the totals do. That is safe only inside the band the flow never fills (the
+     * `body_reserve_mm` at the bottom of every page) and only when the header and all its
+     * rows fit above the footer. A fixed table that misses either condition — placed higher
+     * than the reserve, or a document with more rows than its slot holds — falls back to
+     * the flow, where it can never be clipped nor drawn over the lines: a mandatory table
+     * (the tax summary) printed whole somewhere else is better than one printed cut.
+     *
+     * @param  list<array{html: string, collection: string, top: float, anchored?: bool}>  $tables
+     * @param  array<string, mixed>  $dataset
+     * @return array{0: list<array{html: string, collection: string, top: float, anchored?: bool}>, 1: list<string>}
+     */
+    private function splitFixed(array $tables, TemplateType $type, array $dataset): array
+    {
+        $flowing = [];
+        $fixed   = [];
+
+        $bodyHeight = $this->bodyHeight($type);
+        $reserveTop = $bodyHeight - (float) ($type->pdf['body_reserve_mm'] ?? 0);
+        $rowHeight  = max(1.0, (float) ($type->pdf['line_row_height_mm'] ?? 4.5));
+        $tolerance  = 0.01;
+
+        foreach ($tables as $table) {
+            $rows = $dataset[$table['collection']] ?? [];
+            $rows = is_array($rows) ? count($rows) : 0;
+
+            $fits = ($table['anchored'] ?? false)
+                && $table['collection'] !== ''
+                && $table['top'] >= $reserveTop - $tolerance
+                && $table['top'] + (1 + $rows) * $rowHeight <= $bodyHeight + $tolerance;
+
+            if ($fits) {
+                $fixed[] = $table['collection'];
+            } else {
+                $flowing[] = $table;
+            }
+        }
+
+        return [$flowing, $fixed];
     }
 
     /**
@@ -435,7 +492,7 @@ class PageStructure
      *
      * @param  list<array{collection: string, chunk: array<int, array<string, mixed>>, top: float}>  $page
      */
-    private function stackedBody(string $bodyHtml, array $page, bool $isLast): string
+    private function stackedBody(string $bodyHtml, array $page, bool $isLast, array $fixed = []): string
     {
         // Where each placed collection renders on this page.
         $topByCollection = [];
@@ -472,8 +529,8 @@ class PageStructure
 
             $collection = $node->getAttribute('data-tpl-collection');
 
-            if ($collection === '') {
-                continue; // unbound: not part of the flow, left as drawn.
+            if ($collection === '' || in_array($collection, $fixed, true)) {
+                continue; // unbound, or fixed on the last page: not part of the flow, left as drawn.
             }
 
             if (! array_key_exists($collection, $topByCollection)) {
@@ -642,6 +699,7 @@ class PageStructure
                 'html'       => $document->saveHTML($node),
                 'collection' => $node->getAttribute('data-tpl-collection'),
                 'top'        => $this->topMm($node, $rulesById, $rulesByClass),
+                'anchored'   => $node->getAttribute('data-tpl-anchor') === self::ANCHOR_LAST_PAGE,
             ];
         }
 
