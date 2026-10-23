@@ -93,6 +93,13 @@ class PdfRenderTest extends TestCase
         $dataset = $this->fixtureDataset($type);
         $layout  = $this->validPdfLayout($type);
 
+        // Text short enough for its column: rows that wrap are taller (CGE-89) and are
+        // paginated by their heights, which WrappingRowsPaginationTest covers.
+        $dataset['linhas'] = array_map(
+            fn (array $row): array => ['codigo' => mb_substr((string) $row['codigo'], -4), 'descricao' => 'Artigo'] + $row,
+            $dataset['linhas'],
+        );
+
         $structure = app(PageStructure::class)->build($this->bodyOf($layout['html']), $type, $dataset);
 
         $perPage = app(PageStructure::class)->rowsPerPage($type);
