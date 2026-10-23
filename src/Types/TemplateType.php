@@ -64,6 +64,18 @@ final class TemplateType
         return $this->output === 'pdf';
     }
 
+    /** Whether the type declares any legal field or code (a fiscal document does; a report does not). */
+    public function hasLegalFields(): bool
+    {
+        foreach ($this->bindings as $binding) {
+            if ($binding['legal']) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /** @return array<string, mixed>|null */
     public function binding(string $key): ?array
     {

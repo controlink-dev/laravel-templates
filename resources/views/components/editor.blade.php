@@ -105,10 +105,13 @@
         {{-- Three ways of looking at the same sheet. Each is a class on the root, so
              none of it can reach the PDF. --}}
         <div class="tpl-tools">
-            <button type="button" class="tpl-tool" data-tpl-toggle="legal"
-                    title="{{ __('templates::editor.chrome.legal_hint') }}">
-                {!! $icons['shield-check'] !!} {{ __('templates::editor.chrome.legal_fields') }}
-            </button>
+            {{-- Only where the type has legal fields to show (CGE-87); the same for "Restore" below. --}}
+            @if($type->hasLegalFields())
+                <button type="button" class="tpl-tool" data-tpl-toggle="legal"
+                        title="{{ __('templates::editor.chrome.legal_hint') }}">
+                    {!! $icons['shield-check'] !!} {{ __('templates::editor.chrome.legal_fields') }}
+                </button>
+            @endif
             <button type="button" class="tpl-tool is-on" data-tpl-toggle="zones"
                     title="{{ __('templates::editor.chrome.zones_hint') }}">
                 {!! $icons['table-rows'] !!} {{ __('templates::editor.chrome.zones') }}
@@ -128,9 +131,11 @@
 
         @unless($readOnly)
             <div class="tpl-tools">
-                <button type="button" class="tpl-tool" data-tpl-command="restore-legal">
-                    {!! $icons['shield-exclamation'] !!} {{ __('templates::editor.actions.restore_legal') }}
-                </button>
+                @if($type->hasLegalFields())
+                    <button type="button" class="tpl-tool" data-tpl-command="restore-legal">
+                        {!! $icons['shield-exclamation'] !!} {{ __('templates::editor.actions.restore_legal') }}
+                    </button>
+                @endif
                 <button type="button" class="tpl-tool" data-tpl-command="snap-to-sheet"
                         title="{{ __('templates::editor.actions.snap_to_sheet') }}">
                     {!! $icons['arrows-to-dot'] !!} {{ __('templates::editor.actions.snap_to_sheet') }}

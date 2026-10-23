@@ -1197,6 +1197,9 @@ function registerCodeSlot(editor, config) {
                     {
                         type: 'tpl-code-content',
                         name: 'data-tpl-code-content',
+                        // Each of its rows carries its own label; without this GrapesJS
+                        // derived one from the name ("Data tpl code content", CGE-87).
+                        label: false,
                     },
                 ],
                 stylable: ['left', 'top', 'right', 'bottom', 'width', 'height'],
