@@ -8,6 +8,7 @@ use Controlink\Templates\Formulas\Parser;
 use Controlink\Templates\Tests\Fixtures\Models\EditorTemplate;
 use Controlink\Templates\Tests\Fixtures\Models\GuardedVersion;
 use Controlink\Templates\Tests\TestCase;
+use Controlink\Templates\Types\TypeCatalogue;
 use Controlink\Templates\Versions\VersionState;
 use Controlink\Templates\View\Components\Editor;
 use Illuminate\Support\Facades\Blade;
@@ -51,6 +52,38 @@ class EditorComponentTest extends TestCase
         $this->assertStringContainsString('data-tpl-root', $html);
         $this->assertStringContainsString('data-tpl-editor', $html);
         $this->assertStringContainsString('data-templates-dirty', $html);
+    }
+
+    /**
+     * "Legal fields" and "Restore missing legal fields" are about the type's legal bindings
+     * (CGE-87): on a report, a plain document or a label there are none, and the two buttons
+     * only showed nothing and restored nothing.
+     */
+    public function test_the_legal_field_tools_appear_only_for_a_type_with_legal_fields(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $html = $this->render($template, $version);
+
+        $this->assertStringContainsString('data-tpl-toggle="legal"', $html);
+        $this->assertStringContainsString('data-tpl-command="restore-legal"', $html);
+
+        config()->set('templates.types.report', [
+            'label'    => 'Relatório',
+            'output'   => 'pdf',
+            'bindings' => [
+                ['key' => 'report.title', 'label' => 'Título', 'type' => 'text', 'mandatory' => true],
+            ],
+        ]);
+        $this->app->forgetInstance(TypeCatalogue::class);
+
+        $template = new EditorTemplate(['id' => 'tpl-2', 'type_code' => 'report', 'name' => 'Relatório']);
+        $version->template_id = 'tpl-2';
+
+        $html = $this->render($template, $version);
+
+        $this->assertStringNotContainsString('data-tpl-toggle="legal"', $html);
+        $this->assertStringNotContainsString('data-tpl-command="restore-legal"', $html);
     }
 
     /**

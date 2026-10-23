@@ -219,6 +219,8 @@ function registerZones(editor, config) {
                 // No 'height' (CGE-50): a band's height is the version's geometry, edited in
                 // the page panel (geometry-panel.js). As a style it only stretched the element.
                 stylable: ['background-color'],
+                // Nothing to set here: left out, GrapesJS adds its own "Id" and "Title" (CGE-87).
+                traits: [],
             },
         },
     });
@@ -246,6 +248,8 @@ function registerZones(editor, config) {
                 selectable: true,
                 attributes: { class: 'page' },
                 stylable: false,
+                // Its settings are the page panel's; see the zones above (CGE-87).
+                traits: [],
             },
         },
     });

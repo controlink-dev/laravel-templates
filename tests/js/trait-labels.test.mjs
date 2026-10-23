@@ -35,8 +35,19 @@ const blocks = ['static-text', 'data-field', 'print-image', 'print-rule', 'page-
 
 for (const name of blocks) {
     assert.ok(types[name], `type ${name} is registered`);
+}
 
-    for (const trait of types[name].model?.defaults?.traits ?? []) {
+/*
+ * A type that declares no traits is not traitless either: GrapesJS gives it `id` and
+ * `title`, untranslated, and the sheet and its bands showed "Id" and "Title" in the panel —
+ * an `id` the layout's CSS rules hang on, open to editing.
+ */
+for (const [name, definition] of Object.entries(types)) {
+    const traits = definition.model?.defaults?.traits;
+
+    assert.ok(Array.isArray(traits), `${name} declares its traits`);
+
+    for (const trait of traits) {
         const id = typeof trait === 'string' ? trait : trait.name;
         const label = typeof trait === 'string' ? undefined : trait.label;
 

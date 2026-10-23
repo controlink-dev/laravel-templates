@@ -389,7 +389,7 @@
     display: grid;
     /* The trait has no label of its own (CGE-87): the rows line up with Zone and Source. */
     grid-template-columns: 30% 1fr;
-    gap: 5px;
+    gap: 5px; /* GrapesJS's own, between a trait's label and its field */
     align-items: center;
     margin-bottom: 0.5rem;
 }
@@ -398,11 +398,9 @@
     margin-bottom: 0;
 }
 
+/* Typed like a trait label: see the `.gjs-label` rules further down. */
 .tpl-code-content__label {
     overflow: hidden;
-    color: var(--tpl-slate-700, #334155);
-    font-size: 10px;
-    font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -942,7 +940,8 @@
    disabled, and a form where everything looks disabled is a form nobody trusts. */
 .tpl-editor-root .gjs-sm-label,
 .tpl-editor-root .gjs-trt-trait__label,
-.tpl-editor-root .gjs-label {
+.tpl-editor-root .gjs-label,
+.tpl-editor-root .tpl-code-content__label {
     font-size: 0.625rem;
     color: var(--tpl-slate-700, #334155);
     font-weight: 500;
@@ -1292,7 +1291,8 @@
    labels on white reads as a panel of disabled controls. */
 .tpl-editor-root .gjs-sm-label,
 .tpl-editor-root .gjs-trt-trait__label,
-.tpl-editor-root .gjs-label {
+.tpl-editor-root .gjs-label,
+.tpl-editor-root .tpl-code-content__label {
     color: var(--tpl-slate-800, #1e293b);
 }
 
