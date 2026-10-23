@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {
     addFormulaColumn, columnsOverflow, freshFormulaColumns, isCalculatedColumn, isFormulaColumn, printedKeyOf,
-    removeColumn, setColumnFormulaMode,
+    removeColumn, setColumnFormulaMode, defaultColumns, addLinkedColumn, relinkColumn, isRemovableColumn,
 } from '../../resources/js/editor/formula-columns.js';
 import { registerComponents } from '../../resources/js/editor/components.js';
 import { columnQuickExamples } from '../../resources/js/editor/formula-names.js';
@@ -561,6 +561,70 @@ const cells = (html) => [...html.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((match) 
     assert.match(copy.columns()[1].formulaKey, SERVER_KEY);
     assert.notEqual(copy.columns()[1].formulaKey, original.columns()[1].formulaKey);
     sheet.length = 0;
+}
+
+// 21. CGE-85: linked columns. The catalogue offers, for a document collection, its own
+// columns, the display field of each link (a default card) and the link's other fields
+// (`optional`, offered by "Add column" only).
+{
+    const binding = {
+        key: 'lines',
+        columns: [
+            { key: 'description', label: 'Descrição', default_format: '' },
+            { key: 'amount', label: 'Valor', default_format: 'money' },
+            { key: 'family.name', label: 'Família', default_format: '', linked: { alias: 'family', label: 'Família', field: 'name', field_label: 'Nome' } },
+            { key: 'family.code', label: 'Família › Código', default_format: '', linked: { alias: 'family', label: 'Família', field: 'code', field_label: 'Código' }, optional: true },
+            { key: 'unit.code', label: 'Unidade › Código', default_format: '', linked: { alias: 'unit', label: 'Unidade', field: 'code', field_label: 'Código' }, optional: true },
+            { key: 'family.discount', label: 'Família › Desconto', default_format: 'number', linked: { alias: 'family', label: 'Família', field: 'discount', field_label: 'Desconto' }, optional: true },
+        ],
+    };
+
+    // defaultColumns: every catalogue column but the optional ones, in its order, shaped as always.
+    const defaults = defaultColumns(binding);
+    assert.deepEqual(defaults.map((column) => column.key), ['description', 'amount', 'family.name']);
+    assert.deepEqual(defaults[1], { key: 'amount', label: 'Valor', width: '', align: 'right', format: 'money', formatArgs: { decimals: null, symbol: 'after' } });
+    assert.deepEqual(defaults[2], { key: 'family.name', label: 'Família', width: '', align: 'left', format: '', formatArgs: {} });
+    assert.deepEqual(defaultColumns(undefined), []);
+    assert.ok(defaults.every((column) => !isRemovableColumn(column)), 'catalogue columns are hidden, never removed');
+
+    // addLinkedColumn: at the end, the default shape plus `origin: 'added'` and a width of its own.
+    const before = JSON.stringify(defaults);
+    const added = addLinkedColumn(defaults, binding.columns[5]);
+    assert.equal(JSON.stringify(defaults), before, 'the given columns are not changed in place');
+    assert.equal(added.length, 4);
+    assert.deepEqual(added.slice(0, 3), defaults);
+    assert.deepEqual(added[3], {
+        key: 'family.discount', label: 'Família › Desconto', width: '20mm', align: 'right', format: 'number', formatArgs: { decimals: 2 }, origin: 'added',
+    });
+    assert.ok(isRemovableColumn(added[3]));
+    assert.ok(isRemovableColumn(addFormulaColumn([], 'F').at(-1)), 'a calculated column too');
+
+    // An added column is removed with the trash, like a calculated one.
+    assert.deepEqual(removeColumn(added, 3), defaults);
+    assert.deepEqual(removeColumn(added, 2), added, 'the catalogue display column stays');
+
+    // relinkColumn: the key changes; width, alignment, format, hidden and origin stay.
+    const tuned = added.map((column, at) => at === 3 ? { ...column, width: '31', align: 'center', hidden: true } : column);
+    const relinked = relinkColumn(tuned, 3, binding.columns[3], binding.columns[5]);
+    assert.deepEqual(relinked[3], { ...tuned[3], key: 'family.code', label: 'Família › Código' }, 'default label follows the field');
+    assert.equal(tuned[3].key, 'family.discount', 'the given columns are not changed in place');
+
+    // A label the user wrote is theirs: kept.
+    const renamed = tuned.map((column, at) => at === 3 ? { ...column, label: 'Desc. fam.' } : column);
+    assert.equal(relinkColumn(renamed, 3, binding.columns[3], binding.columns[5])[3].label, 'Desc. fam.');
+    assert.equal(relinkColumn(renamed, 3, binding.columns[3], binding.columns[5])[3].key, 'family.code');
+    // Without the old entry nothing says the label is a default: kept.
+    assert.equal(relinkColumn(tuned, 3, binding.columns[3])[3].label, 'Família › Desconto');
+
+    // The default card of a link relinks too (it is not removable, only hidden).
+    const display = relinkColumn(defaults, 2, binding.columns[3], binding.columns[2]);
+    assert.deepEqual(display[2], { ...defaults[2], key: 'family.code', label: 'Família › Código' });
+    assert.ok(!isRemovableColumn(display[2]));
+
+    // Nothing to do: no column there, or a column in Formula (its source names the old key).
+    assert.equal(relinkColumn(defaults, 9, binding.columns[3]), defaults);
+    const inFormula = setColumnFormulaMode(defaults, 2, true, () => 'fam12345', 'lines');
+    assert.equal(relinkColumn(inFormula, 2, binding.columns[3], binding.columns[2]), inFormula);
 }
 
 console.log('formula-columns: ok');

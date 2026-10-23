@@ -61,6 +61,13 @@ return [
         'column_reorder' => 'Arrastar para reordenar',
         'column_hide'   => 'Ocultar coluna',
         'column_show'   => 'Mostrar coluna',
+        // "Acrescentar coluna" da tabela de linhas (CGE-85): campos próprios, das tabelas ligadas, coluna calculada.
+        'add_column'          => '+ Acrescentar coluna',
+        'column_search'       => 'Procurar campos…',
+        'column_linked_field' => 'Campo da tabela ligada',
+        'column_no_match'     => 'Nenhum campo corresponde à pesquisa.',
+        'already_in_table'    => 'já está na tabela',
+        'calculated_column'   => 'Coluna calculada',
         'node'          => 'Modelo',
         'field_source'  => 'Origem dos dados',
         'code_source'   => 'Origem',

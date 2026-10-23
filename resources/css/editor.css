@@ -364,6 +364,130 @@
     margin-top: 0.125rem;
 }
 
+/* A linked column (CGE-85): under the header, "<link> ›" and the select of that link's
+ * fields, which swaps the field without losing the column's settings. */
+.tpl-col__link {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: 0.4rem;
+    padding: 0.25rem 0.4rem;
+    border-radius: 0.375rem;
+    background: var(--tpl-surface-muted, #f8fafc);
+    font-size: 0.6875rem;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+.tpl-col__link-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: none;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tpl-col__link select {
+    flex: 1;
+    min-width: 0;
+}
+
+/* "Add column" (CGE-85): a search over a tree of the collection's fields — its own, each
+ * linked table's — with the calculated column fixed at the end. */
+.tpl-picker {
+    margin-top: 0.4rem;
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 0.5rem;
+    background: var(--tpl-surface-base, #fff);
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+    overflow: hidden;
+}
+
+.tpl-picker__search {
+    width: 100%;
+    box-sizing: border-box;
+    border: 0;
+    border-bottom: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 0;
+}
+
+.tpl-picker__tree {
+    display: flex;
+    flex-direction: column;
+    max-height: 18rem;
+    overflow: auto;
+    padding: 0.25rem 0;
+}
+
+.tpl-picker__group,
+.tpl-picker__leaf {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: 0.75rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.tpl-picker__group {
+    padding: 0.35rem 0.5rem;
+    font-weight: 600;
+}
+
+.tpl-picker__chevron {
+    flex: none;
+    transition: transform 0.15s;
+}
+
+.tpl-picker__group[aria-expanded="true"] .tpl-picker__chevron {
+    transform: rotate(90deg);
+}
+
+.tpl-picker__leaf {
+    padding: 0.3rem 0.5rem 0.3rem 1.9rem;
+}
+
+.tpl-picker__leaf:hover:not([disabled]),
+.tpl-picker__group:hover {
+    background: var(--tpl-surface-muted, #f8fafc);
+    color: var(--tpl-primary, #4f46e5);
+}
+
+.tpl-picker__leaf[disabled] {
+    color: var(--tpl-slate-500, #64748b);
+    cursor: default;
+}
+
+.tpl-picker__in {
+    margin-left: auto;
+    font-size: 0.625rem;
+}
+
+.tpl-picker__calc {
+    margin-top: 0.25rem;
+    padding-left: 0.5rem;
+    border-top: 1px solid var(--tpl-edge, #e2e8f0);
+    padding-top: 0.45rem;
+}
+
+.tpl-picker__empty {
+    padding: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--tpl-slate-500, #64748b);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tpl-picker__chevron {
+        transition: none;
+    }
+}
+
 /* The columns are wider than the table (CGE-37): the last ones get no room on the sheet. */
 .tpl-columns__notice {
     margin: 0 0 0.4rem;

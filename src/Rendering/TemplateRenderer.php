@@ -148,6 +148,7 @@ class TemplateRenderer
         $tree = [];
 
         foreach ($dataset as $key => $value) {
+            $value    = $this->nestRows($value);
             $segments = explode('.', (string) $key);
             $cursor   = &$tree;
 
@@ -169,5 +170,69 @@ class TemplateRenderer
         }
 
         return $tree;
+    }
+
+    /**
+     * A list of rows gets each row's dotted keys (linked columns: `family.name`) nested
+     * as well, so `linha.family.name` resolves under strict variables. The flat key stays
+     * because formulas read rows flat.
+     */
+    private function nestRows(mixed $value): mixed
+    {
+        if (! is_array($value) || $value === [] || ! array_is_list($value)) {
+            return $value;
+        }
+
+        foreach ($value as $index => $row) {
+            if (is_array($row) && ! array_is_list($row)) {
+                $value[$index] = $this->nestRowKeys($row);
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function nestRowKeys(array $row): array
+    {
+        $nested = $row;
+
+        foreach ($row as $key => $value) {
+            $key = (string) $key;
+
+            if (! str_contains($key, '.')) {
+                continue;
+            }
+
+            $segments = explode('.', $key);
+
+            // A scalar already lives under the first segment: that key stays flat only.
+            if (array_key_exists($segments[0], $row) && ! is_array($row[$segments[0]])) {
+                continue;
+            }
+
+            $cursor = &$nested;
+
+            foreach ($segments as $index => $segment) {
+                if ($index === count($segments) - 1) {
+                    $cursor[$segment] = $value;
+
+                    break;
+                }
+
+                if (! isset($cursor[$segment]) || ! is_array($cursor[$segment])) {
+                    $cursor[$segment] = [];
+                }
+
+                $cursor = &$cursor[$segment];
+            }
+
+            unset($cursor);
+        }
+
+        return $nested;
     }
 }
