@@ -349,6 +349,7 @@ class Editor extends Component
             'check.text_overflow'   => __('templates::editor.checks.text_overflow'),
             'check.missing_table'   => __('templates::editor.checks.missing_table'),
             'check.missing_mandatory' => __('templates::editor.checks.missing_mandatory'),
+            'check.overlapping'       => __('templates::editor.validation.overlapping'),
             'check.code_incomplete' => __('templates::editor.checks.code_incomplete'),
 
             'error.image_too_large'  => __('templates::editor.errors.image_too_large'),

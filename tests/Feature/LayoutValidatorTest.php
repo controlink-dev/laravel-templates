@@ -627,6 +627,58 @@ class LayoutValidatorTest extends TestCase
         }
     }
 
+    /**
+     * What overlaps is the printed text, not the box (CGE-90): a wide right-aligned value
+     * next to a label — the seeded invoice's header — prints clear of it.
+     */
+    public function test_a_right_aligned_value_clear_of_its_label_is_not_an_overlap(): void
+    {
+        $label = ['type' => 'static-text', 'zone' => 'header', 'id' => 'tpl-label', 'text' => 'EMISSÃO:',
+            'style' => ['position' => 'absolute', 'left' => '0mm', 'top' => '35mm', 'width' => '30mm', 'font-size' => '8pt']];
+        $value = fn (string $text): array => ['type' => 'static-text', 'zone' => 'header', 'id' => 'tpl-value', 'text' => $text,
+            'style' => ['position' => 'absolute', 'left' => '10mm', 'top' => '35mm', 'width' => '40mm', 'font-size' => '9pt', 'text-align' => 'right']];
+
+        $clear = $this->layout([...$this->defaultBlocks(self::TYPE_CODE), $label, $value('1.229.999,98 EUR')]);
+        $this->assertNotContains('V-20', array_column($this->occlusions($clear), 'code'));
+
+        // Text long enough to run back over the label does overlap it.
+        $long = $this->layout([...$this->defaultBlocks(self::TYPE_CODE), $label, $value('1.229.999.999.999.999.999,98 EUR')]);
+        $this->assertContains('V-20', array_column($this->occlusions($long), 'code'));
+
+        // Centred text sits in the middle of its box.
+        $centred = $this->layout([...$this->defaultBlocks(self::TYPE_CODE), $label,
+            [...$value('ABC'), 'style' => [...$value('ABC')['style'], 'text-align' => 'center']]]);
+        $this->assertNotContains('V-20', array_column($this->occlusions($centred), 'code'));
+    }
+
+    /** A data field is measured by the sample value it prints, formatted as placed. */
+    public function test_a_data_field_is_measured_by_its_sample_value(): void
+    {
+        $note = fn (string $left): array => $this->text(['left' => $left, 'top' => '0mm', 'width' => '20mm', 'height' => '4mm']);
+
+        // 999999999 at 8pt is about 15mm wide: the box runs to 150mm, the text to ~105mm.
+        $clear = $this->layoutWithCover('emitente.nif', [...$note('120mm'), 'text' => 'Nota'], ['width' => '60mm', 'height' => '4mm', 'font-size' => '8pt']);
+        $this->assertNotContains('V-20', array_column($this->occlusions($clear), 'code'));
+
+        $over = $this->layoutWithCover('emitente.nif', [...$note('95mm'), 'text' => 'Nota'], ['width' => '60mm', 'height' => '4mm', 'font-size' => '8pt']);
+        $this->assertContains('V-20', array_column($this->occlusions($over), 'code'));
+    }
+
+    /**
+     * The save's warnings measure data fields by the sample the host hands in: without it
+     * a value is its whole box, and a wide value box would warn where its text is clear.
+     */
+    public function test_layout_warnings_measure_data_fields_with_the_given_sample(): void
+    {
+        $layout   = $this->layoutWithCover('emitente.nif', [...$this->text(['left' => '120mm', 'top' => '0mm', 'width' => '20mm', 'height' => '4mm']), 'text' => 'Nota'], ['width' => '60mm', 'height' => '4mm', 'font-size' => '8pt']);
+        $type     = Templates::type(self::TYPE_CODE);
+        $fields   = array_values($type->bindings);
+        $geometry = $type->pdf + ['zones' => $type->initialLayout['zones'] ?? []];
+
+        $this->assertSame(['V-20'], array_column(app(Documents::class)->layoutWarnings($layout, $fields, $geometry), 'code'));
+        $this->assertSame([], app(Documents::class)->layoutWarnings($layout, $fields, $geometry, $type->fixture));
+    }
+
     /** Blocks that only touch, within the engine's tolerance, do not overlap. */
     public function test_touching_blocks_within_tolerance_do_not_overlap(): void
     {

@@ -30,6 +30,7 @@ import {
     checkTextOverflowLocally,
     checkMandatoryTablesLocally,
     checkMandatoryFieldsLocally,
+    checkOverlapLocally,
     restoreMissingLegalFields,
     snapIntoSheet,
     styleManagerSectors,
@@ -422,6 +423,7 @@ async function mountEditor(el) {
                     ...checkTextOverflowLocally(editor, config),
                     ...checkMandatoryTablesLocally(editor, config),
                     ...checkMandatoryFieldsLocally(editor, config),
+                    ...checkOverlapLocally(editor, config),
                 ]
                 : [];
             const problems = mergeProblems(serverProblems, local);

@@ -226,6 +226,20 @@ class LayoutDocument
         return [$byId, $byClass];
     }
 
+    /** @param  array<string, mixed>  $component */
+    private static function ownText(array $component): string
+    {
+        $text = is_string($component['content'] ?? null) ? $component['content'] : '';
+
+        foreach ((array) ($component['components'] ?? []) as $child) {
+            if (($child['type'] ?? '') === 'textnode' && is_string($child['content'] ?? null)) {
+                $text .= $child['content'];
+            }
+        }
+
+        return html_entity_decode(trim($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
     /**
      * @param  array<string, mixed>  $component
      * @param  array<int, array<string, mixed>>  $ancestors
@@ -253,6 +267,9 @@ class LayoutDocument
                 (array) ($component['style'] ?? []),
             ),
             'index' => count($blocks),
+            // Its own text — the text nodes directly inside it — for the rules that
+            // measure what a static text prints (CGE-90).
+            'text' => self::ownText($component),
         ];
 
         // The wrapper and text nodes carry no rules of their own and would only be

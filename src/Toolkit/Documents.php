@@ -113,11 +113,12 @@ final class Documents
      * @param  array{project_data: array<string, mixed>, html?: string, css?: string}  $layout
      * @param  list<array<string, mixed>>  $fields
      * @param  array<string, mixed>  $geometry
+     * @param  array<string, mixed>  $fixture  the type's sample values, by key: V-20 measures a data field's text by them, and without one takes its whole box
      * @return array<int, array{code: string, component_id: string, message: string}>
      */
-    public function layoutWarnings(array $layout, array $fields, array $geometry = []): array
+    public function layoutWarnings(array $layout, array $fields, array $geometry = [], array $fixture = []): array
     {
-        return $this->occlusionsCoded(['V-18', 'V-20'], $layout, $fields, $geometry);
+        return $this->occlusionsCoded(['V-18', 'V-20'], $layout, $fields, $geometry, $fixture);
     }
 
     /**
@@ -328,12 +329,13 @@ final class Documents
      * @param  list<string>  $codes
      * @param  list<array<string, mixed>>  $fields
      * @param  array<string, mixed>  $geometry
+     * @param  array<string, mixed>  $fixture
      * @return array<int, array{code: string, component_id: string, message: string}>
      */
-    private function occlusionsCoded(array $codes, array $layout, array $fields, array $geometry): array
+    private function occlusionsCoded(array $codes, array $layout, array $fields, array $geometry, array $fixture = []): array
     {
         return array_values(array_filter(
-            $this->layoutValidator->occlusions($layout['project_data'], $this->carrier($fields, $geometry)),
+            $this->layoutValidator->occlusions($layout['project_data'], $this->carrier($fields, $geometry, $fixture)),
             fn (array $problem): bool => in_array($problem['code'], $codes, true),
         ));
     }
@@ -341,8 +343,9 @@ final class Documents
     /**
      * @param  list<array<string, mixed>>  $fields
      * @param  array<string, mixed>  $geometry
+     * @param  array<string, mixed>  $fixture
      */
-    private function carrier(array $fields, array $geometry): TemplateType
+    private function carrier(array $fields, array $geometry, array $fixture = []): TemplateType
     {
         $zones = (array) ($geometry['zones'] ?? []);
         unset($geometry['zones']);
@@ -352,6 +355,7 @@ final class Documents
             'bindings'       => $fields,
             'pdf'            => $geometry,
             'initial_layout' => ['zones' => $zones],
+            'fixture'        => $fixture,
         ]);
     }
 }
