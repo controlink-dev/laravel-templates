@@ -2831,6 +2831,17 @@ function moveToZone(editor, component, zone, { flow = false } = {}) {
     }
 
     editor.select(component);
+    refreshToolbar(editor);
+}
+
+/**
+ * The block was drawn again, in a new element, and the selection's toolbar stays on
+ * the old one — in the canvas's top-left corner (CGE-71). Selecting the block again does
+ * nothing (it is selected), and deselecting first leaves an undo step that stalls the
+ * undo. `component:toggled` is what the select command redraws the toolbar on.
+ */
+function refreshToolbar(editor) {
+    setTimeout(() => editor.trigger('component:toggled'));
 }
 
 /** The zone a component currently lives in, by walking its ancestors. */

@@ -45,6 +45,19 @@ html, body {
 }
 
 /*
+ * One line of text longer than its block's width is cut there (CGE-72), never shrunk and
+ * never spilled over the blocks beside it. Across only: `clip` (not `hidden`) leaves the
+ * other axis visible, so a block with a tight height keeps its descenders. A block with
+ * no width grows with its text and is never cut. A legal value cut here is no longer
+ * found whole in the PDF, which refuses the activation (R-02).
+ */
+.block--field,
+.block--text,
+.block--page-number {
+    overflow-x: clip;
+}
+
+/*
  * "Várias linhas" (CGE-52): the text breaks at words inside the block's own width and
  * height, keeping typed line breaks and repeated spaces; what does not fit is cut, the
  * same on the canvas and in the PDF. A legal value cut here is no longer found whole in
@@ -107,4 +120,13 @@ html, body {
 .block--image {
     display: block;
     object-fit: contain;
+}
+
+/* The image's "Fit" (CGE-88); without the attribute it is contained. */
+.block--image[data-tpl-fit="cover"] {
+    object-fit: cover;
+}
+
+.block--image[data-tpl-fit="fill"] {
+    object-fit: fill;
 }

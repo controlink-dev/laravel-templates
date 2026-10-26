@@ -2129,6 +2129,18 @@ select.tpl-pf-input {
     color: var(--tpl-slate-500, #64748b);
 }
 
+/* The image file just chosen (CGE-88); empty, it takes no room. */
+.tpl-editor-root .tpl-file__name {
+    max-width: 100%;
+    font-size: 0.6875rem;
+    color: var(--tpl-slate-500, #64748b);
+    overflow-wrap: anywhere;
+}
+
+.tpl-editor-root .tpl-file__name:empty {
+    display: none;
+}
+
 .tpl-editor-root .tpl-formula-status:empty {
     display: none;
 }

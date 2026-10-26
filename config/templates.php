@@ -19,6 +19,16 @@ return [
     ],
 
     /*
+     * The separators every number and amount of a document prints with (CGE-75), the
+     * same whatever language the user has. Null: ICU's for the app locale.
+     */
+    'numbers' => [
+        'locale'    => null,
+        'thousands' => null,
+        'decimal'   => null,
+    ],
+
+    /*
      * Fonts every PDF layout may use. The canvas loads them by URL and the composer
      * embeds the same files as data URIs. `path` is relative to the host's public
      * directory, or absolute. The default ships with the package (OFL licence).

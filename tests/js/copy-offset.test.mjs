@@ -55,3 +55,10 @@ console.log('copy-offset: ok');
         { right: '6mm', bottom: '8mm' },
     );
 }
+
+// A total with top, bottom and a bare `right: 0` (CGE-73): the copy keeps `right` and
+// moves by `top`, the side that places it; it never gains a `left`.
+assert.deepEqual(
+    offsetCopy({ top: '60mm', bottom: '22mm', right: '0' }, { width: 30, height: 4 }, { width: 128, height: 150 }),
+    { right: '3mm', top: '63mm' },
+);
