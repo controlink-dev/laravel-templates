@@ -224,6 +224,29 @@ class LayoutValidatorTest extends TestCase
         $this->assertHasProblem('V-10', $layout);
     }
 
+    /**
+     * Only what a data field places counts through a formula: a mandatory barcode named in
+     * a sentence is not on the page as a code, and activation would refuse it.
+     */
+    public function test_a_mandatory_code_named_in_a_formula_is_still_missing(): void
+    {
+        $base = Templates::type(self::TYPE_CODE);
+        $type = new TemplateType(
+            $base->code, $base->label, $base->output, $base->seeded, $base->layoutRevision,
+            [...$base->bindings, ['key' => 'documento.barras', 'label' => 'Barras', 'type' => 'barcode',
+                'mandatory' => true, 'legal' => false, 'scope' => null, 'default_format' => null, 'columns' => null]],
+            $base->nodes, $base->fixture, $base->fixtureRepeats, $base->initialLayout, $base->pdf, [],
+        );
+        $layout = $this->layoutPlus($this->formulaField('formula.abc123', '"Código: " & documento.barras'));
+
+        $codes = array_column(
+            app(LayoutValidator::class)->validate($layout['project_data'], $type, $layout['html'], $layout['css']),
+            'code',
+        );
+
+        $this->assertContains('V-02', $codes);
+    }
+
     /** Naming a field inside a table column's formula does not place it on the document. */
     public function test_column_formula_does_not_place_a_field(): void
     {
@@ -1025,6 +1048,11 @@ class LayoutValidatorTest extends TestCase
     public function test_lengths_convert_from_every_unit_the_editor_emits(): void
     {
         $this->assertSame(0.0, LayoutDocument::millimetres('0px'));
+        // A bare zero is a length in CSS — the seeded A5 invoice writes `left:0` — and the
+        // editor's live checks read it as 0 too (CGE-90).
+        $this->assertSame(0.0, LayoutDocument::millimetres('0'));
+        $this->assertSame(0.0, LayoutDocument::millimetres('-0'));
+        $this->assertNull(LayoutDocument::millimetres('5'), 'any other unitless number says nothing');
         $this->assertSame(13.0, LayoutDocument::millimetres('13mm'));
         $this->assertSame(10.0, LayoutDocument::millimetres('1cm'));
         $this->assertSame(25.4, LayoutDocument::millimetres('1in'));

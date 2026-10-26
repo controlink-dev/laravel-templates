@@ -322,7 +322,8 @@ class LayoutValidator
                 continue;
             }
 
-            if (! ($binding['legal'] ?? false) && isset($inFormulas[$binding['key']])) {
+            if (! ($binding['legal'] ?? false) && isset($inFormulas[$binding['key']])
+                && (self::PLACED_BY[$binding['type']] ?? 'data-field') === 'data-field') {
                 continue;
             }
 

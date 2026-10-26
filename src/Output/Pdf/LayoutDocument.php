@@ -151,6 +151,11 @@ class LayoutDocument
 
         $value = mb_strtolower(trim($value));
 
+        // Zero needs no unit in CSS, and the seeded layouts write it bare.
+        if ($value === '0' || $value === '-0') {
+            return 0.0;
+        }
+
         if (! preg_match('/^(-?[\d.]+)(mm|cm|in|px|pt|pc)$/', $value, $matches)) {
             return null;
         }
