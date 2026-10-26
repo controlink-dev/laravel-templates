@@ -627,4 +627,19 @@ const cells = (html) => [...html.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((match) 
     assert.equal(relinkColumn(inFormula, 2, binding.columns[3], binding.columns[2]), inFormula);
 }
 
+// CGE-89. On the canvas a text column's cells wrap like in the PDF; a formatted one stays on one line.
+{
+    const table = make();
+    table.setColumns([
+        { key: 'name', label: 'Name', format: '' },
+        { key: 'unit_price', label: 'Price', format: 'money' },
+    ]);
+
+    const tds = [...table.get('content').matchAll(/<td[^>]*>/g)].map((match) => match[0]);
+
+    assert.match(tds[0], /class="tpl-wrap"/);
+    assert.doesNotMatch(tds[1], /tpl-wrap/);
+    assert.doesNotMatch(table.toHTML(), /tpl-wrap/, 'canvas only: the saved template is unchanged');
+}
+
 console.log('formula-columns: ok');

@@ -68,15 +68,20 @@ class PageStructure
         // A table fixed on the last page (CGE-67) that fits its slot leaves the flow: it is
         // drawn where the canvas put it, with all its rows, like the totals. One that does
         // not fit flows as any other table, so it is never clipped nor drawn over a block.
-        [$flowing, $fixed] = $this->splitFixed($tables, $type, $dataset);
+        // Rows whose text columns wrap (CGE-89) are as tall as their tallest cell. A table
+        // with no such row has no entry, and keeps the fixed row height.
+        $heights = $this->rowHeights($tables, $type, $dataset);
 
-        // One table (or none) paginates exactly as it always has: a single DOM round-trip
-        // is never taken, so the emitted strings are byte-for-byte what they were.
-        if (count($flowing) <= 1) {
+        [$flowing, $fixed] = $this->splitFixed($tables, $type, $dataset, $heights);
+
+        // One table (or none), nothing wrapping, paginates exactly as it always has: a
+        // single DOM round-trip is never taken, so the emitted strings are byte-for-byte
+        // what they were. A wrapping table takes the stacked flow, which sums heights.
+        if ($heights === [] && count($flowing) <= 1) {
             return $this->buildSingle($zones, $flowing[0] ?? null, $type, $dataset);
         }
 
-        return $this->buildStacked($zones, $flowing, $type, $dataset, $fixed);
+        return $this->buildStacked($zones, $flowing, $type, $dataset, $fixed, $heights, $this->wrapping($tables, $heights));
     }
 
     /**
@@ -123,9 +128,9 @@ class PageStructure
      * @param  array<string, mixed>  $dataset
      * @return array{pages: array<int, array{template: string, dataset: array<string, mixed>}>, css: string}
      */
-    private function buildStacked(array $zones, array $tables, TemplateType $type, array $dataset, array $fixed = []): array
+    private function buildStacked(array $zones, array $tables, TemplateType $type, array $dataset, array $fixed = [], array $heights = [], array $wrapping = []): array
     {
-        $placements = $this->flow($tables, $type, $dataset);
+        $placements = $this->flow($tables, $type, $dataset, $heights);
         $total      = count($placements);
 
         // Every bound collection the body carries: a page that shows none of a table's
@@ -157,7 +162,76 @@ class PageStructure
             ];
         }
 
-        return ['pages' => $pages, 'css' => $this->css($type)];
+        return ['pages' => $pages, 'css' => $this->css($type, $wrapping)];
+    }
+
+    /**
+     * Each bound table's row heights, for the tables with a row that wraps (CGE-89).
+     *
+     * @param  list<array<string, mixed>>  $tables
+     * @param  array<string, mixed>  $dataset
+     * @return array<string, list<float>> collection → one height per row
+     */
+    private function rowHeights(array $tables, TemplateType $type, array $dataset): array
+    {
+        $heights = [];
+
+        foreach ($tables as $table) {
+            if ($table['collection'] !== '' && ($rows = RowHeights::of($table, $type, $dataset)) !== null) {
+                $heights[$table['collection']] = $rows;
+            }
+        }
+
+        return $heights;
+    }
+
+    /**
+     * The text columns of each wrapping table, by the table's `id`, for `css`.
+     *
+     * @param  list<array<string, mixed>>  $tables
+     * @param  array<string, list<float>>  $heights
+     * @return array<string, list<int>>
+     */
+    private function wrapping(array $tables, array $heights): array
+    {
+        $wrapping = [];
+
+        foreach ($tables as $table) {
+            if (isset($heights[$table['collection']])) {
+                $wrapping[$table['id']] = RowHeights::textColumnIndexes($table['columns']);
+            }
+        }
+
+        return $wrapping;
+    }
+
+    /**
+     * How many rows from `$offset` fit below a cursor when each has its own height —
+     * the summed counterpart of `rowsThatFit`, and equal to it when the heights are.
+     *
+     * @param  list<float>  $heights
+     */
+    private function rowsThatFitHeights(array $heights, int $offset, TemplateType $type, float $cursorMm): int
+    {
+        $rowHeight = max(1.0, (float) ($type->pdf['line_row_height_mm'] ?? 4.5));
+        $available = $this->bodyHeight($type)
+            - $cursorMm
+            - (float) ($type->pdf['body_reserve_mm'] ?? 0)
+            - $rowHeight;
+
+        $count = 0;
+        $used  = 0.0;
+
+        for ($i = $offset, $n = count($heights); $i < $n; $i++) {
+            if ($used + $heights[$i] > $available + 1e-6) {
+                break;
+            }
+
+            $used += $heights[$i];
+            $count++;
+        }
+
+        return $count;
     }
 
     /**
@@ -171,7 +245,7 @@ class PageStructure
      * @param  array<string, mixed>  $dataset
      * @return list<list<array{collection: string, chunk: array<int, array<string, mixed>>, top: float}>>
      */
-    private function flow(array $tables, TemplateType $type, array $dataset): array
+    private function flow(array $tables, TemplateType $type, array $dataset, array $heights = []): array
     {
         // The flow is over bound tables only; an unbound one carries no collection to
         // paginate (spec 3.1, ruling T2-F) and stays in the DOM untouched.
@@ -220,9 +294,17 @@ class PageStructure
                 // The first table on a page uses the clamped value, so a lone table is
                 // exactly today's chunking; a later table uses the raw fit, which may be
                 // zero or negative — then the page closes and the table continues fresh.
-                $capacity = $atPageStart
-                    ? $this->rowsPerPage($type, $cursor)
-                    : $this->rowsThatFit($type, $cursor);
+                $tall = $heights[$table['collection']] ?? null;
+
+                if ($tall !== null) {
+                    // Wrapping rows (CGE-89): as many as their summed heights allow.
+                    $fit      = $this->rowsThatFitHeights($tall, $offset, $type, $cursor);
+                    $capacity = $atPageStart ? max(1, $fit) : $fit;
+                } else {
+                    $capacity = $atPageStart
+                        ? $this->rowsPerPage($type, $cursor)
+                        : $this->rowsThatFit($type, $cursor);
+                }
 
                 if ($capacity < 1) {
                     $close();
@@ -235,8 +317,10 @@ class PageStructure
 
                 $current[] = ['collection' => $table['collection'], 'chunk' => $chunk, 'top' => $cursor];
 
+                $cursor += $tall !== null
+                    ? $rowHeight + array_sum(array_slice($tall, $offset, $take))
+                    : (1 + $take) * $rowHeight;
                 $offset += $take;
-                $cursor += (1 + $take) * $rowHeight;
 
                 // Rows still left means they belong on the next page.
                 if ($offset < $n) {
@@ -323,7 +407,7 @@ class PageStructure
      * @param  array<string, mixed>  $dataset
      * @return array{0: list<array{html: string, collection: string, top: float, anchored?: bool}>, 1: list<string>}
      */
-    private function splitFixed(array $tables, TemplateType $type, array $dataset): array
+    private function splitFixed(array $tables, TemplateType $type, array $dataset, array $heights = []): array
     {
         $flowing = [];
         $fixed   = [];
@@ -337,10 +421,15 @@ class PageStructure
             $rows = $dataset[$table['collection']] ?? [];
             $rows = is_array($rows) ? count($rows) : 0;
 
+            // Its rows' own heights when they wrap (CGE-89), the fixed height otherwise.
+            $rowsHeight = isset($heights[$table['collection']])
+                ? array_sum($heights[$table['collection']])
+                : $rows * $rowHeight;
+
             $fits = ($table['anchored'] ?? false)
                 && $table['collection'] !== ''
                 && $table['top'] >= $reserveTop - $tolerance
-                && $table['top'] + (1 + $rows) * $rowHeight <= $bodyHeight + $tolerance;
+                && $table['top'] + $rowHeight + $rowsHeight <= $bodyHeight + $tolerance;
 
             if ($fits) {
                 $fixed[] = $table['collection'];
@@ -695,11 +784,20 @@ class PageStructure
                 continue;
             }
 
+            $declarations = $this->declarationsFor($node, $rulesById, $rulesByClass);
+            $columns      = json_decode($node->getAttribute('data-tpl-columns'), true);
+
             $tables[] = [
                 'html'       => $document->saveHTML($node),
                 'collection' => $node->getAttribute('data-tpl-collection'),
-                'top'        => $this->topMm($node, $rulesById, $rulesByClass),
+                'top'        => LayoutDocument::millimetres($declarations['top'] ?? null) ?? 0.0,
                 'anchored'   => $node->getAttribute('data-tpl-anchor') === self::ANCHOR_LAST_PAGE,
+                // What `RowHeights` measures the text columns with (CGE-89).
+                'id'         => $node->getAttribute('id'),
+                'columns'    => is_array($columns) ? array_values($columns) : [],
+                'fontPt'     => LayoutDocument::points($declarations['font-size'] ?? null),
+                'fontWeight' => $this->fontWeight($declarations['font-weight'] ?? null),
+                'widthMm'    => LayoutDocument::millimetres($declarations['width'] ?? null),
             ];
         }
 
@@ -710,7 +808,9 @@ class PageStructure
     }
 
     /**
-     * How far down its zone a block sits, in millimetres.
+     * A block's own declarations, the version stylesheet's rules applied: how far down
+     * its zone it sits (`top`), and the font and width its text columns are measured
+     * with (CGE-89).
      *
      * The compositor sees HTML plus the version CSS — not the `project_data` JSON
      * `LayoutDocument` walks — so the `top` is resolved here from the raw stylesheet.
@@ -730,8 +830,9 @@ class PageStructure
      *
      * @param  array<string, array<string, string>>  $rulesById
      * @param  array<string, array<string, string>>  $rulesByClass
+     * @return array<string, string> the block's own declarations, cascade applied
      */
-    private function topMm(DOMElement $node, array $rulesById, array $rulesByClass): float
+    private function declarationsFor(DOMElement $node, array $rulesById, array $rulesByClass): array
     {
         $declarations = [];
 
@@ -745,9 +846,15 @@ class PageStructure
             $declarations = array_merge($declarations, $rulesById[$id] ?? []);
         }
 
-        $declarations = array_merge($declarations, $this->declarationsOf($node->getAttribute('style')));
+        return array_merge($declarations, $this->declarationsOf($node->getAttribute('style')));
+    }
 
-        return LayoutDocument::millimetres($declarations['top'] ?? null) ?? 0.0;
+    /** `bold` or a numeric weight from 600 up prints with the bold face; anything else regular. */
+    private function fontWeight(?string $value): int
+    {
+        $value = strtolower(trim((string) $value));
+
+        return $value === 'bold' || $value === 'bolder' || (is_numeric($value) && (int) $value >= 600) ? 700 : 400;
     }
 
     /**
@@ -875,9 +982,21 @@ class PageStructure
      * the zone and block rules in `print.css` apply unchanged. All that is left is the
      * page break and the row height that made the pagination computable.
      */
-    public function css(TemplateType $type): string
+    public function css(TemplateType $type, array $wrapping = []): string
     {
         $rowHeight = (float) ($type->pdf['line_row_height_mm'] ?? 4.5);
+
+        // CGE-89: in a table with a row that wraps, its text columns break into lines;
+        // `RowHeights` counted those lines with the same breaking and line height. Only
+        // emitted when something wraps, so every other document keeps its bytes.
+        $wraps = '';
+
+        foreach ($wrapping as $id => $indexes) {
+            foreach ($indexes as $index) {
+                $wraps .= '#'.$id.' td:nth-child('.$index.'){white-space:pre-line;overflow-wrap:anywhere;'
+                    .'text-overflow:clip;line-height:'.RowHeights::LINE_HEIGHT.'}';
+            }
+        }
 
         return implode('', [
             // One sheet per page, and no trailing blank page after the last.
@@ -891,6 +1010,7 @@ class PageStructure
             "table.lines th,table.lines td{height:{$this->mm($rowHeight)};max-height:{$this->mm($rowHeight)};"
                 .'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;'
                 .'box-sizing:border-box;padding:0 1mm;vertical-align:middle}',
+            $wraps,
         ]);
     }
 
