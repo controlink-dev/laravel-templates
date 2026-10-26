@@ -9,6 +9,8 @@
 import { resolvePaper } from './editor.js';
 import { defaultSpecFor, specToAttributes } from './formats.js';
 import { PX_PER_MM, roundTo, snapOffsets } from './anchors.js';
+import { missingMandatoryFields } from './mandatory-fields.js';
+import { overlappingPairs } from './overlap.js';
 
 /**
  * The Style Manager the user gets: typography, colour, box and position, and nothing
@@ -331,6 +333,104 @@ export function checkMandatoryTablesLocally(editor, config) {
         componentId: '',
         message: format(config.strings['check.missing_table'], { field: binding.label }),
     }));
+}
+
+/**
+ * Live check (CGE-69): a mandatory field the law does not require, neither on the sheet
+ * nor named in a formula. L-03 rather than V-02, for the reason L-02 gives above.
+ */
+export function checkMandatoryFieldsLocally(editor, config) {
+    const fields = editor.getWrapper().find('[data-tpl-type="data-field"]').map((component) => component.getAttributes());
+
+    return missingMandatoryFields(config.bindings, fields).map((binding) => ({
+        code: 'L-03',
+        componentId: '',
+        message: format(config.strings['check.missing_mandatory'], { field: binding.label }),
+    }));
+}
+
+/**
+ * Live check (CGE-90): blocks with content overlapping in one zone, from their stated
+ * styles as the server's V-20 reads them — so it runs while dragging (every move is a
+ * style update) and agrees with what the save asks about.
+ */
+export function checkOverlapLocally(editor, config) {
+    const blocks = editor.getWrapper().find('[data-tpl-type]').map((component) => {
+        const attributes = component.getAttributes();
+        const ancestors = [];
+
+        for (let parent = component.parent(); parent; parent = parent.parent()) {
+            ancestors.push(parent.getId());
+        }
+
+        return {
+            id: component.getId(),
+            type: attributes['data-tpl-type'],
+            zone: zoneOf(component),
+            ancestors,
+            style: component.getStyle(),
+            src: attributes.src ?? component.get('src'),
+            wrap: attributes['data-tpl-wrap'] === '1',
+            inkWidth: measuredInkWidth(component, attributes),
+            component,
+        };
+    });
+
+    return overlappingPairs(blocks).map(([under, over]) => ({
+        code: 'L-OVER',
+        componentId: over.id,
+        message: format(config.strings['check.overlapping'], {
+            field: overlapLabel(over.component, config),
+            other: overlapLabel(under.component, config),
+        }),
+    }));
+}
+
+/**
+ * How wide a static text or a data field's text prints on the canvas, in mm (null when
+ * not measurable). A formula is left unmeasured, as the server leaves it: its result is
+ * not known there.
+ */
+function measuredInkWidth(component, attributes) {
+    const type = attributes['data-tpl-type'];
+    const el = component.getEl?.();
+
+    if (!el || el.offsetWidth === 0 || (type !== 'static-text' && type !== 'data-field')
+        || String(attributes['data-tpl-binding'] ?? '').startsWith('formula.')) {
+        return null;
+    }
+
+    const range = el.ownerDocument.createRange();
+    range.selectNodeContents(el);
+
+    // Rendered pixels carry the canvas zoom; the element's own width says by how much.
+    const zoom = el.getBoundingClientRect().width / el.offsetWidth;
+
+    return range.getBoundingClientRect().width / zoom / PX_PER_MM;
+}
+
+/** The zone a block belongs to, as `LayoutDocument` reads it: attribute, class, or a parent's. */
+function zoneOf(component) {
+    for (let node = component; node; node = node.parent()) {
+        const zone = node.getAttributes()['data-tpl-zone']
+            ?? (node.getClasses?.() ?? []).find((name) => /^zone--(header|body|footer)$/.test(name))?.slice('zone--'.length);
+
+        if (zone) {
+            return zone;
+        }
+    }
+
+    return null;
+}
+
+/** As the server's V-20 names a block: a data field by its binding, anything else by its kind. */
+function overlapLabel(component, config) {
+    const attributes = component.getAttributes();
+    const binding = config.bindings?.find((item) => item.key === attributes['data-tpl-binding']);
+
+    return binding?.label
+        || config.strings['block.' + String(attributes['data-tpl-type'] ?? '').replace(/-/g, '_')]
+        || component.getName();
 }
 
 /**

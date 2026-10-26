@@ -8,9 +8,13 @@ use Controlink\Templates\Formulas\Formula;
 use Controlink\Templates\Formulas\FormulaException;
 use Controlink\Templates\Formulas\FormulaSet;
 use Controlink\Templates\Rendering\FormatSpec;
+use Controlink\Templates\Rendering\TemplateRenderer;
+use Controlink\Templates\Support\FontMetrics;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
 use InvalidArgumentException;
+use RuntimeException;
+use Throwable;
 
 /**
  * Layer 1 of the validation: static, over `project_data`, at save time (spec 8.1).
@@ -309,9 +313,17 @@ class LayoutValidator
         }
 
         // V-02: every mandatory binding has to be somewhere in the document, placed by
-        // whichever block can bind it.
+        // whichever block can bind it — or, for one the law does not require, named in
+        // a data field's formula (CGE-69): the sentence carrying the value prints it.
+        $inFormulas = $this->referencedByFieldFormulas($document);
+
         foreach ($bindings as $key => $binding) {
             if (! ($binding['mandatory'] ?? false) || $this->isPlaced($document, $binding)) {
+                continue;
+            }
+
+            if (! ($binding['legal'] ?? false) && isset($inFormulas[$binding['key']])
+                && (self::PLACED_BY[$binding['type']] ?? 'data-field') === 'data-field') {
                 continue;
             }
 
@@ -939,6 +951,30 @@ class LayoutValidator
     }
 
     /**
+     * The keys the document's data-field formulas read (CGE-69). A table column's
+     * formula is left out: it prints per row, and naming a document field there does
+     * not put that field on the page.
+     *
+     * @return array<string, true>
+     */
+    private function referencedByFieldFormulas(LayoutDocument $document): array
+    {
+        $keys = [];
+
+        foreach ($this->formulasOf($document) as $formula) {
+            if ($formula['kind'] !== 'field') {
+                continue;
+            }
+
+            foreach (Formula::references($formula['source']) as $key) {
+                $keys[$key] = true;
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
      * Whether a binding is placed by the block that can bind it.
      *
      * @param  array<string, mixed>  $binding
@@ -1163,7 +1199,7 @@ class LayoutValidator
     }
 
     /* -----------------------------------------------------------------------
-     * Occlusion (V-15 legal, V-18 warning)
+     * Occlusion (V-15 legal, V-18 warning) and overlap (V-20 warning)
      * -------------------------------------------------------------------- */
 
     /**
@@ -1218,7 +1254,176 @@ class LayoutValidator
                 : $this->problem('V-18', $target, 'occluded_warning', $label);
         }
 
+        return array_merge($problems, $this->checkOverlap($document, $bindings, $type));
+    }
+
+    /**
+     * V-20 (CGE-90): two blocks with content overlapping in one zone, even when neither
+     * paints a background — text printed over text is illegible. A warning, reported once
+     * per pair on the block on top. A pair where the one on top is opaque over a field or
+     * code is occlusion, already said by V-15/V-18; lines and rectangles are never
+     * content (an underline or a frame around text is design). Text is compared by
+     * where it prints (`inkBox`), not by its box.
+     *
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    private function checkOverlap(LayoutDocument $document, array $bindings, TemplateType $type): array
+    {
+        $tolerance = (float) config('templates.geometry_tolerance_mm', 0.5);
+        $content   = [];
+
+        foreach ($document->blocks() as $block) {
+            $box = $this->hasContent($block) ? $this->inkBox($document, $block, $bindings, $type) : null;
+
+            if ($box !== null) {
+                $content[] = [$block, $box];
+            }
+        }
+
+        $problems = [];
+
+        foreach ($content as $i => [$under, $underBox]) {
+            foreach (array_slice($content, $i + 1) as [$over, $overBox]) {
+                if ($over['zone'] !== $under['zone']
+                    || in_array($under['id'], array_column($over['ancestors'], 'id'), true)
+                    || in_array($over['id'], array_column($under['ancestors'], 'id'), true)) {
+                    continue;
+                }
+
+                $isOcclusion = in_array($under['attributes']['data-tpl-type'] ?? '', ['data-field', 'code-slot'], true)
+                    && $this->isOpaqueOccluder($document, $over);
+
+                $width  = min($underBox['left'] + $underBox['width'], $overBox['left'] + $overBox['width']) - max($underBox['left'], $overBox['left']);
+                $height = min($underBox['top'] + $underBox['height'], $overBox['top'] + $overBox['height']) - max($underBox['top'], $overBox['top']);
+
+                if ($isOcclusion || $width <= $tolerance || $height <= $tolerance) {
+                    continue;
+                }
+
+                $problems[] = $this->problem('V-20', $over, 'overlapping', [
+                    'field' => $this->blockLabel($over, $bindings),
+                    'other' => $this->blockLabel($under, $bindings),
+                ]);
+            }
+        }
+
         return $problems;
+    }
+
+    /**
+     * Where a single line of text prints inside its box (CGE-90): as wide as the text
+     * measured in the template font, placed by its alignment. A wide right-aligned value
+     * next to its label — the seeded invoice's header — overlaps the label's box, not
+     * its text. A static text is measured by its own words, a data field by the type's
+     * sample value formatted as placed; a formula, a wrapped block, or text that fills
+     * its box keeps the whole box.
+     *
+     * @param  array<string, mixed>  $block
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return array{left: float, top: float, width: float, height: float}|null
+     */
+    private function inkBox(LayoutDocument $document, array $block, array $bindings, TemplateType $type): ?array
+    {
+        $box = $this->occlusionBox($document, $block);
+
+        if ($box === null || ($block['attributes']['data-tpl-wrap'] ?? '') === '1') {
+            return $box;
+        }
+
+        $text = $this->printedText($block, $bindings, $type);
+
+        if ($text === null || $text === '') {
+            return $box;
+        }
+
+        $style  = $document->styleOf($block);
+        $points = LayoutDocument::points($style['font-size'] ?? null) ?? self::DEFAULT_FONT_PT;
+        $weight = strtolower(trim((string) ($style['font-weight'] ?? '400')));
+        $bold   = in_array($weight, ['bold', 'bolder'], true) || (int) $weight >= 600;
+
+        try {
+            $ink = FontMetrics::fromConfig($bold ? 700 : 400)->widthMm($text, $points);
+        } catch (RuntimeException) {
+            return $box;
+        }
+
+        if ($ink >= $box['width']) {
+            return $box;
+        }
+
+        $offset = match (strtolower(trim((string) ($style['text-align'] ?? '')))) {
+            'right', 'end' => $box['width'] - $ink,
+            'center'       => ($box['width'] - $ink) / 2,
+            default        => 0.0,
+        };
+
+        return ['left' => $box['left'] + $offset, 'top' => $box['top'], 'width' => $ink, 'height' => $box['height']];
+    }
+
+    /**
+     * What a single-line block prints with the type's sample data, or null when that is
+     * not known here (a formula, a value the sample does not carry).
+     *
+     * @param  array<string, mixed>  $block
+     * @param  array<string, array<string, mixed>>  $bindings
+     */
+    private function printedText(array $block, array $bindings, TemplateType $type): ?string
+    {
+        $blockType = $block['attributes']['data-tpl-type'] ?? '';
+
+        if ($blockType === 'static-text') {
+            return $block['text'] ?? null;
+        }
+
+        $key = $block['attributes']['data-tpl-binding'] ?? '';
+
+        if ($blockType !== 'data-field' || ! isset($bindings[$key]) || FormulaSet::isFieldKey($key)
+            || ! array_key_exists($key, $type->fixture)) {
+            return null;
+        }
+
+        try {
+            $template = FormatSpec::fromAttributes($block['attributes'])?->expression($key) ?? '{{ '.$key.' }}';
+
+            return html_entity_decode(app(TemplateRenderer::class)->render($template, $type->fixture), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Whether a block prints something a block over or under it would garble: text,
+     * a value, an image with a file, a code, a table. Lines and rectangles are not.
+     *
+     * @param  array<string, mixed>  $block
+     */
+    private function hasContent(array $block): bool
+    {
+        return match ($block['attributes']['data-tpl-type'] ?? '') {
+            'data-field', 'static-text', 'page-number', 'code-slot', 'line-table' => true,
+            'image' => str_starts_with($block['attributes']['src'] ?? '', 'data:')
+                && ($block['attributes']['src'] ?? '') !== self::EMPTY_IMAGE,
+            default => false,
+        };
+    }
+
+    /**
+     * How a problem names a block: a data field by its binding's label, anything else by
+     * its kind of block.
+     *
+     * @param  array<string, mixed>  $block
+     * @param  array<string, array<string, mixed>>  $bindings
+     */
+    private function blockLabel(array $block, array $bindings): string
+    {
+        $label = $bindings[$block['attributes']['data-tpl-binding'] ?? '']['label'] ?? null;
+
+        if (is_string($label) && $label !== '') {
+            return $label;
+        }
+
+        return __('templates::editor.blocks.'.str_replace('-', '_', $block['attributes']['data-tpl-type'] ?? 'static-text'));
     }
 
     /**

@@ -212,7 +212,6 @@ class Editor extends Component
             'formula.label'        => __('templates::editor.formula.label'),
             'formula.toggle'       => __('templates::editor.formula.toggle'),
             'formula.legal_locked' => __('templates::editor.formula.legal_locked'),
-            'formula.mandatory_locked' => __('templates::editor.formula.mandatory_locked'),
             'formula.source'       => __('templates::editor.formula.source'),
             'formula.placeholder'  => __('templates::editor.formula.placeholder'),
             'formula.calculating'  => __('templates::editor.formula.calculating'),
@@ -349,6 +348,8 @@ class Editor extends Component
             'check.off_sheet'       => __('templates::editor.checks.off_sheet'),
             'check.text_overflow'   => __('templates::editor.checks.text_overflow'),
             'check.missing_table'   => __('templates::editor.checks.missing_table'),
+            'check.missing_mandatory' => __('templates::editor.checks.missing_mandatory'),
+            'check.overlapping'       => __('templates::editor.validation.overlapping'),
             'check.code_incomplete' => __('templates::editor.checks.code_incomplete'),
 
             'error.image_too_large'  => __('templates::editor.errors.image_too_large'),

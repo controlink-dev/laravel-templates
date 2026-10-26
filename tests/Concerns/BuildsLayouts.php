@@ -279,7 +279,7 @@ trait BuildsLayouts
                     'type'       => $block['type'],
                     'classes'    => ['block'],
                     'attributes' => $attributes,
-                ];
+                ] + (isset($block['text']) ? ['components' => [['type' => 'textnode', 'content' => $block['text']]]] : []);
 
                 // The markup has to carry the attributes too, not only the project
                 // data: the compositor reads the exported HTML, and a code slot whose

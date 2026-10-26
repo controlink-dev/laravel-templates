@@ -260,6 +260,7 @@ return [
         'off_sheet' => 'O campo «:field» está fora da folha.',
         'text_overflow' => 'O texto de «:field» não cabe na caixa e vai ser cortado.',
         'missing_table' => 'Falta a tabela «:field». É obrigatória para ativar.',
+        'missing_mandatory' => 'Falta o campo «:field». É obrigatório para ativar, num bloco próprio ou dentro de uma fórmula.',
 
         'code_incomplete' => 'Este código fixo tem campos obrigatórios em branco. Sem eles, o código é válido mas não aponta para nada.',
     ],
@@ -281,7 +282,7 @@ return [
         'legal_locked' => '«:field» não pode ser eliminado. É um campo obrigatório por lei neste tipo de documento.',
         'close'        => 'Fechar aviso',
         'confirm_delete_legal' => '«:field» é um campo obrigatório por lei. Eliminar à mesma? Terá de o voltar a colocar antes de o poder pôr em produção.',
-        'confirm_occlusion'    => 'Alguns campos podem não aparecer impressos porque têm outro elemento por cima. Gravar à mesma?',
+        'confirm_occlusion'    => 'Há elementos sobrepostos ou tapados que podem não sair bem impressos. Gravar à mesma?',
     ],
 
     // Botões dos diálogos de confirmação/aviso do próprio editor (dialog.js), em vez
@@ -316,6 +317,7 @@ return [
         'outside_printable' => '«:field» está fora da área imprimível.',
         'occluded'          => '«:field» está coberto por um elemento opaco colocado por cima.',
         'occluded_warning'  => '«:field» está tapado por outro elemento colocado por cima e pode não aparecer impresso.',
+        'overlapping'       => '«:field» está sobreposto a «:other» e podem sair ilegíveis.',
         // V-19 (CGE-37): `:formula` é o cabeçalho da coluna, ou o rótulo genérico de fórmula num campo.
         'formula_syntax'            => '«:formula»: a fórmula não está bem escrita. Verifique os operadores, os parênteses, as vírgulas entre argumentos, as aspas e o número de argumentos de cada função.',
         'formula_unknown_function'  => '«:formula»: a fórmula usa uma função que não existe.',
@@ -330,7 +332,6 @@ return [
         'label'        => 'Fórmula',
         'toggle'       => 'Calcular com uma fórmula',
         'legal_locked' => 'É o único bloco com este campo legal: não pode passar a fórmula. Junte outra cópia do campo se precisar de uma fórmula aqui.',
-        'mandatory_locked' => 'É o único bloco com este campo obrigatório: não pode passar a fórmula. Junte outra cópia do campo se precisar de uma fórmula aqui.',
         'source'       => 'Fórmula',
         'placeholder'  => 'ex.: totals.total_due * 2',
         'calculating'  => 'A calcular…',
@@ -408,7 +409,7 @@ return [
             'MONTH'  => 'O mês da data (1 a 12).',
             'DAY'    => 'O dia do mês da data.',
             'DAYS'   => 'Os dias entre a data de início e a data de fim.',
-            'TEXT'   => 'O valor escrito como o documento o imprime: data, montante ou número. O terceiro argumento, opcional, é uma opção desse formato (numa data, o padrão).',
+            'TEXT'   => 'O valor escrito como o documento o imprime: data, montante ou número. O terceiro argumento, opcional, é uma opção desse formato. Numa data é o padrão: "dd/MM/yyyy", "yyyy-MM-dd", "yyyy/MM/dd", "dd-MM-yyyy" ou "dd MMM yyyy".',
         ],
 
         // A coluna Blocos enquanto se edita uma fórmula: "Campos e funções" (spec §6.3).
@@ -460,7 +461,7 @@ return [
             'MONTH'  => 'MONTH(document.issue_date)',
             'DAY'    => 'DAY(document.issue_date)',
             'DAYS'   => 'DAYS(document.supply_date, document.issue_date)',
-            'TEXT'   => '"Total: " & TEXT(totals.total_due, "money")',
+            'TEXT'   => '"Fornecido em " & TEXT(document.supply_date, "date", "yyyy/MM/dd")',
         ],
 
         // Colunas da tabela de linhas em Fórmula e colunas calculadas: calculadas para cada

@@ -636,7 +636,7 @@ function registerDataField(editor, config) {
             },
 
             /**
-             * Why this field may not become a formula — `legal`, `mandatory` — or null
+             * Why this field may not become a formula — `legal` — or null
              * (CGE-37, spec §6.1): only while it is the last data field on the sheet carrying
              * its binding. Asked when the switch is painted (selection, attribute changes).
              */
@@ -694,9 +694,9 @@ function registerDataField(editor, config) {
              * field it had before is long gone and guessing it back would be a surprise.
              * One attribute write each way, so a single undo reverses it.
              *
-             * The last legal or mandatory field never switches on (spec §6.1): the document
-             * would lose a field the type requires. The switch is disabled for it too; this is
-             * the guard behind it.
+             * The last legal field never switches on (spec §6.1): the document would lose a
+             * field the law requires, which a formula never places (CGE-69). The switch is
+             * disabled for it too; this is the guard behind it.
              */
             setFormulaMode(on) {
                 if (Boolean(on) === this.isFormula() || (on && this.formulaLock() !== null)) {
@@ -850,6 +850,16 @@ function registerDataField(editor, config) {
                     return;
                 }
 
+                // Undo/redo puts back a whole recorded state, its format included (CGE-65):
+                // writing a default over it would lose a custom pattern, untracked.
+                if (isReplaying(editor)) {
+                    this.__pfBinding = this.binding();
+                    this.__pfFormat = this.formatName();
+                    this.syncFormatTraits();
+
+                    return;
+                }
+
                 const wasFormula = isFormulaKey(this.__pfBinding);
 
                 this.__pfBinding = this.binding();
@@ -879,6 +889,13 @@ function registerDataField(editor, config) {
              */
             onFormatPicked() {
                 if (this.formatName() === this.__pfFormat) {
+                    return;
+                }
+
+                if (isReplaying(editor)) {
+                    this.__pfFormat = this.formatName();
+                    this.syncFormatTraits();
+
                     return;
                 }
 
@@ -1419,6 +1436,14 @@ function addBlock(editor, type, label, icon) {
  * preview a field nobody hand-declared; a calculated field carries no `legal` key at
  * all, so it is never mistaken for one.
  */
+/**
+ * True while GrapesJS undoes or redoes: it replays a recorded state with a plain `set`
+ * and records nothing written meanwhile, so listeners must not add to it (CGE-65).
+ */
+function isReplaying(editor) {
+    return Boolean(editor.UndoManager?.getStack?.()?.isCurrentlyUndoRedoing);
+}
+
 function findBinding(config, key) {
     return config.bindings.find((binding) => binding.key === key)
         ?? (config.nodes ?? []).flatMap((node) => node.fields ?? []).find((field) => field.key === key);

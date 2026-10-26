@@ -5,6 +5,7 @@ namespace Controlink\Templates\Tests\Feature;
 use Controlink\Templates\Contracts\TenantResolver;
 use Controlink\Templates\Formulas\Formula;
 use Controlink\Templates\Formulas\Parser;
+use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Tests\Fixtures\Models\EditorTemplate;
 use Controlink\Templates\Tests\Fixtures\Models\GuardedVersion;
 use Controlink\Templates\Tests\TestCase;
@@ -220,6 +221,28 @@ class EditorComponentTest extends TestCase
         // The ƒx reference and its strings are gone: the "Campos e funções" library says it all.
         foreach (['functions', 'reference_toggle', 'reference_heading', 'reference_note'] as $key) {
             $this->assertArrayNotHasKey('formula.'.$key, $strings);
+        }
+    }
+
+    /**
+     * CGE-70: a date can be written in a pattern of its own inside a formula, with TEXT's
+     * third argument — the help says so, names the patterns a date field offers, and its
+     * example is a date in a sentence.
+     */
+    public function test_text_help_explains_date_patterns(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        foreach (['en', 'pt_PT'] as $locale) {
+            app()->setLocale($locale);
+
+            $strings = (new Editor($template, $version))->strings();
+
+            foreach (FormatSpec::DATE_PATTERNS as $pattern) {
+                $this->assertStringContainsString($pattern, $strings['formula.description.TEXT'], "{$locale}: {$pattern}");
+            }
+
+            $this->assertStringContainsString('"date", "yyyy/MM/dd")', $strings['formula.example.TEXT'], $locale);
         }
     }
 

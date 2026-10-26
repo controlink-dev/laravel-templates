@@ -250,6 +250,7 @@ return [
         'off_sheet' => 'The field ":field" is off the sheet.',
         'text_overflow' => 'The text of ":field" does not fit its box and will be cut.',
         'missing_table' => 'The ":field" table is missing. It is required to activate.',
+        'missing_mandatory' => 'The ":field" field is missing. It is required to activate, in a block of its own or inside a formula.',
 
         'code_incomplete' => 'This fixed code has required fields left blank. Without them the code is valid but points at nothing.',
     ],
@@ -271,7 +272,7 @@ return [
         'legal_locked' => '":field" cannot be deleted. It is a field required by law on this document type.',
         'close'        => 'Close notice',
         'confirm_delete_legal' => '":field" is a field required by law. Delete it anyway? You will need to place it again before you can put the document into production.',
-        'confirm_occlusion'    => 'Some fields may not appear when printed because something is placed on top of them. Save anyway?',
+        'confirm_occlusion'    => 'Some elements overlap or are covered and may not print properly. Save anyway?',
     ],
 
     // Buttons of the editor's own confirm/alert dialogs (dialog.js), in place of the
@@ -306,6 +307,7 @@ return [
         'outside_printable' => '":field" is outside the printable area.',
         'occluded'          => '":field" is covered by an opaque element placed on top of it.',
         'occluded_warning'  => '":field" is covered by another element placed on top of it and may not appear when printed.',
+        'overlapping'       => '":field" overlaps ":other": both may print illegibly.',
         // V-19 (CGE-37): `:formula` is the column header, or the generic formula label on a field.
         'formula_syntax'            => '":formula": the formula is not written correctly. Check the operators, brackets, commas between arguments, quotes and the number of arguments of each function.',
         'formula_unknown_function'  => '":formula": the formula uses a function that does not exist.',
@@ -320,7 +322,6 @@ return [
         'label'        => 'Formula',
         'toggle'       => 'Calculate with a formula',
         'legal_locked' => 'This is the only block with this legal field: it cannot become a formula. Add another copy of the field if you need a formula here.',
-        'mandatory_locked' => 'This is the only block with this mandatory field: it cannot become a formula. Add another copy of the field if you need a formula here.',
         'source'       => 'Formula',
         'placeholder'  => 'e.g. totals.total_due * 2',
         'calculating'  => 'Calculating…',
@@ -398,7 +399,7 @@ return [
             'MONTH'  => 'The month of the date (1 to 12).',
             'DAY'    => 'The day of the month of the date.',
             'DAYS'   => 'The days from the start date to the end date.',
-            'TEXT'   => 'The value written as the document prints it: a date, an amount or a number. The optional third argument is an option of that format (for a date, its pattern).',
+            'TEXT'   => 'The value written as the document prints it: a date, an amount or a number. The optional third argument is an option of that format. For a date it is the pattern: "dd/MM/yyyy", "yyyy-MM-dd", "yyyy/MM/dd", "dd-MM-yyyy" or "dd MMM yyyy".',
         ],
 
         // The Blocks rail while a formula is edited: "Fields and functions" (spec §6.3).
@@ -449,7 +450,7 @@ return [
             'MONTH'  => 'MONTH(document.issue_date)',
             'DAY'    => 'DAY(document.issue_date)',
             'DAYS'   => 'DAYS(document.supply_date, document.issue_date)',
-            'TEXT'   => '"Total: " & TEXT(totals.total_due, "money")',
+            'TEXT'   => '"Supplied on " & TEXT(document.supply_date, "date", "yyyy/MM/dd")',
         ],
 
         // Line-table columns in Formula and calculated columns: computed for each line. The

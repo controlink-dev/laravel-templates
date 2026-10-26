@@ -107,16 +107,18 @@ final class Documents
 
     /**
      * The layout's warnings: fields not required by law that are covered by a block on top
-     * of them (V-18). They do not refuse a save; the host asks the user to confirm.
+     * of them (V-18), and blocks with content overlapping each other (V-20, CGE-90). They
+     * do not refuse a save; the host asks the user to confirm.
      *
      * @param  array{project_data: array<string, mixed>, html?: string, css?: string}  $layout
      * @param  list<array<string, mixed>>  $fields
      * @param  array<string, mixed>  $geometry
+     * @param  array<string, mixed>  $fixture  the type's sample values, by key: V-20 measures a data field's text by them, and without one takes its whole box
      * @return array<int, array{code: string, component_id: string, message: string}>
      */
-    public function layoutWarnings(array $layout, array $fields, array $geometry = []): array
+    public function layoutWarnings(array $layout, array $fields, array $geometry = [], array $fixture = []): array
     {
-        return $this->occlusionsCoded('V-18', $layout, $fields, $geometry);
+        return $this->occlusionsCoded(['V-18', 'V-20'], $layout, $fields, $geometry, $fixture);
     }
 
     /**
@@ -130,7 +132,7 @@ final class Documents
      */
     public function legalOcclusions(array $layout, array $fields, array $geometry = []): array
     {
-        return $this->occlusionsCoded('V-15', $layout, $fields, $geometry);
+        return $this->occlusionsCoded(['V-15'], $layout, $fields, $geometry);
     }
 
     /**
@@ -176,8 +178,11 @@ final class Documents
 
         $placed = [];
 
+        $formulas = [];
+
         foreach (LayoutDocument::fromProjectData($projectData)->dataFields() as $field) {
-            $key = (string) ($field['attributes']['data-tpl-binding'] ?? '');
+            $key        = (string) ($field['attributes']['data-tpl-binding'] ?? '');
+            $formulas[] = $field['attributes']['data-tpl-formula'] ?? null;
 
             try {
                 $placed[$key][] = FormatSpec::fromAttributes($field['attributes']);
@@ -186,7 +191,7 @@ final class Documents
             }
         }
 
-        return $placed;
+        return $this->withFormulaReferences($placed, $formulas);
     }
 
     /**
@@ -206,7 +211,8 @@ final class Documents
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
 
-        $placed = [];
+        $placed   = [];
+        $formulas = [];
 
         foreach ((new \DOMXPath($document))->query('//*[@data-tpl-type="data-field"]') ?: [] as $node) {
             if (! $node instanceof \DOMElement) {
@@ -218,10 +224,36 @@ final class Documents
                 $attributes[$attribute->name] = $attribute->value;
             }
 
+            $formulas[] = $attributes['data-tpl-formula'] ?? null;
+
             try {
                 $placed[(string) ($attributes['data-tpl-binding'] ?? '')][] = FormatSpec::fromAttributes($attributes);
             } catch (InvalidArgumentException) {
                 continue;
+            }
+        }
+
+        return $this->withFormulaReferences($placed, $formulas);
+    }
+
+    /**
+     * A field named only inside a data field's formula is placed with no text of its own
+     * to look for (CGE-69): the formula may wrap or reformat it, so R-02 is given an empty
+     * list for it. A field also placed by its own block keeps that block's formats.
+     *
+     * @param  array<string, list<FormatSpec|null>>  $placed
+     * @param  list<mixed>  $formulas  each data field's `data-tpl-formula`, if any
+     * @return array<string, list<FormatSpec|null>>
+     */
+    private function withFormulaReferences(array $placed, array $formulas): array
+    {
+        foreach ($formulas as $source) {
+            if (! is_string($source) || $source === '') {
+                continue;
+            }
+
+            foreach (Formula::references($source) as $key) {
+                $placed[$key] ??= [];
             }
         }
 
@@ -294,23 +326,26 @@ final class Documents
 
     /**
      * @param  array{project_data: array<string, mixed>, html?: string, css?: string}  $layout
+     * @param  list<string>  $codes
      * @param  list<array<string, mixed>>  $fields
      * @param  array<string, mixed>  $geometry
+     * @param  array<string, mixed>  $fixture
      * @return array<int, array{code: string, component_id: string, message: string}>
      */
-    private function occlusionsCoded(string $code, array $layout, array $fields, array $geometry): array
+    private function occlusionsCoded(array $codes, array $layout, array $fields, array $geometry, array $fixture = []): array
     {
         return array_values(array_filter(
-            $this->layoutValidator->occlusions($layout['project_data'], $this->carrier($fields, $geometry)),
-            fn (array $problem): bool => $problem['code'] === $code,
+            $this->layoutValidator->occlusions($layout['project_data'], $this->carrier($fields, $geometry, $fixture)),
+            fn (array $problem): bool => in_array($problem['code'], $codes, true),
         ));
     }
 
     /**
      * @param  list<array<string, mixed>>  $fields
      * @param  array<string, mixed>  $geometry
+     * @param  array<string, mixed>  $fixture
      */
-    private function carrier(array $fields, array $geometry): TemplateType
+    private function carrier(array $fields, array $geometry, array $fixture = []): TemplateType
     {
         $zones = (array) ($geometry['zones'] ?? []);
         unset($geometry['zones']);
@@ -320,6 +355,7 @@ final class Documents
             'bindings'       => $fields,
             'pdf'            => $geometry,
             'initial_layout' => ['zones' => $zones],
+            'fixture'        => $fixture,
         ]);
     }
 }
