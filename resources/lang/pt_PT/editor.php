@@ -409,7 +409,7 @@ return [
             'MONTH'  => 'O mês da data (1 a 12).',
             'DAY'    => 'O dia do mês da data.',
             'DAYS'   => 'Os dias entre a data de início e a data de fim.',
-            'TEXT'   => 'O valor escrito como o documento o imprime: data, montante ou número. O terceiro argumento, opcional, é uma opção desse formato (numa data, o padrão).',
+            'TEXT'   => 'O valor escrito como o documento o imprime: data, montante ou número. O terceiro argumento, opcional, é uma opção desse formato. Numa data é o padrão: "dd/MM/yyyy", "yyyy-MM-dd", "yyyy/MM/dd", "dd-MM-yyyy" ou "dd MMM yyyy".',
         ],
 
         // A coluna Blocos enquanto se edita uma fórmula: "Campos e funções" (spec §6.3).
@@ -461,7 +461,7 @@ return [
             'MONTH'  => 'MONTH(document.issue_date)',
             'DAY'    => 'DAY(document.issue_date)',
             'DAYS'   => 'DAYS(document.supply_date, document.issue_date)',
-            'TEXT'   => '"Total: " & TEXT(totals.total_due, "money")',
+            'TEXT'   => '"Fornecido em " & TEXT(document.supply_date, "date", "yyyy/MM/dd")',
         ],
 
         // Colunas da tabela de linhas em Fórmula e colunas calculadas: calculadas para cada

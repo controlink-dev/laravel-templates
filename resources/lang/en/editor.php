@@ -399,7 +399,7 @@ return [
             'MONTH'  => 'The month of the date (1 to 12).',
             'DAY'    => 'The day of the month of the date.',
             'DAYS'   => 'The days from the start date to the end date.',
-            'TEXT'   => 'The value written as the document prints it: a date, an amount or a number. The optional third argument is an option of that format (for a date, its pattern).',
+            'TEXT'   => 'The value written as the document prints it: a date, an amount or a number. The optional third argument is an option of that format. For a date it is the pattern: "dd/MM/yyyy", "yyyy-MM-dd", "yyyy/MM/dd", "dd-MM-yyyy" or "dd MMM yyyy".',
         ],
 
         // The Blocks rail while a formula is edited: "Fields and functions" (spec §6.3).
@@ -450,7 +450,7 @@ return [
             'MONTH'  => 'MONTH(document.issue_date)',
             'DAY'    => 'DAY(document.issue_date)',
             'DAYS'   => 'DAYS(document.supply_date, document.issue_date)',
-            'TEXT'   => '"Total: " & TEXT(totals.total_due, "money")',
+            'TEXT'   => '"Supplied on " & TEXT(document.supply_date, "date", "yyyy/MM/dd")',
         ],
 
         // Line-table columns in Formula and calculated columns: computed for each line. The
