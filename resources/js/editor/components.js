@@ -850,6 +850,16 @@ function registerDataField(editor, config) {
                     return;
                 }
 
+                // Undo/redo puts back a whole recorded state, its format included (CGE-65):
+                // writing a default over it would lose a custom pattern, untracked.
+                if (isReplaying(editor)) {
+                    this.__pfBinding = this.binding();
+                    this.__pfFormat = this.formatName();
+                    this.syncFormatTraits();
+
+                    return;
+                }
+
                 const wasFormula = isFormulaKey(this.__pfBinding);
 
                 this.__pfBinding = this.binding();
@@ -879,6 +889,13 @@ function registerDataField(editor, config) {
              */
             onFormatPicked() {
                 if (this.formatName() === this.__pfFormat) {
+                    return;
+                }
+
+                if (isReplaying(editor)) {
+                    this.__pfFormat = this.formatName();
+                    this.syncFormatTraits();
+
                     return;
                 }
 
@@ -1419,6 +1436,14 @@ function addBlock(editor, type, label, icon) {
  * preview a field nobody hand-declared; a calculated field carries no `legal` key at
  * all, so it is never mistaken for one.
  */
+/**
+ * True while GrapesJS undoes or redoes: it replays a recorded state with a plain `set`
+ * and records nothing written meanwhile, so listeners must not add to it (CGE-65).
+ */
+function isReplaying(editor) {
+    return Boolean(editor.UndoManager?.getStack?.()?.isCurrentlyUndoRedoing);
+}
+
 function findBinding(config, key) {
     return config.bindings.find((binding) => binding.key === key)
         ?? (config.nodes ?? []).flatMap((node) => node.fields ?? []).find((field) => field.key === key);

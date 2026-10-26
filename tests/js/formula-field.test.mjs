@@ -28,7 +28,20 @@ const editor = {
     TraitManager: { addType: () => {} },
     on: (event, handler) => { (handlers[event] ??= []).push(handler); },
     getWrapper: () => ({ getAttributes: () => ({}), components: () => sheet }),
+    // GrapesJS replays an undo/redo with a plain `set`, flagging only its stack.
+    UndoManager: { stack: { isCurrentlyUndoRedoing: false }, getStack() { return this.stack; } },
 };
+
+/** Replays a recorded attribute state the way GrapesJS's undo/redo does. */
+function replay(component, attributes) {
+    editor.UndoManager.stack.isCurrentlyUndoRedoing = true;
+
+    try {
+        component.setAttributes(attributes);
+    } finally {
+        editor.UndoManager.stack.isCurrentlyUndoRedoing = false;
+    }
+}
 
 const strings = new Proxy({
     'formula.label': 'Fórmula',
@@ -53,6 +66,7 @@ const config = {
             { key: 'doc.title', label: 'Title', legal: true },
             { key: 'doc.total', label: 'Total', type: 'money' },
             { key: 'doc.number', label: 'Number' },
+            { key: 'doc.due', label: 'Due', type: 'date' },
         ],
     }],
     fixture: { 'doc.total': 10 },
@@ -361,6 +375,37 @@ const FORMULA_KEY = /^formula\.[a-z][a-z0-9]{7}$/;
     const plain = make();
     handlers['component:clone'].forEach((handler) => handler(plain));
     assert.equal(plain.binding(), 'doc.total');
+}
+
+// 9. Undo of Campo → Fórmula gives the field back exactly, custom date pattern included;
+//    redo switches it again and a second undo restores it once more (CGE-65).
+{
+    sheet.length = 0;
+    const field = make({ 'data-tpl-node': 'doc', 'data-tpl-binding': 'doc.due', 'data-tpl-format': 'date', 'data-tpl-format-pattern': 'yyyy/MM/dd' });
+    sheet.push(field);
+    const asField = field.getAttributes();
+
+    field.setFormulaMode(true);
+    const asFormula = field.getAttributes();
+    assert.equal(field.formatName(), '');
+
+    replay(field, asField);
+    assert.equal(field.binding(), 'doc.due');
+    assert.equal(field.formatName(), 'date');
+    assert.equal(field.getAttributes()['data-tpl-format-pattern'], 'yyyy/MM/dd', 'undo keeps the custom date pattern');
+    assert.deepEqual(field.getAttributes(), asField);
+
+    replay(field, asFormula);
+    assert.ok(field.isFormula(), 'redo is a formula again');
+    assert.equal(field.formatName(), '');
+    assert.deepEqual(field.getAttributes(), asFormula);
+
+    replay(field, asField);
+    assert.equal(field.getAttributes()['data-tpl-format-pattern'], 'yyyy/MM/dd', 'a second undo keeps it too');
+
+    // A real pick after the undo still brings the new field's default format.
+    field.addAttributes({ 'data-tpl-binding': 'doc.total' });
+    assert.equal(field.formatName(), 'money');
 }
 
 console.log('formula-field: ok');
