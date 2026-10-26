@@ -199,6 +199,49 @@ class LayoutValidatorTest extends TestCase
         $this->assertSame(['V-10'], array_values(array_unique($codes)));
     }
 
+    /**
+     * CGE-69: a mandatory field the law does not require may be printed through a
+     * formula — the art. 36 sentence carrying the supply date — and counts as placed.
+     */
+    public function test_mandatory_field_used_in_a_formula_counts_as_placed(): void
+    {
+        $layout = $this->layoutReplacing('totais.total_iliquido', $this->formulaField(
+            'formula.abc123',
+            '"Total sem IVA: " & TEXT(totais.total_iliquido, "money")',
+        ));
+
+        $this->assertNotContains('V-02', array_column($this->problems($layout), 'code'));
+    }
+
+    /** A legal field is never placed by a formula: it has to be a block of its own. */
+    public function test_legal_field_used_in_a_formula_is_still_missing(): void
+    {
+        $layout = $this->layoutReplacing('documento.atcud', $this->formulaField(
+            'formula.abc123',
+            '"ATCUD: " & documento.atcud',
+        ));
+
+        $this->assertHasProblem('V-10', $layout);
+    }
+
+    /** Naming a field inside a table column's formula does not place it on the document. */
+    public function test_column_formula_does_not_place_a_field(): void
+    {
+        $blocks = $this->blocksWithout('totais.total_iliquido');
+
+        foreach ($blocks as &$block) {
+            if (($block['type'] ?? '') === 'line-table') {
+                $block['attributes']['data-tpl-columns'] = json_encode([
+                    ['key' => 'formula_abc123', 'label' => 'Calc', 'width' => '', 'align' => 'right', 'format' => '', 'formula' => 'totais.total_iliquido'],
+                ]);
+            }
+        }
+
+        unset($block);
+
+        $this->assertHasProblem('V-02', $this->layout($blocks));
+    }
+
     public function test_v04_rejects_a_block_that_runs_outside_its_zone(): void
     {
         $layout = $this->layoutWith(
@@ -1392,6 +1435,30 @@ class LayoutValidatorTest extends TestCase
 
         $this->assertCount(1, $warned);
         $this->assertSame('tpl-formula', $warned[0]['component_id']);
+    }
+
+    /**
+     * The default blocks without the one bound to `$binding`.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function blocksWithout(string $binding): array
+    {
+        return array_values(array_filter(
+            $this->defaultBlocks(self::TYPE_CODE),
+            fn (array $block): bool => $this->bindingOf($block) !== $binding,
+        ));
+    }
+
+    /**
+     * The default layout with the block bound to `$binding` swapped for another.
+     *
+     * @param  array<string, mixed>  $block
+     * @return array{project_data: array<string, mixed>, html: string, css: string}
+     */
+    private function layoutReplacing(string $binding, array $block): array
+    {
+        return $this->layout([...$this->blocksWithout($binding), $block]);
     }
 
     /**

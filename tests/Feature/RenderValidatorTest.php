@@ -352,14 +352,14 @@ class RenderValidatorTest extends TestCase
      *
      * @param  array<string, list<FormatSpec|null>>  $placed
      */
-    private function validateLowercase(array $placed): array
+    private function validateLowercase(array $placed, bool $legal = false): array
     {
         $pdf = (string) file_get_contents(__DIR__.'/../Fixtures/pdf/r-ok.pdf');
 
         return app(RenderValidator::class)->validate(
             $pdf,
             $this->type(bindings: [
-                ['key' => 'documento.atcud', 'label' => 'ATCUD', 'type' => 'text', 'mandatory' => true, 'legal' => false],
+                ['key' => 'documento.atcud', 'label' => 'ATCUD', 'type' => 'text', 'mandatory' => true, 'legal' => $legal],
             ]),
             ['documento.atcud' => 'jft7-0000000001'],
             1.0,
@@ -386,5 +386,16 @@ class RenderValidatorTest extends TestCase
 
         $this->assertNotContains('R-02', $this->codes($this->validateLowercase(['documento.atcud' => [null, $upper]])));
         $this->assertContains('R-02', $this->codes($this->validateLowercase(['documento.atcud' => [null]])));
+    }
+
+    /**
+     * CGE-69: a field placed only inside a formula has no text of its own to look for
+     * (the formula may wrap or reformat it), so R-02 has nothing to check. A legal
+     * field never counts as placed by a formula, so its value is still looked for.
+     */
+    public function test_r02_skips_a_field_placed_only_through_a_formula(): void
+    {
+        $this->assertNotContains('R-02', $this->codes($this->validateLowercase(['documento.atcud' => []])));
+        $this->assertContains('R-02', $this->codes($this->validateLowercase(['documento.atcud' => []], legal: true)));
     }
 }

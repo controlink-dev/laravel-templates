@@ -203,6 +203,13 @@ class RenderValidator
             ? $placedFormats[$binding['key']]
             : [self::DEFAULT_FORMAT];
 
+        // CGE-69: an empty list is a field named only inside a formula, which prints it
+        // its own way — nothing to look for. Never for a legal field: a formula does not
+        // place one, so its value is still looked for as the binding prints it.
+        if ($specs === [] && ($binding['legal'] ?? false)) {
+            $specs = [self::DEFAULT_FORMAT];
+        }
+
         $candidates = array_values(array_unique(array_filter(array_map(
             fn (FormatSpec|string|null $spec): string => $this->expectedText($binding, $dataset, $spec),
             $specs,

@@ -116,6 +116,28 @@ class DocumentsFacadeTest extends TestCase
         $this->assertContains('R-02', array_column($documents->validateRender($pdf, $fields, $data, $this->geometry(), 1.0), 'code'));
     }
 
+    /**
+     * CGE-69: a mandatory date printed only through a formula, in a pattern of its own,
+     * passes R-02 — the formula's text is not what the field would print.
+     */
+    public function test_render_validation_accepts_a_field_placed_only_through_a_formula(): void
+    {
+        $this->skipWithoutPdfEngine();
+
+        $fields = [['key' => 'documento.data', 'label' => 'Data', 'type' => 'date', 'mandatory' => true, 'legal' => false, 'default_format' => 'date']];
+        $data   = ['documento.data' => '2026-12-31'];
+        $html   = '<div class="page"><div class="zone zone--header" data-tpl-zone="header">'
+            .'<div class="block block--field" data-tpl-type="data-field" data-tpl-binding="formula.abc123" data-tpl-formula="&quot;Fornecido em &quot; &amp; TEXT(documento.data, &quot;date&quot;, &quot;yyyy/MM/dd&quot;)" id="tpl-f" style="top:0;left:0">'
+            .'{{ formula.abc123 }}</div></div>'
+            .'<div class="zone zone--body" data-tpl-zone="body"></div><div class="zone zone--footer" data-tpl-zone="footer"></div></div>';
+        $layout = ['html' => $html, 'css' => '', 'project_data' => []];
+
+        $documents = app(Documents::class);
+        $pdf       = $documents->render($layout, $data, $this->geometry(), '', $fields);
+
+        $this->assertSame([], $documents->validateRender($pdf, $fields, $data, $this->geometry(), 1.0, [], $layout));
+    }
+
     public function test_render_for_activation_returns_pdf_hash_and_seconds(): void
     {
         $this->skipWithoutPdfEngine();

@@ -309,9 +309,16 @@ class LayoutValidator
         }
 
         // V-02: every mandatory binding has to be somewhere in the document, placed by
-        // whichever block can bind it.
+        // whichever block can bind it — or, for one the law does not require, named in
+        // a data field's formula (CGE-69): the sentence carrying the value prints it.
+        $inFormulas = $this->referencedByFieldFormulas($document);
+
         foreach ($bindings as $key => $binding) {
             if (! ($binding['mandatory'] ?? false) || $this->isPlaced($document, $binding)) {
+                continue;
+            }
+
+            if (! ($binding['legal'] ?? false) && isset($inFormulas[$binding['key']])) {
                 continue;
             }
 
@@ -936,6 +943,30 @@ class LayoutValidator
         }
 
         return $problems;
+    }
+
+    /**
+     * The keys the document's data-field formulas read (CGE-69). A table column's
+     * formula is left out: it prints per row, and naming a document field there does
+     * not put that field on the page.
+     *
+     * @return array<string, true>
+     */
+    private function referencedByFieldFormulas(LayoutDocument $document): array
+    {
+        $keys = [];
+
+        foreach ($this->formulasOf($document) as $formula) {
+            if ($formula['kind'] !== 'field') {
+                continue;
+            }
+
+            foreach (Formula::references($formula['source']) as $key) {
+                $keys[$key] = true;
+            }
+        }
+
+        return $keys;
     }
 
     /**

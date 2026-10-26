@@ -176,8 +176,11 @@ final class Documents
 
         $placed = [];
 
+        $formulas = [];
+
         foreach (LayoutDocument::fromProjectData($projectData)->dataFields() as $field) {
-            $key = (string) ($field['attributes']['data-tpl-binding'] ?? '');
+            $key        = (string) ($field['attributes']['data-tpl-binding'] ?? '');
+            $formulas[] = $field['attributes']['data-tpl-formula'] ?? null;
 
             try {
                 $placed[$key][] = FormatSpec::fromAttributes($field['attributes']);
@@ -186,7 +189,7 @@ final class Documents
             }
         }
 
-        return $placed;
+        return $this->withFormulaReferences($placed, $formulas);
     }
 
     /**
@@ -206,7 +209,8 @@ final class Documents
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
 
-        $placed = [];
+        $placed   = [];
+        $formulas = [];
 
         foreach ((new \DOMXPath($document))->query('//*[@data-tpl-type="data-field"]') ?: [] as $node) {
             if (! $node instanceof \DOMElement) {
@@ -218,10 +222,36 @@ final class Documents
                 $attributes[$attribute->name] = $attribute->value;
             }
 
+            $formulas[] = $attributes['data-tpl-formula'] ?? null;
+
             try {
                 $placed[(string) ($attributes['data-tpl-binding'] ?? '')][] = FormatSpec::fromAttributes($attributes);
             } catch (InvalidArgumentException) {
                 continue;
+            }
+        }
+
+        return $this->withFormulaReferences($placed, $formulas);
+    }
+
+    /**
+     * A field named only inside a data field's formula is placed with no text of its own
+     * to look for (CGE-69): the formula may wrap or reformat it, so R-02 is given an empty
+     * list for it. A field also placed by its own block keeps that block's formats.
+     *
+     * @param  array<string, list<FormatSpec|null>>  $placed
+     * @param  list<mixed>  $formulas  each data field's `data-tpl-formula`, if any
+     * @return array<string, list<FormatSpec|null>>
+     */
+    private function withFormulaReferences(array $placed, array $formulas): array
+    {
+        foreach ($formulas as $source) {
+            if (! is_string($source) || $source === '') {
+                continue;
+            }
+
+            foreach (Formula::references($source) as $key) {
+                $placed[$key] ??= [];
             }
         }
 
