@@ -594,20 +594,76 @@ class LayoutValidatorTest extends TestCase
         $this->assertNotContains('V-15', array_column($this->problems($layout), 'code'));
     }
 
-    public function test_text_over_text_does_not_occlude(): void
+    /**
+     * Text over text hides nothing (no V-15), but the two print on top of each other and
+     * come out illegible: CGE-90 warns about it (V-20) — even over a legal field, as a
+     * warning, since nothing paints the legal text away.
+     */
+    public function test_text_over_text_warns_overlap(): void
     {
-        $layout = $this->layoutWithCover(
-            'emitente.nif',
-            [
-                'type'  => 'static-text',
-                'zone'  => 'header',
-                'id'    => 'tpl-cover',
-                'style' => ['position' => 'absolute', 'left' => '90mm', 'top' => '0mm', 'width' => '60mm', 'height' => '6mm'],
-            ],
-            ['width' => '40mm', 'height' => '4mm'],
-        );
+        $layout = $this->layoutWithCover('emitente.nif', $this->text(['left' => '90mm', 'top' => '0mm', 'width' => '60mm', 'height' => '6mm']), ['width' => '40mm', 'height' => '4mm']);
 
         $this->assertNotContains('V-15', array_column($this->problems($layout), 'code'));
+        $this->assertNotContains('V-20', array_column($this->problems($layout), 'code'), 'a warning never refuses a save');
+
+        $overlaps = array_values(array_filter($this->occlusions($layout), fn (array $o): bool => $o['code'] === 'V-20'));
+
+        $this->assertCount(1, $overlaps, 'one problem per pair');
+        $this->assertSame('tpl-cover', $overlaps[0]['component_id'], 'reported on the block on top');
+        $this->assertStringContainsString('NIF', $overlaps[0]['message']);
+    }
+
+    /** A line or an unfilled rectangle around or under text is design, not an overlap. */
+    public function test_rule_over_text_is_not_an_overlap(): void
+    {
+        foreach (['transparent', 'rgba(0, 0, 0, 0)'] as $background) {
+            $layout = $this->layoutWithCover(
+                'emitente.nif',
+                $this->rectangle(['left' => '88mm', 'top' => '-1mm', 'width' => '50mm', 'height' => '6mm'], $background),
+                ['width' => '40mm', 'height' => '4mm'],
+            );
+
+            $this->assertNotContains('V-20', array_column($this->occlusions($layout), 'code'));
+        }
+    }
+
+    /** Blocks that only touch, within the engine's tolerance, do not overlap. */
+    public function test_touching_blocks_within_tolerance_do_not_overlap(): void
+    {
+        $layout = $this->layoutWithCover('emitente.nif', $this->text(['left' => '90mm', 'top' => '3.7mm', 'width' => '60mm', 'height' => '4mm']), ['width' => '40mm', 'height' => '4mm']);
+
+        $this->assertNotContains('V-20', array_column($this->occlusions($layout), 'code'));
+    }
+
+    /** Boxes are relative to their zone: the same numbers in another zone are elsewhere. */
+    public function test_blocks_in_different_zones_do_not_overlap(): void
+    {
+        $layout = $this->layoutWithCover('emitente.nif', $this->text(['left' => '90mm', 'top' => '0mm', 'width' => '60mm', 'height' => '6mm'], 'footer'), ['width' => '40mm', 'height' => '4mm']);
+
+        $this->assertNotContains('V-20', array_column($this->occlusions($layout), 'code'));
+    }
+
+    /** An opaque block over a field is occlusion (V-15/V-18), said once, not also V-20. */
+    public function test_an_occluded_field_is_not_also_an_overlap(): void
+    {
+        $layout = $this->layoutWithCover('emitente.nif', $this->image(['left' => '90mm', 'top' => '0mm', 'width' => '60mm', 'height' => '6mm']), ['width' => '40mm', 'height' => '4mm']);
+
+        $codes = array_column($this->occlusions($layout), 'code');
+
+        $this->assertContains('V-15', $codes);
+        $this->assertNotContains('V-20', $codes);
+    }
+
+    /** The host asks for confirmation on V-20 as on V-18; activation never sees it. */
+    public function test_layout_warnings_include_overlap(): void
+    {
+        $layout   = $this->layoutWithCover('emitente.nif', $this->text(['left' => '90mm', 'top' => '0mm', 'width' => '60mm', 'height' => '6mm']), ['width' => '40mm', 'height' => '4mm']);
+        $type     = Templates::type(self::TYPE_CODE);
+        $fields   = array_values($type->bindings);
+        $geometry = $type->pdf + ['zones' => $type->initialLayout['zones'] ?? []];
+
+        $this->assertSame(['V-20'], array_column(app(Documents::class)->layoutWarnings($layout, $fields, $geometry), 'code'));
+        $this->assertSame([], app(Documents::class)->legalOcclusions($layout, $fields, $geometry));
     }
 
     /**
@@ -1701,6 +1757,22 @@ class LayoutValidatorTest extends TestCase
             'id'         => 'tpl-cover',
             'attributes' => ['src' => $source ?? 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='],
             'style'      => ['position' => 'absolute'] + $style,
+        ];
+    }
+
+    /**
+     * A static text block, appended after the default ones so it paints on top.
+     *
+     * @param  array<string, string>  $style
+     * @return array<string, mixed>
+     */
+    private function text(array $style, string $zone = 'header'): array
+    {
+        return [
+            'type'  => 'static-text',
+            'zone'  => $zone,
+            'id'    => 'tpl-cover',
+            'style' => ['position' => 'absolute'] + $style,
         ];
     }
 

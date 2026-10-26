@@ -1194,7 +1194,7 @@ class LayoutValidator
     }
 
     /* -----------------------------------------------------------------------
-     * Occlusion (V-15 legal, V-18 warning)
+     * Occlusion (V-15 legal, V-18 warning) and overlap (V-20 warning)
      * -------------------------------------------------------------------- */
 
     /**
@@ -1249,7 +1249,94 @@ class LayoutValidator
                 : $this->problem('V-18', $target, 'occluded_warning', $label);
         }
 
+        return array_merge($problems, $this->checkOverlap($document, $bindings));
+    }
+
+    /**
+     * V-20 (CGE-90): two blocks with content overlapping in one zone, even when neither
+     * paints a background — text printed over text is illegible. A warning, reported once
+     * per pair on the block on top. A pair where the one on top is opaque over a field or
+     * code is occlusion, already said by V-15/V-18; lines and rectangles are never
+     * content (an underline or a frame around text is design).
+     *
+     * @param  array<string, array<string, mixed>>  $bindings
+     * @return array<int, array{code: string, component_id: string, message: string}>
+     */
+    private function checkOverlap(LayoutDocument $document, array $bindings): array
+    {
+        $tolerance = (float) config('templates.geometry_tolerance_mm', 0.5);
+        $content   = [];
+
+        foreach ($document->blocks() as $block) {
+            $box = $this->hasContent($block) ? $this->occlusionBox($document, $block) : null;
+
+            if ($box !== null) {
+                $content[] = [$block, $box];
+            }
+        }
+
+        $problems = [];
+
+        foreach ($content as $i => [$under, $underBox]) {
+            foreach (array_slice($content, $i + 1) as [$over, $overBox]) {
+                if ($over['zone'] !== $under['zone']
+                    || in_array($under['id'], array_column($over['ancestors'], 'id'), true)
+                    || in_array($over['id'], array_column($under['ancestors'], 'id'), true)) {
+                    continue;
+                }
+
+                $isOcclusion = in_array($under['attributes']['data-tpl-type'] ?? '', ['data-field', 'code-slot'], true)
+                    && $this->isOpaqueOccluder($document, $over);
+
+                $width  = min($underBox['left'] + $underBox['width'], $overBox['left'] + $overBox['width']) - max($underBox['left'], $overBox['left']);
+                $height = min($underBox['top'] + $underBox['height'], $overBox['top'] + $overBox['height']) - max($underBox['top'], $overBox['top']);
+
+                if ($isOcclusion || $width <= $tolerance || $height <= $tolerance) {
+                    continue;
+                }
+
+                $problems[] = $this->problem('V-20', $over, 'overlapping', [
+                    'field' => $this->blockLabel($over, $bindings),
+                    'other' => $this->blockLabel($under, $bindings),
+                ]);
+            }
+        }
+
         return $problems;
+    }
+
+    /**
+     * Whether a block prints something a block over or under it would garble: text,
+     * a value, an image with a file, a code, a table. Lines and rectangles are not.
+     *
+     * @param  array<string, mixed>  $block
+     */
+    private function hasContent(array $block): bool
+    {
+        return match ($block['attributes']['data-tpl-type'] ?? '') {
+            'data-field', 'static-text', 'page-number', 'code-slot', 'line-table' => true,
+            'image' => str_starts_with($block['attributes']['src'] ?? '', 'data:')
+                && ($block['attributes']['src'] ?? '') !== self::EMPTY_IMAGE,
+            default => false,
+        };
+    }
+
+    /**
+     * How a problem names a block: a data field by its binding's label, anything else by
+     * its kind of block.
+     *
+     * @param  array<string, mixed>  $block
+     * @param  array<string, array<string, mixed>>  $bindings
+     */
+    private function blockLabel(array $block, array $bindings): string
+    {
+        $label = $bindings[$block['attributes']['data-tpl-binding'] ?? '']['label'] ?? null;
+
+        if (is_string($label) && $label !== '') {
+            return $label;
+        }
+
+        return __('templates::editor.blocks.'.str_replace('-', '_', $block['attributes']['data-tpl-type'] ?? 'static-text'));
     }
 
     /**

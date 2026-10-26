@@ -107,7 +107,8 @@ final class Documents
 
     /**
      * The layout's warnings: fields not required by law that are covered by a block on top
-     * of them (V-18). They do not refuse a save; the host asks the user to confirm.
+     * of them (V-18), and blocks with content overlapping each other (V-20, CGE-90). They
+     * do not refuse a save; the host asks the user to confirm.
      *
      * @param  array{project_data: array<string, mixed>, html?: string, css?: string}  $layout
      * @param  list<array<string, mixed>>  $fields
@@ -116,7 +117,7 @@ final class Documents
      */
     public function layoutWarnings(array $layout, array $fields, array $geometry = []): array
     {
-        return $this->occlusionsCoded('V-18', $layout, $fields, $geometry);
+        return $this->occlusionsCoded(['V-18', 'V-20'], $layout, $fields, $geometry);
     }
 
     /**
@@ -130,7 +131,7 @@ final class Documents
      */
     public function legalOcclusions(array $layout, array $fields, array $geometry = []): array
     {
-        return $this->occlusionsCoded('V-15', $layout, $fields, $geometry);
+        return $this->occlusionsCoded(['V-15'], $layout, $fields, $geometry);
     }
 
     /**
@@ -324,15 +325,16 @@ final class Documents
 
     /**
      * @param  array{project_data: array<string, mixed>, html?: string, css?: string}  $layout
+     * @param  list<string>  $codes
      * @param  list<array<string, mixed>>  $fields
      * @param  array<string, mixed>  $geometry
      * @return array<int, array{code: string, component_id: string, message: string}>
      */
-    private function occlusionsCoded(string $code, array $layout, array $fields, array $geometry): array
+    private function occlusionsCoded(array $codes, array $layout, array $fields, array $geometry): array
     {
         return array_values(array_filter(
             $this->layoutValidator->occlusions($layout['project_data'], $this->carrier($fields, $geometry)),
-            fn (array $problem): bool => $problem['code'] === $code,
+            fn (array $problem): bool => in_array($problem['code'], $codes, true),
         ));
     }
 

@@ -272,7 +272,7 @@ return [
         'legal_locked' => '":field" cannot be deleted. It is a field required by law on this document type.',
         'close'        => 'Close notice',
         'confirm_delete_legal' => '":field" is a field required by law. Delete it anyway? You will need to place it again before you can put the document into production.',
-        'confirm_occlusion'    => 'Some fields may not appear when printed because something is placed on top of them. Save anyway?',
+        'confirm_occlusion'    => 'Some elements overlap or are covered and may not print properly. Save anyway?',
     ],
 
     // Buttons of the editor's own confirm/alert dialogs (dialog.js), in place of the
@@ -307,6 +307,7 @@ return [
         'outside_printable' => '":field" is outside the printable area.',
         'occluded'          => '":field" is covered by an opaque element placed on top of it.',
         'occluded_warning'  => '":field" is covered by another element placed on top of it and may not appear when printed.',
+        'overlapping'       => '":field" overlaps ":other": both may print illegibly.',
         // V-19 (CGE-37): `:formula` is the column header, or the generic formula label on a field.
         'formula_syntax'            => '":formula": the formula is not written correctly. Check the operators, brackets, commas between arguments, quotes and the number of arguments of each function.',
         'formula_unknown_function'  => '":formula": the formula uses a function that does not exist.',
