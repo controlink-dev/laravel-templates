@@ -62,9 +62,9 @@ export function isFormulaKey(key) {
 
 /**
  * Why a field bound to `binding` may not become a formula, or null when it may (spec §6.1):
- * `legal` — the document would lose the field the law asks for — or `mandatory` — the type
- * requires that value placed (V-02). Legal first: every legal field is mandatory too, and
- * the law is the reason the user needs to hear.
+ * `legal` — the document would lose the field the law asks for, which a formula never
+ * places. A mandatory field the law does not require may (CGE-69): the switch starts the
+ * formula from the field, and a formula naming it places it (V-02).
  *
  * Only the last block carrying the field is held: with `othersCarrying` other data fields
  * on the same binding, this one is a redundant copy and may become a formula — the rule
@@ -77,11 +77,7 @@ export function formulaLock(binding, othersCarrying = 0) {
         return null;
     }
 
-    if (binding?.legal) {
-        return 'legal';
-    }
-
-    return binding?.mandatory ? 'mandatory' : null;
+    return binding?.legal ? 'legal' : null;
 }
 
 /** Ctrl/Meta chords that edit text in the box: undo, redo, select all, copy, paste, cut. */

@@ -452,10 +452,10 @@ const inserts = (list) => list.map((item) => item.insert);
 
 
 {
-    // Which bindings may never become a formula (spec §2/§6): a legal one and a mandatory
-    // one, the legal reason first (every legal field is mandatory too).
+    // Which bindings may never become a formula (spec §2/§6): a legal one. A mandatory one
+    // may (CGE-69): the formula naming it places it.
     assert.equal(formulaLock({ key: 'a.b', legal: true, mandatory: true }), 'legal');
-    assert.equal(formulaLock({ key: 'a.b', mandatory: true }), 'mandatory');
+    assert.equal(formulaLock({ key: 'a.b', mandatory: true }), null);
     assert.equal(formulaLock({ key: 'a.b', legal: false, mandatory: false }), null);
     assert.equal(formulaLock({ key: 'a.b' }), null);
     assert.equal(formulaLock(undefined), null);

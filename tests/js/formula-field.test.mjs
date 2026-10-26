@@ -249,37 +249,35 @@ const FORMULA_KEY = /^formula\.[a-z][a-z0-9]{7}$/;
     }
 }
 
-// 6. Legal and mandatory: held only while this is the LAST data field carrying the field
-//    (Review Focus 4). A copy in Fórmula carries nothing.
+// 6. Legal: held only while this is the LAST data field carrying the field (Review
+//    Focus 4). A copy in Fórmula carries nothing. Mandatory but not legal is never held
+//    (CGE-69): a formula naming the field places it, and the switch starts from the field.
 {
     sheet.length = 0;
 
     const lone = make({ 'data-tpl-node': 'doc', 'data-tpl-binding': 'doc.number', 'data-tpl-format': '' });
     sheet.push(lone);
 
-    assert.equal(lone.formulaLock(), 'mandatory');
+    assert.equal(lone.formulaLock(), null, 'a mandatory field may become a formula');
     lone.setFormulaMode(true);
-    assert.equal(lone.binding(), 'doc.number', 'the last carrier never switches');
-    assert.ok(!('data-tpl-formula' in lone.getAttributes()));
+    assert.match(lone.binding(), FORMULA_KEY);
+    assert.equal(lone.getAttributes()['data-tpl-formula'], 'doc.number', 'the formula still names it');
 
-    const copy = make({ 'data-tpl-node': 'doc', 'data-tpl-binding': 'doc.number', 'data-tpl-format': '' });
-    sheet.push(copy);
-
-    assert.equal(lone.formulaLock(), null, 'two carriers: either may become a formula');
-    assert.equal(copy.formulaLock(), null);
-
-    copy.setFormulaMode(true);
-    assert.match(copy.binding(), FORMULA_KEY);
-    assert.equal(copy.getAttributes()['data-tpl-formula'], 'doc.number');
-    assert.equal(lone.formulaLock(), 'mandatory', 'the copy in Fórmula no longer counts');
-
-    // Legal the same way, legal named first.
     const title = make({ 'data-tpl-node': 'doc', 'data-tpl-binding': 'doc.title', 'data-tpl-format': '' });
     sheet.push(title);
     assert.equal(title.formulaLock(), 'legal');
+    title.setFormulaMode(true);
+    assert.equal(title.binding(), 'doc.title', 'the last legal carrier never switches');
+    assert.ok(!('data-tpl-formula' in title.getAttributes()));
+
     const titleCopy = make({ 'data-tpl-node': 'doc', 'data-tpl-binding': 'doc.title', 'data-tpl-format': '' });
     sheet.push(titleCopy);
-    assert.equal(title.formulaLock(), null);
+    assert.equal(title.formulaLock(), null, 'two carriers: either may become a formula');
+    assert.equal(titleCopy.formulaLock(), null);
+
+    titleCopy.setFormulaMode(true);
+    assert.match(titleCopy.binding(), FORMULA_KEY);
+    assert.equal(title.formulaLock(), 'legal', 'the copy in Fórmula no longer counts');
 
     // The switch is painted from the lock: Fórmula disabled with the reason as tooltip.
     const switchEl = () => {
@@ -304,23 +302,18 @@ const FORMULA_KEY = /^formula\.[a-z][a-z0-9]{7}$/;
         return el;
     };
 
-    let el = paint(lone);
+    let el = paint(title);
     assert.equal(el.field.checked, true);
     assert.equal(el.formula.disabled, true);
     assert.equal(el.field.disabled, false);
     assert.ok(el.classes.has('is-locked'));
-    assert.equal(el.title, 'formula.mandatory_locked');
+    assert.equal(el.title, 'formula.legal_locked');
 
-    el = paint(copy);
+    el = paint(titleCopy);
     assert.equal(el.formula.checked, true);
     assert.equal(el.formula.disabled, false);
     assert.ok(!el.classes.has('is-locked'));
     assert.equal(el.title, 'formula.toggle');
-
-    sheet.splice(sheet.indexOf(titleCopy), 1);
-    el = paint(title);
-    assert.equal(el.formula.disabled, true);
-    assert.equal(el.title, 'formula.legal_locked');
 }
 
 // 7. A saved formula field opens as it was saved (Review Focus 5): no attribute written,

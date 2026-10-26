@@ -260,6 +260,7 @@ return [
         'off_sheet' => 'O campo «:field» está fora da folha.',
         'text_overflow' => 'O texto de «:field» não cabe na caixa e vai ser cortado.',
         'missing_table' => 'Falta a tabela «:field». É obrigatória para ativar.',
+        'missing_mandatory' => 'Falta o campo «:field». É obrigatório para ativar, num bloco próprio ou dentro de uma fórmula.',
 
         'code_incomplete' => 'Este código fixo tem campos obrigatórios em branco. Sem eles, o código é válido mas não aponta para nada.',
     ],
@@ -330,7 +331,6 @@ return [
         'label'        => 'Fórmula',
         'toggle'       => 'Calcular com uma fórmula',
         'legal_locked' => 'É o único bloco com este campo legal: não pode passar a fórmula. Junte outra cópia do campo se precisar de uma fórmula aqui.',
-        'mandatory_locked' => 'É o único bloco com este campo obrigatório: não pode passar a fórmula. Junte outra cópia do campo se precisar de uma fórmula aqui.',
         'source'       => 'Fórmula',
         'placeholder'  => 'ex.: totals.total_due * 2',
         'calculating'  => 'A calcular…',

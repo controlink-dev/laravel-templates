@@ -9,6 +9,7 @@
 import { resolvePaper } from './editor.js';
 import { defaultSpecFor, specToAttributes } from './formats.js';
 import { PX_PER_MM, roundTo, snapOffsets } from './anchors.js';
+import { missingMandatoryFields } from './mandatory-fields.js';
 
 /**
  * The Style Manager the user gets: typography, colour, box and position, and nothing
@@ -330,6 +331,20 @@ export function checkMandatoryTablesLocally(editor, config) {
         code: 'L-02',
         componentId: '',
         message: format(config.strings['check.missing_table'], { field: binding.label }),
+    }));
+}
+
+/**
+ * Live check (CGE-69): a mandatory field the law does not require, neither on the sheet
+ * nor named in a formula. L-03 rather than V-02, for the reason L-02 gives above.
+ */
+export function checkMandatoryFieldsLocally(editor, config) {
+    const fields = editor.getWrapper().find('[data-tpl-type="data-field"]').map((component) => component.getAttributes());
+
+    return missingMandatoryFields(config.bindings, fields).map((binding) => ({
+        code: 'L-03',
+        componentId: '',
+        message: format(config.strings['check.missing_mandatory'], { field: binding.label }),
     }));
 }
 

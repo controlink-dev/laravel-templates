@@ -636,7 +636,7 @@ function registerDataField(editor, config) {
             },
 
             /**
-             * Why this field may not become a formula — `legal`, `mandatory` — or null
+             * Why this field may not become a formula — `legal` — or null
              * (CGE-37, spec §6.1): only while it is the last data field on the sheet carrying
              * its binding. Asked when the switch is painted (selection, attribute changes).
              */
@@ -694,9 +694,9 @@ function registerDataField(editor, config) {
              * field it had before is long gone and guessing it back would be a surprise.
              * One attribute write each way, so a single undo reverses it.
              *
-             * The last legal or mandatory field never switches on (spec §6.1): the document
-             * would lose a field the type requires. The switch is disabled for it too; this is
-             * the guard behind it.
+             * The last legal field never switches on (spec §6.1): the document would lose a
+             * field the law requires, which a formula never places (CGE-69). The switch is
+             * disabled for it too; this is the guard behind it.
              */
             setFormulaMode(on) {
                 if (Boolean(on) === this.isFormula() || (on && this.formulaLock() !== null)) {

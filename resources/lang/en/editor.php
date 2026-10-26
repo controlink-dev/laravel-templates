@@ -250,6 +250,7 @@ return [
         'off_sheet' => 'The field ":field" is off the sheet.',
         'text_overflow' => 'The text of ":field" does not fit its box and will be cut.',
         'missing_table' => 'The ":field" table is missing. It is required to activate.',
+        'missing_mandatory' => 'The ":field" field is missing. It is required to activate, in a block of its own or inside a formula.',
 
         'code_incomplete' => 'This fixed code has required fields left blank. Without them the code is valid but points at nothing.',
     ],
@@ -320,7 +321,6 @@ return [
         'label'        => 'Formula',
         'toggle'       => 'Calculate with a formula',
         'legal_locked' => 'This is the only block with this legal field: it cannot become a formula. Add another copy of the field if you need a formula here.',
-        'mandatory_locked' => 'This is the only block with this mandatory field: it cannot become a formula. Add another copy of the field if you need a formula here.',
         'source'       => 'Formula',
         'placeholder'  => 'e.g. totals.total_due * 2',
         'calculating'  => 'Calculating…',
