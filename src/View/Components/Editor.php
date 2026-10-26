@@ -196,6 +196,7 @@ class Editor extends Component
             'trait.wrap'          => __('templates::editor.traits.wrap'),
             'trait.format'        => __('templates::editor.traits.format'),
             'trait.file'          => __('templates::editor.traits.file'),
+            'trait.choose_image'  => __('templates::editor.traits.choose_image'),
             'trait.remove_image'  => __('templates::editor.traits.remove_image'),
             'trait.fit'           => __('templates::editor.traits.fit'),
             'trait.thickness'     => __('templates::editor.traits.thickness'),

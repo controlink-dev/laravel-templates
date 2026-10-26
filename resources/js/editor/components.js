@@ -1171,9 +1171,16 @@ function registerImage(editor, config) {
                         name: 'src',
                         label: config.strings['trait.file'],
                     },
+                    /*
+                     * Read by print.css (`.block--image[data-tpl-fit]`), so the canvas and the
+                     * PDF fit the same way (CGE-88). It was an `object-fit` attribute, which
+                     * no stylesheet reads: the choice did nothing and the box showed empty.
+                     * Without the attribute an image is contained, and the box says so.
+                     */
                     {
                         type: 'select',
-                        name: 'object-fit',
+                        name: 'data-tpl-fit',
+                        default: 'contain',
                         label: config.strings['trait.fit'],
                         options: [
                             { id: 'contain', name: config.strings['fit.contain'] },
@@ -1219,10 +1226,22 @@ function registerFileTrait(editor, config) {
         // perfectly good upload failed validation V-05 ("the image has no file"). Writing the
         // data URI to the component, after the reader loads, is what actually embeds the image.
         createInput({ trait, component }) {
+            // The browser's own file button speaks the browser's language and looks like
+            // nothing else in the panel (CGE-88): it stays hidden behind an editor button.
             const input = document.createElement('input');
             input.type = 'file';
             input.accept = 'image/png,image/jpeg,image/svg+xml';
-            input.className = 'gjs-field';
+            input.hidden = true;
+
+            const choose = document.createElement('button');
+            choose.type = 'button';
+            choose.className = 'tpl-btn tpl-btn--secondary tpl-btn--sm';
+            choose.dataset.tplChooseImage = '1';
+            choose.textContent = config.strings['trait.choose_image'];
+            choose.addEventListener('click', () => input.click());
+
+            const chosen = document.createElement('span');
+            chosen.className = 'tpl-file__name';
 
             input.addEventListener('change', (event) => {
                 // Stop GrapesJS's own trait `change` handler (delegated on the view) from
@@ -1250,6 +1269,7 @@ function registerFileTrait(editor, config) {
                 const reader = new FileReader();
                 reader.addEventListener('load', () => {
                     component.addAttributes({ src: String(reader.result) });
+                    chosen.textContent = file.name;
                 });
                 reader.readAsDataURL(file);
             });
@@ -1264,12 +1284,13 @@ function registerFileTrait(editor, config) {
             remove.textContent = config.strings['trait.remove_image'];
             remove.addEventListener('click', () => {
                 input.value = '';
+                chosen.textContent = '';
                 component.addAttributes({ src: TRANSPARENT_PIXEL });
             });
 
             const wrapper = document.createElement('div');
             wrapper.style.cssText = 'display:flex;flex-direction:column;gap:6px;align-items:flex-start';
-            wrapper.append(input, remove);
+            wrapper.append(input, choose, chosen, remove);
 
             return wrapper;
         },

@@ -47,6 +47,7 @@ return [
         'wrap'          => 'Multiple lines',
         'format'        => 'Format',
         'file'          => 'File',
+        'choose_image'  => 'Choose image…',
         'remove_image'  => 'Remove image',
         'anchor_last_page' => 'Fixed on the last page',
         'fit'           => 'Fit',
