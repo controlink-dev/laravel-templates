@@ -4,7 +4,7 @@ namespace Controlink\Templates\Rendering;
 
 use Carbon\CarbonImmutable;
 use Controlink\Templates\Contracts\MoneyFormatter;
-use NumberFormatter;
+use Controlink\Templates\Support\DocumentNumbers;
 use Throwable;
 
 /**
@@ -53,15 +53,7 @@ class FilterRegistry
                     return (string) $value;
                 }
 
-                $formatter = new NumberFormatter(app()->getLocale(), NumberFormatter::DECIMAL);
-
-                if ($decimals !== null) {
-                    $formatter->setAttribute(NumberFormatter::MIN_FRACTION_DIGITS, $decimals);
-                    $formatter->setAttribute(NumberFormatter::MAX_FRACTION_DIGITS, $decimals);
-                    $formatter->setAttribute(NumberFormatter::ROUNDING_MODE, NumberFormatter::ROUND_HALFUP);
-                }
-
-                return (string) $formatter->format((float) $value);
+                return (string) DocumentNumbers::decimal($decimals)->format((float) $value);
             },
             'money' => function (mixed $value, mixed $decimals = null, ?string $symbol = null): string {
                 $decimals = FormatSpec::assertDecimals($decimals);
