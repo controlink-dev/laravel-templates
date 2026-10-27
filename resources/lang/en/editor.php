@@ -330,6 +330,20 @@ return [
         'roll_column_width' => 'The lines table column ":subject" has a width that is not in characters. On a receipt, set a number of characters (e.g. 12ch) or leave it empty.',
     ],
 
+    // The receipt's translation for the thermal printer (ESC/POS, CGE-97). `:subject` is
+    // the field (or element) concerned; `:columns` the receipt's width in characters.
+    'escpos' => [
+        'unencodable_field' => 'The field ":subject" has the character ":char", which the thermal printer cannot print. Correct the field\'s value.',
+        'unencodable'       => 'The text of ":subject" has the character ":char", which the thermal printer cannot print.',
+        'value_too_wide'    => 'The value ":subject" does not fit on a receipt line (:width characters) and cannot be split. Give it more columns or a line of its own.',
+        'word_too_wide'     => 'The word ":subject" is longer than the receipt line (:width characters) and cannot be split.',
+        'row_too_wide'      => 'The columns of ":subject" add up to :width characters, more than the receipt\'s :columns.',
+        'mixed_size'        => 'In ":subject", only part of the line is double size. On the thermal printer, double size is for the whole line.',
+        'image_type'        => 'The image ":subject" is neither PNG nor JPEG. The thermal printer only prints images of these two types.',
+        'qr_empty'          => 'The QR code ":subject" is empty.',
+        'untranslatable'    => '":subject" has no equivalent on the thermal printer.',
+    ],
+
     // Formula fields and columns (CGE-37).
     'formula' => [
         'label'        => 'Formula',

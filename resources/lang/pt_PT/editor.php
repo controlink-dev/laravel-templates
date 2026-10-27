@@ -340,6 +340,20 @@ return [
         'roll_column_width' => 'A coluna «:subject» da tabela de linhas tem uma largura que não é em caracteres. No talão, indique um número de caracteres (por exemplo 12ch) ou deixe vazio.',
     ],
 
+    // A tradução do talão para a impressora térmica (ESC/POS, CGE-97). `:subject` é o campo
+    // (ou o elemento) em causa; `:columns` a largura do talão em caracteres.
+    'escpos' => [
+        'unencodable_field' => 'O campo «:subject» tem o carácter «:char», que a impressora térmica não consegue imprimir. Corrija o valor do campo.',
+        'unencodable'       => 'O texto de «:subject» tem o carácter «:char», que a impressora térmica não consegue imprimir.',
+        'value_too_wide'    => 'O valor «:subject» não cabe numa linha do talão (:width caracteres) e não pode ser partido. Dê-lhe mais colunas ou uma linha só para ele.',
+        'word_too_wide'     => 'A palavra «:subject» tem mais caracteres do que a linha do talão (:width) e não pode ser partida.',
+        'row_too_wide'      => 'As colunas de «:subject» somam :width caracteres, mais do que os :columns do talão.',
+        'mixed_size'        => 'Em «:subject», só uma parte da linha está em letra dupla. Na impressora térmica, a letra dupla é para a linha inteira.',
+        'image_type'        => 'A imagem «:subject» não é PNG nem JPEG. A impressora térmica só imprime imagens destes dois tipos.',
+        'qr_empty'          => 'O código QR «:subject» está vazio.',
+        'untranslatable'    => '«:subject» não tem equivalente na impressora térmica.',
+    ],
+
     // Campos e colunas de fórmula (CGE-37).
     'formula' => [
         'label'        => 'Fórmula',
