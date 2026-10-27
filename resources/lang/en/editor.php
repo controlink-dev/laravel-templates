@@ -62,6 +62,7 @@ return [
         'column_reorder' => 'Drag to reorder',
         'column_hide'   => 'Hide column',
         'column_show'   => 'Show column',
+        'column_break'  => 'Starts a new row',
         // "Add column" of the line table (CGE-85): own fields, linked tables' fields, a calculated column.
         'add_column'          => '+ Add column',
         'column_search'       => 'Search fields…',

@@ -240,6 +240,18 @@
     color: var(--tpl-primary, #4f46e5);
 }
 
+/* «Starts a new row» (CGE-97): sits before the eye/trash, which then needs no push of its
+ * own; pressed, it reads in the primary colour. */
+.tpl-col__break + .tpl-col__toggle {
+    margin-left: 0;
+}
+
+.tpl-col__break[aria-pressed="true"] {
+    color: var(--tpl-primary, #4f46e5);
+    border-color: var(--tpl-primary, #4f46e5);
+    background: var(--tpl-surface-muted, #f8fafc);
+}
+
 /* A hidden column stays in the list so it can be shown again. Its controls are dimmed to
  * read as inactive; the key and the eye keep full strength so the row stays legible and
  * the toggle inviting. */

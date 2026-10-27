@@ -62,6 +62,7 @@ return [
         'column_reorder' => 'Arrastar para reordenar',
         'column_hide'   => 'Ocultar coluna',
         'column_show'   => 'Mostrar coluna',
+        'column_break'  => 'Começa nova linha',
         // "Acrescentar coluna" da tabela de linhas (CGE-85): campos próprios, das tabelas ligadas, coluna calculada.
         'add_column'          => '+ Acrescentar coluna',
         'column_search'       => 'Procurar campos…',
