@@ -98,8 +98,10 @@ export function registerComponents(editor, config) {
     registerTextRow(editor, config);
 
     // A block dropped or moved on a roll: a cell of a «Linha com colunas» in or out of it.
+    // A sorter move fires this too (`action: 'move-component'`). Not while GrapesJS
+    // replays an undo/redo: it restores the recorded state and must not be added to (CGE-65).
     editor.on('component:add', (component) => {
-        if (isRoll(config)) {
+        if (isRoll(config) && !isReplaying(editor)) {
             applyRollMode(editor, config, component);
         }
     });
@@ -148,7 +150,7 @@ function registerPageNumber(editor, config) {
             },
 
             init() {
-                watchRollStyle(this, config);
+                watchRollStyle(this, config, editor);
                 this.on('change:attributes:data-tpl-format', this.renderPreviewText);
                 this.renderPreviewText();
             },
@@ -303,7 +305,7 @@ function registerStaticText(editor, config) {
             },
 
             init() {
-                watchRollStyle(this, config);
+                watchRollStyle(this, config, editor);
                 this.on('change:attributes:data-tpl-wrap', () => sizeForWrap(this, config));
 
                 // Seed the trait from the block's current text so the Field panel shows it,
@@ -586,7 +588,7 @@ function registerDataField(editor, config) {
             },
 
             init() {
-                watchRollStyle(this, config);
+                watchRollStyle(this, config, editor);
                 this.on('change:attributes:data-tpl-wrap', () => sizeForWrap(this, config));
 
                 /*
@@ -1538,7 +1540,7 @@ function syncRollBlocks(editor, config) {
  * they show — an undo of a class change redraws them. A row cell's width stays a whole
  * number of characters within the grid.
  */
-function watchRollStyle(component, config) {
+function watchRollStyle(component, config, editor) {
     syncRollTraits(component, isRoll(config), config.strings, rollColumns(config.geometry));
 
     component.on('component:update:classes', () => {
@@ -1548,7 +1550,7 @@ function watchRollStyle(component, config) {
     component.on('change:attributes:' + COLS_TRAIT, () => {
         const current = component.getAttributes()[COLS_TRAIT];
 
-        if (current === undefined) {
+        if (current === undefined || isReplaying(editor)) {
             return;
         }
 
