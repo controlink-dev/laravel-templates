@@ -263,7 +263,7 @@
     opacity: 0.4;
 }
 
-.tpl-col--hidden .tpl-col__toggle {
+.tpl-col--hidden .tpl-col__toggle:not(.tpl-col__break) {
     color: var(--tpl-primary, #4f46e5);
     border-color: var(--tpl-primary, #4f46e5);
 }

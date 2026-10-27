@@ -712,7 +712,8 @@ function columnCard(component, column, index, config, redraw, reorder) {
      * «Starts a new row» (CGE-97): the item goes on over a second row from this column on
      * (`line-rows.js`). Off, the key goes away rather than staying `false`, so a table the
      * user tried it on and turned it back off saves as it did before. Not offered on the
-     * first visible column, where a break opens no row.
+     * first visible column, where a break opens no row, unless one is set there (after a
+     * reorder) and needs turning off.
      */
     const isBreak = column.break === true;
     const lineBreak = document.createElement('button');
@@ -732,7 +733,7 @@ function columnCard(component, column, index, config, redraw, reorder) {
 
     const firstVisible = component.columns().findIndex((other) => !other?.hidden);
 
-    head.append(grip, key, ...(index === firstVisible ? [] : [lineBreak]), isRemovable ? remove : toggle);
+    head.append(grip, key, ...(index === firstVisible && !isBreak ? [] : [lineBreak]), isRemovable ? remove : toggle);
 
     const labelField = columnField(config.strings['trait.column_label']);
     const label = document.createElement('input');
