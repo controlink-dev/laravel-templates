@@ -113,14 +113,126 @@ class CarriedTotalsPaginationTest extends TestCase
         }
     }
 
-    /** The test invoice, carrying column `v` of collection `a`. */
-    private function carryType(): TemplateType
+    public function test_middle_pages_carry_the_whole_body_with_blank_fields(): void
+    {
+        $pages = (new PageStructure)->build($this->body([['a', 0, false]]), $this->carryType(), ['a' => $this->rows('a', 120)])['pages'];
+
+        $last = array_pop($pages);
+
+        foreach ($pages as $index => $page) {
+            $this->assertStringContainsString('id="tpl-label">TOTAL</div>', $page['template'], "page {$index}");
+            $this->assertStringContainsString('id="tpl-totals"></div>', $page['template'], "page {$index}");
+        }
+
+        $this->assertStringContainsString('{{ totais.total }}', $last['template']);
+    }
+
+    public function test_page_fields_are_kept_on_middle_pages(): void
+    {
+        $body = str_replace(
+            '<div class="block" data-tpl-type="static-text"',
+            $this->field('tpl-carry', 'page.carried_out').$this->field('tpl-formula', 'formula.abc123').'<div class="block" data-tpl-type="static-text"',
+            $this->body([['a', 0, false]]),
+        );
+
+        $pages = (new PageStructure)->build($body, $this->carryType(), ['a' => $this->rows('a', 120)], '', ['formula.abc123'])['pages'];
+
+        $this->assertStringContainsString('{{ page.carried_out }}', $pages[0]['template']);
+        $this->assertStringContainsString('{{ formula.abc123 }}', $pages[0]['template']);
+        $this->assertStringContainsString('id="tpl-totals"></div>', $pages[0]['template']);
+    }
+
+    public function test_every_page_legal_field_in_the_body_is_kept(): void
+    {
+        $body = str_replace(
+            '<div class="block" data-tpl-type="static-text"',
+            $this->field('tpl-number', 'documento.numero').'<div class="block" data-tpl-type="static-text"',
+            $this->body([['a', 0, false]]),
+        );
+
+        $pages = (new PageStructure)->build($body, $this->carryType(), ['a' => $this->rows('a', 120)])['pages'];
+
+        $this->assertStringContainsString('{{ documento.numero }}', $pages[0]['template']);
+    }
+
+    public function test_fixed_table_shows_only_its_header_on_middle_pages(): void
+    {
+        $type  = $this->carryType();
+        $top   = (int) ceil($this->reserveTop($type));
+        $pages = (new PageStructure)->build($this->body([['a', 0, false], ['b', $top, true]]), $type, ['a' => $this->rows('a', 120), 'b' => $this->rows('b', 3)])['pages'];
+
+        $last = array_pop($pages);
+
+        foreach ($pages as $index => $page) {
+            $this->assertStringContainsString('data-tpl-collection="b"', $page['template'], "page {$index}");
+            $this->assertSame([], $page['dataset']['b'], "page {$index}");
+        }
+
+        $this->assertCount(3, $last['dataset']['b']);
+    }
+
+    public function test_carried_row_is_inserted_before_the_rows(): void
+    {
+        $body = str_replace(
+            "<td>{{ linha.v|money(3, 'none') }}</td>",
+            "<td>{{ linha.v|money(3, 'none') }}</td><td style=\"text-align:right\">{{ linha.w }}</td>",
+            $this->body([['a', 0, false]]),
+        );
+
+        $pages = (new PageStructure)->build($body, $this->carryType(), ['a' => $this->rows('a', 120)])['pages'];
+
+        $row = '<tr class="lines__carried"><td colspan="1">'.e(__('templates::editor.render.carried_in')).'</td>'
+            ."<td>{{ page.carried_in|money(3, 'none') }}</td><td style=\"text-align:right\"></td></tr>"
+            .'{% for linha in a %}';
+
+        $this->assertStringNotContainsString('lines__carried', $pages[0]['template']);
+
+        foreach (array_slice($pages, 1) as $index => $page) {
+            $this->assertStringContainsString($row, $page['template'], 'page '.($index + 1));
+        }
+
+        $this->assertSame('Total transportado', __('templates::editor.render.carried_in'));
+    }
+
+    public function test_no_carried_row_when_the_carry_column_is_not_in_the_table(): void
+    {
+        $pages = (new PageStructure)->build($this->body([['a', 0, false]]), $this->carryType('zz'), ['a' => $this->rows('a', 120)])['pages'];
+
+        foreach ($pages as $page) {
+            $this->assertStringNotContainsString('lines__carried', $page['template']);
+        }
+
+        $this->assertSame(0.0, $pages[1]['dataset'][PageStructure::CARRIED_IN]);
+    }
+
+    /** The test invoice, carrying column `$column` (default `v`) of collection `a`. */
+    private function carryType(string $column = 'v'): TemplateType
     {
         $config = (require __DIR__.'/../Fixtures/types/invoice.php')['invoice'];
 
-        $config['pdf']['carry'] = ['collection' => 'a', 'column' => 'v'];
+        $config['pdf']['carry'] = ['collection' => 'a', 'column' => $column];
 
         return TemplateType::fromConfig('invoice', $config);
+    }
+
+    /** Where the band the flow never fills begins, measured from the top of the body. */
+    private function reserveTop(TemplateType $type): float
+    {
+        $margins = $type->pdf['margins'] ?? [];
+        $zones   = $type->initialLayout['zones'] ?? [];
+
+        return 297.0
+            - (float) ($margins['top'] ?? 15)
+            - (float) ($margins['bottom'] ?? 15)
+            - (float) ($zones['header_height'] ?? 35)
+            - (float) ($zones['footer_height'] ?? 20)
+            - (float) ($type->pdf['body_reserve_mm'] ?? 0);
+    }
+
+    /** A data field block, to add to the body. */
+    private function field(string $id, string $binding): string
+    {
+        return '<div class="block" data-tpl-type="data-field" data-tpl-binding="'.$binding.'" id="'.$id.'">{{ '.$binding.' }}</div>';
     }
 
     /**

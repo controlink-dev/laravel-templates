@@ -508,6 +508,7 @@ return [
         'too_slow'            => 'Rendering took :seconds s; the limit is :limit s.',
         'too_many_pages'      => 'The document came out with :pages pages; the limit for this document type is :limit.',
         'value_missing'       => 'The value of ":field" does not appear in the generated PDF.',
+        'carried_in'          => 'Carried forward',
         'missing_on_page'     => 'Page :page: ":field" has to appear on every page and is missing from this one.',
         'outside_printable'   => 'Page :page: ":field" fell outside the printable area.',
         'page_size_mismatch'  => 'The generated PDF is :actual but the template asks for :expected.',
