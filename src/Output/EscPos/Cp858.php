@@ -38,7 +38,7 @@ final class Cp858
     private const TRANSLITERATION = [
         // Quotes, dashes, spaces and the like.
         '‘' => "'", '’' => "'", '‚' => "'", '‛' => "'", '′' => "'", '‹' => '<', '›' => '>',
-        '“' => '"', '”' => '"', '„' => '"', '‟' => '"', '″' => '"',
+        '“' => '"', '”' => '"', '„' => '"', '‟' => '"', '″' => '"', '…' => '.',
         '‐' => '-', "\u{2011}" => '-', '‒' => '-', '–' => '-', '—' => '-', '―' => '-', '−' => '-',
         '•' => '·', '∙' => '·', '‧' => '·', '⁄' => '/', '∕' => '/',
         "\u{2002}" => ' ', "\u{2003}" => ' ', "\u{2007}" => "\u{00A0}", "\u{2009}" => ' ',
@@ -70,8 +70,24 @@ final class Cp858
     private static ?array $bytes = null;
 
     /**
+     * The text in Unicode composed form (NFC): a letter typed as letter + combining mark
+     * ("c" + U+0327) becomes the one character the table knows (ç), as it is one glyph in
+     * the PDF. Unchanged where PHP has no intl extension.
+     */
+    public static function compose(string $utf8): string
+    {
+        if ($utf8 === '' || ! class_exists(\Normalizer::class)) {
+            return $utf8;
+        }
+
+        $composed = \Normalizer::normalize($utf8, \Normalizer::FORM_C);
+
+        return is_string($composed) ? $composed : $utf8;
+    }
+
+    /**
      * The text as the printer will print it, still in UTF-8: every character in CP858,
-     * transliterated one for one where it had to be. Same length as the input.
+     * transliterated one for one where it had to be. Same length as the composed input.
      *
      * @throws UnencodableText
      */
@@ -79,7 +95,7 @@ final class Cp858
     {
         $out = '';
 
-        foreach (mb_str_split($utf8, 1, 'UTF-8') as $char) {
+        foreach (mb_str_split(self::compose($utf8), 1, 'UTF-8') as $char) {
             $out .= self::printable($char, $field);
         }
 
@@ -94,7 +110,7 @@ final class Cp858
         $bytes = self::bytes();
         $out   = '';
 
-        foreach (mb_str_split($utf8, 1, 'UTF-8') as $char) {
+        foreach (mb_str_split(self::compose($utf8), 1, 'UTF-8') as $char) {
             $char = self::printable($char, $field);
             $out .= strlen($char) === 1 ? $char : chr($bytes[$char]);
         }

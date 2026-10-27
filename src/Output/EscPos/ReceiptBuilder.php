@@ -585,7 +585,7 @@ final class ReceiptBuilder
         if ($node instanceof DOMText) {
             $glyphs = [];
 
-            foreach (mb_str_split($node->nodeValue ?? '', 1, 'UTF-8') as $char) {
+            foreach (mb_str_split(Cp858::compose($node->nodeValue ?? ''), 1, 'UTF-8') as $char) {
                 $glyphs[] = ['c' => $this->printable($char, $field, $node), 'b' => $context['bold'], 'l' => $lock];
             }
 

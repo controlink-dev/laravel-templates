@@ -168,7 +168,7 @@ final class EscPosValidator
     {
         $out = '';
 
-        foreach (mb_str_split($text, 1, 'UTF-8') as $char) {
+        foreach (mb_str_split(Cp858::compose($text), 1, 'UTF-8') as $char) {
             try {
                 $out .= Cp858::normalize($char);
             } catch (UnencodableText) {

@@ -455,6 +455,18 @@ class ReceiptBuilderTest extends TestCase
         $this->assertSame('"Wang" ? Lukasz', rtrim($this->lines($receipt)[0]));
     }
 
+    public function test_a_decomposed_letter_prints_as_one_character(): void
+    {
+        // "c" + combining cedilla is one ç on the receipt, as it is one glyph in the PDF:
+        // no E-03, and the line keeps its 40 characters.
+        $receipt = $this->build(
+            "<div class=\"flow\" data-tpl-type=\"data-field\" data-tpl-binding=\"customer.name\" id=\"tpl-name\">Grac\u{0327}a</div>"
+        );
+
+        $this->assertSame([], $receipt->problems);
+        $this->assertSame('Graça'.str_repeat(' ', 35), $this->lines($receipt)[0]);
+    }
+
     public function test_the_composers_own_output_translates(): void
     {
         // The receipt the vocabulary fixture describes, through the real composer (Twig,

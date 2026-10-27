@@ -65,4 +65,21 @@ class Cp858Test extends TestCase
 
         Cp858::encode("abc\x1B@");
     }
+
+    public function test_decomposed_letters_are_composed_before_they_are_mapped(): void
+    {
+        // "c" + U+0327 (combining cedilla) and "a" + U+0303 (combining tilde), as some
+        // keyboards and imports write them: printed as ç and ã, not E-03.
+        $this->assertSame('ção', Cp858::normalize("c\u{0327}a\u{0303}o"));
+        $this->assertSame("\x87\xC6o", Cp858::encode("c\u{0327}a\u{0303}o"));
+        $this->assertSame('ção', Cp858::compose("c\u{0327}a\u{0303}o"));
+        $this->assertSame('ção', Cp858::compose('ção'));
+    }
+
+    public function test_the_ellipsis_is_one_character_for_one(): void
+    {
+        // One glyph in the PDF's monospace grid, one character on the receipt.
+        $this->assertSame('Ver.', Cp858::normalize('Ver…'));
+        $this->assertSame(mb_strlen('Ver…'), mb_strlen(Cp858::normalize('Ver…')));
+    }
 }
