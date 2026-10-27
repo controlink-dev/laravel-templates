@@ -13,6 +13,7 @@ import '../../css/editor.css';
 import grapesjs from 'grapesjs';
 import grapesjsMjml from 'grapesjs-mjml';
 import { applyRollMode, registerComponents } from './components.js';
+import { applyFormat } from './format-switch.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, pdfSelectionOf, plainProjectData, refreshPreview, selectionOf, truncationNotice } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
@@ -1597,18 +1598,20 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
 
                     if (!confirmed) {
                         // Declined: keep the layout, change only the geometry.
-                        config.geometry = geometryOf(chosen);
-                        applyPaper(config.geometry);
+                        applyFormat(config, geometryOf(chosen), { loadLayout, applyPaper });
 
                         return;
                     }
                 }
-
-                loadLayout(layout);
             }
 
-            config.geometry = geometryOf(chosen);
-            applyPaper(config.geometry);
+            // The geometry before the layout (CGE-97): the layout's blocks are built in the
+            // medium they are loaded into, so a sheet loaded over a roll keeps its rules.
+            applyFormat(config, geometryOf(chosen), {
+                layout: hasLayout && config.editable && !config.locked ? layout : null,
+                loadLayout,
+                applyPaper,
+            });
             // The rules depend on the geometry (V-16 is skipped for a roll): re-check.
             layoutState.refresh();
         });

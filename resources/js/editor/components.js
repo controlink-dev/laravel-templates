@@ -15,7 +15,7 @@ import { pageNumberText } from './page-number.js';
 import { looksFilled, ruleStyle, ruleTagName } from './rule-shape.js';
 import { rollColumns } from './roll-grid.js';
 import {
-    COLS_TRAIT, ROLL_TRAIT_NAMES, ROW_CELL_TYPES, cellClasses, normalizeCols, setRollState, stateOf,
+    COLS_TRAIT, ROLL_STYLED_TYPES, ROLL_TRAIT_NAMES, ROW_CELL_TYPES, cellClasses, normalizeCols, setRollState, stateOf,
     syncRollTraits, textRowBlockHtml, textRowHtml,
 } from './roll-style.js';
 import { measuredBox } from './position-panel.js';
@@ -1564,8 +1564,9 @@ function watchRollStyle(component, config, editor) {
 
 /**
  * Put the editor in step with the medium (CGE-97), for `root` and everything under it (the
- * whole page by default): on a roll a cell of a «Linha com colunas» is a flow `esc-cell`
- * with a width, and one moved out of a row is no longer a cell; every block has the traits
+ * whole page by default): on a roll a text block is a flow block, never an absolute
+ * `block` (it wraps on words, as the printer breaks it); a cell of a «Linha com colunas»
+ * is also an `esc-cell` with a width, and one moved out of a row is no longer a cell; every block has the traits
  * of its medium; a rule is an `hr` on a roll; the row block is offered on a roll only.
  *
  * Called when the format changes medium and for each block added on a roll.
@@ -1583,12 +1584,14 @@ export function applyRollMode(editor, config, root = editor.getWrapper?.()) {
     [root, ...(root.find?.('*') ?? [])].forEach((component) => {
         const type = component.getAttributes?.()['data-tpl-type'];
 
-        if (roll && ROW_CELL_TYPES.includes(type)) {
-            const inRow = component.parent?.()?.getAttributes?.()['data-tpl-type'] === 'text-row';
+        if (roll && ROLL_STYLED_TYPES.includes(type)) {
+            const inRow = ROW_CELL_TYPES.includes(type)
+                && component.parent?.()?.getAttributes?.()['data-tpl-type'] === 'text-row';
             const classes = component.getClasses();
             const next = cellClasses(classes, inRow);
 
-            if (next.join(' ') !== classes.join(' ')) {
+            // The same set in another order is the same block: written only when it differs.
+            if ([...next].sort().join(' ') !== [...classes].sort().join(' ')) {
                 component.setClass(next);
             }
 

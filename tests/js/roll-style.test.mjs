@@ -86,10 +86,16 @@ assert.equal(
 );
 assert.deepEqual(rollProblems(`<div class="page">${dropped}</div>`, '', 32), []);
 
-// A text moved into a row becomes a flow cell; moved out, it is no longer a cell.
+// On a roll a text is a flow block (it wraps on words, as ESC/POS prints it), never an
+// absolutely placed `block` (nowrap, which made a long text E-04): in a row a flow cell,
+// out of one a flow block that is no longer a cell.
 assert.deepEqual(cellClasses(['block', 'block--text', 'esc-bold'], true), ['flow', 'esc-cell', 'esc-bold']);
 assert.deepEqual(cellClasses(['flow', 'esc-cell', 'esc-right'], false), ['flow', 'esc-right']);
 assert.deepEqual(cellClasses(['flow', 'esc-cell'], true), ['flow', 'esc-cell']);
+assert.deepEqual(cellClasses(['block', 'block--text'], false), ['flow']);
+assert.deepEqual(cellClasses(['block', 'block--field', 'esc-center'], false), ['flow', 'esc-center']);
+assert.deepEqual(cellClasses(['block', 'block--page-number'], false), ['flow']);
+assert.deepEqual(cellClasses(['flow', 'esc-bold'], false), ['flow', 'esc-bold']);
 
 // A cell's width: a whole number of characters from 0 to the grid's.
 assert.equal(normalizeCols('10', 40), '10');

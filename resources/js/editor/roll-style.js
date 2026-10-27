@@ -86,20 +86,16 @@ export function withRollState(classes, patch) {
 }
 
 /**
- * A cell's classes inside a «Linha com colunas» (`inRow`) or out of one. In a row it is a
- * flow cell (`flow esc-cell`, not an absolutely placed `block`); out of one it loses
- * `esc-cell`. Nothing else changes.
+ * A text block's classes on a roll, inside a «Linha com colunas» (`inRow`) or out of one.
+ * Always a flow block, never an absolutely placed `block`: print.css keeps a `.block` on
+ * one line, so a long text could not wrap and was E-04, where ESC/POS breaks it on words.
+ * In a row it is also a cell (`esc-cell`); out of one it is not. The `esc-*` styling stays.
  */
 export function cellClasses(classes, inRow) {
-    const current = [...(classes ?? [])];
+    const kept = [...(classes ?? [])]
+        .filter((name) => name !== 'block' && !name.startsWith('block--') && name !== 'flow' && name !== 'esc-cell');
 
-    if (!inRow) {
-        return current.filter((name) => name !== 'esc-cell');
-    }
-
-    const kept = current.filter((name) => name !== 'block' && !name.startsWith('block--') && name !== 'flow' && name !== 'esc-cell');
-
-    return ['flow', 'esc-cell', ...kept];
+    return inRow ? ['flow', 'esc-cell', ...kept] : ['flow', ...kept];
 }
 
 /** A cell's width in characters: a whole number from 0 (the rest of the line) to the grid's. */
