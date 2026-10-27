@@ -36,6 +36,13 @@ class EscPosValidatorTest extends TestCase
         $this->assertSame(['E-01'], $this->codes($this->receipt(['Cliente: Ana', 'Maria Sá']), 'Ana Maria Sá'));
     }
 
+    public function test_a_value_with_a_line_break_or_tab_printed_on_one_line_is_found(): void
+    {
+        // The builder collapses \n and \t to one space: «Rua X\nLisboa» prints as «Rua X Lisboa».
+        $this->assertSame([], $this->codes($this->receipt(['Rua X Lisboa']), "Rua X\nLisboa"));
+        $this->assertSame([], $this->codes($this->receipt(['Rua X Lisboa']), "Rua X\t\r\nLisboa"));
+    }
+
     public function test_a_transliterated_value_is_found_as_the_receipt_prints_it(): void
     {
         // «Ł» is not in CP858: the builder lays out «L», and E-01 looks for that.

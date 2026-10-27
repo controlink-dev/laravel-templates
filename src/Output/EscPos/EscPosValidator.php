@@ -101,7 +101,9 @@ final class EscPosValidator
     private function onALine(array $lines, array $candidates): bool
     {
         foreach ($candidates as $candidate) {
-            $needle = self::squash(self::printed($candidate));
+            // White space first, as the builder collapses it: a tab or line break in the
+            // value is a space on the receipt, not a `?` (it is not E-03 there either).
+            $needle = self::squash(self::printed(self::squash($candidate)));
 
             if ($needle === '') {
                 continue;
