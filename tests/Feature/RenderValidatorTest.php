@@ -138,7 +138,8 @@ class RenderValidatorTest extends TestCase
      * R-02 on a value the browser broke after a hyphen (CGE-97): a roll printing the issuer
      * address as `… Esquerdo, 4200-` / `072 Porto`. `pdftotext -bbox` gives `4200-` and
      * `072` as two words on two lines; the value is found whole, and boxed for R-04. A
-     * hyphen followed by a real space on one line (`9999- 888`) is not joined.
+     * hyphen followed by a real space on one line (`9999- 888`) is not joined, nor a token
+     * split at its hyphen, nor a hyphen ending a block before another further down.
      */
     public function test_r02_finds_a_value_broken_after_a_hyphen_at_a_line_end(): void
     {
@@ -155,16 +156,37 @@ class RenderValidatorTest extends TestCase
             ],
         ]);
         $pdf      = (string) file_get_contents(__DIR__.'/../Fixtures/pdf/r02-hyphen-break.pdf');
-        $validate = fn (string $codigo): array => app(RenderValidator::class)->validate($pdf, $type, [
-            'emitente.morada' => 'Rua Doutor António Bernardino de Almeida, n.º 1234, 5.º Esquerdo, 4200-072 Porto',
-            'codigo'          => $codigo,
-        ], 1.0, []);
+        $validate = fn (string $codigo, ?string $extra = null): array => app(RenderValidator::class)->validate(
+            $pdf,
+            $extra === null ? $type : TemplateType::fromConfig('invoice', [
+                'output'   => 'pdf',
+                'nodes'    => ['documento' => ['model' => null]],
+                'bindings' => [...$type->bindings, ['key' => 'extra', 'label' => 'Extra', 'type' => 'text', 'mandatory' => true, 'legal' => true, 'scope' => 'any_page']],
+                'pdf'      => $type->pdf,
+            ]),
+            [
+                'emitente.morada' => 'Rua Doutor António Bernardino de Almeida, n.º 1234, 5.º Esquerdo, 4200-072 Porto',
+                'codigo'          => $codigo,
+                'extra'           => $extra,
+            ],
+            1.0,
+            [],
+        );
 
         $this->assertSame([], $validate('9999- 888'));
 
         $problems = $validate('9999-888');
         $this->assertSame(['R-02'], $this->codes($problems));
         $this->assertStringContainsString('Código', $problems[0]['message']);
+
+        // A token (no space: an ATCUD, a NIF) the PDF split at its hyphen (`ABCD-` /
+        // `12345678`) is not whole: the receipt prints it whole (`lockKind`), so the PDF
+        // differs and R-02 refuses it, as before CGE-97.
+        $this->assertSame(['R-02'], $this->codes($validate('9999- 888', 'ABCD-12345678')));
+
+        // A hyphen ending one block is not joined to an unrelated block further down
+        // (`Bloco Fim-`, then `seguinte texto` 15 mm below): only the very next line joins.
+        $this->assertSame(['R-02'], $this->codes($validate('9999- 888', 'Bloco Fim-seguinte texto')));
     }
 
     /**

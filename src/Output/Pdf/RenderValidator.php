@@ -463,6 +463,10 @@ class RenderValidator
      * two halves as two words on two lines, which the space reading turns into «4200- 072»
      * and R-02 then misses. Only a hyphen at the end of a line joins: within a line the
      * space between words is real.
+     *
+     * Only for a value with a space in it, a text that may wrap (`ReceiptBuilder::lockKind`
+     * `words`). A token (no space: an ATCUD, a NIF) prints whole on the receipt, so a PDF
+     * that split it at its hyphen differs from the receipt and stays an R-02.
      */
     private function pageContains(RenderedPdf $rendered, int $page, string $expected): bool
     {
@@ -470,6 +474,10 @@ class RenderValidator
 
         if (str_contains($this->normalise($rendered->textOn($page)), $target)) {
             return true;
+        }
+
+        if (! self::mayWrap($target)) {
+            return false;
         }
 
         $words = $rendered->wordsOn($page);
@@ -482,17 +490,27 @@ class RenderValidator
         return str_contains($this->normalise($text), $target);
     }
 
+    /** A value with a space in it: a text that wraps, not a token that stays whole. */
+    private static function mayWrap(string $normalised): bool
+    {
+        return str_contains($normalised, ' ');
+    }
+
     /**
      * What goes between two consecutive words of the extracted text: a space, or — with
-     * `$hyphens`, when the first ends a line on a hyphen and the second starts the next
-     * line — nothing, the line broken after the hyphen.
+     * `$hyphens`, when the first ends a line on a hyphen and the second starts the line
+     * right below it — nothing, the line broken after the hyphen.
      *
      * @param  array{text: string, top: float, bottom: float}  $before
      * @param  array{text: string, top: float, bottom: float}  $after
      */
     private function joint(array $before, array $after, bool $hyphens): string
     {
-        $nextLine = $after['top'] > $before['top'] + ($before['bottom'] - $before['top']) / 2;
+        // The very next line: below this one, and starting within a line's height of its
+        // bottom. A block further down is another text, never the rest of this word.
+        $height   = $before['bottom'] - $before['top'];
+        $nextLine = $after['top'] > $before['top'] + $height / 2
+            && $after['top'] <= $before['bottom'] + $height;
 
         return $hyphens && $nextLine && str_ends_with($before['text'], '-') ? '' : ' ';
     }
@@ -509,8 +527,10 @@ class RenderValidator
      */
     private function locate(RenderedPdf $rendered, int $page, string $expected): ?array
     {
-        return $this->locateRun($rendered->wordsOn($page), $this->normalise($expected), false)
-            ?? $this->locateRun($rendered->wordsOn($page), $this->normalise($expected), true);
+        $target = $this->normalise($expected);
+
+        return $this->locateRun($rendered->wordsOn($page), $target, false)
+            ?? (self::mayWrap($target) ? $this->locateRun($rendered->wordsOn($page), $target, true) : null);
     }
 
     /**
