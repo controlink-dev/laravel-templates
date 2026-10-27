@@ -37,6 +37,18 @@ class PageStructure
     /** `data-tpl-anchor` of a line table drawn at its own place on the last page (CGE-67). */
     public const ANCHOR_LAST_PAGE = 'last-page';
 
+    /** What the pages before this one carried of the type's `pdf.carry` column (CGE-79). */
+    public const CARRIED_IN = 'page.carried_in';
+
+    /** What this page carries forward: everything up to the end of it (CGE-79). */
+    public const CARRIED_OUT = 'page.carried_out';
+
+    /** Whether this is the document's last page (CGE-79). */
+    public const IS_LAST = 'page.is_last';
+
+    /** The prefix of every per-page value a field or a formula may read (CGE-79). */
+    public const PAGE_PREFIX = 'page.';
+
     /**
      * The document, as one page template per sheet plus the dataset each needs.
      *
@@ -74,10 +86,14 @@ class PageStructure
 
         [$flowing, $fixed] = $this->splitFixed($tables, $type, $dataset, $heights);
 
+        // A type that carries a total across its pages (CGE-79) always takes the stacked
+        // flow: it is the one that knows, per page, where the carried row goes.
+        $carry = $this->carry($type);
+
         // One table (or none), nothing wrapping, paginates exactly as it always has: a
         // single DOM round-trip is never taken, so the emitted strings are byte-for-byte
         // what they were. A wrapping table takes the stacked flow, which sums heights.
-        if ($heights === [] && count($flowing) <= 1) {
+        if ($heights === [] && count($flowing) <= 1 && $carry === null) {
             return $this->buildSingle($zones, $flowing[0] ?? null, $type, $dataset);
         }
 
@@ -130,7 +146,8 @@ class PageStructure
      */
     private function buildStacked(array $zones, array $tables, TemplateType $type, array $dataset, array $fixed = [], array $heights = [], array $wrapping = []): array
     {
-        $placements = $this->flow($tables, $type, $dataset, $heights);
+        $carry      = $this->carry($type);
+        $placements = $this->flow($tables, $type, $dataset, $heights, $carry);
         $total      = count($placements);
 
         // Every bound collection the body carries: a page that shows none of a table's
@@ -140,7 +157,8 @@ class PageStructure
             fn (string $collection): bool => $collection !== '',
         ));
 
-        $pages = [];
+        $pages   = [];
+        $carried = 0.0;
 
         foreach ($placements as $index => $page) {
             $isLast = $index === $total - 1;
@@ -156,9 +174,21 @@ class PageStructure
                 $chunkMap[$collection] = $placed[$collection] ?? [];
             }
 
+            $pageDataset = $this->datasetFor($dataset, $chunkMap, $index + 1, $total);
+
+            if ($carry !== null) {
+                $here = $this->carriedSum($placed[$carry['collection']] ?? [], $carry['column']);
+
+                $pageDataset[self::CARRIED_IN]  = $carried;
+                $pageDataset[self::CARRIED_OUT] = $carried + $here;
+                $pageDataset[self::IS_LAST]     = $isLast;
+
+                $carried += $here;
+            }
+
             $pages[] = [
                 'template' => $this->wrapPage($zones, $this->stackedBody($zones['body'], $page, $isLast, $fixed)),
-                'dataset'  => $this->datasetFor($dataset, $chunkMap, $index + 1, $total),
+                'dataset'  => $pageDataset,
             ];
         }
 
@@ -245,7 +275,7 @@ class PageStructure
      * @param  array<string, mixed>  $dataset
      * @return list<list<array{collection: string, chunk: array<int, array<string, mixed>>, top: float}>>
      */
-    private function flow(array $tables, TemplateType $type, array $dataset, array $heights = []): array
+    private function flow(array $tables, TemplateType $type, array $dataset, array $heights = [], ?array $carry = null): array
     {
         // The flow is over bound tables only; an unbound one carries no collection to
         // paginate (spec 3.1, ruling T2-F) and stays in the DOM untouched.
@@ -291,6 +321,11 @@ class PageStructure
             while ($offset < $n) {
                 $atPageStart = $current === [];
 
+                // The carried row (CGE-79): a continuation of the carrying table opens with
+                // it, and it takes a row's worth of the page like the table's own header.
+                $carried = $carry !== null && $table['collection'] === $carry['collection'] && $offset > 0;
+                $cursor += $carried ? $rowHeight : 0.0;
+
                 // The first table on a page uses the clamped value, so a lone table is
                 // exactly today's chunking; a later table uses the raw fit, which may be
                 // zero or negative — then the page closes and the table continues fresh.
@@ -315,7 +350,13 @@ class PageStructure
                 $take  = min($capacity, $n - $offset);
                 $chunk = array_slice($rows, $offset, $take);
 
-                $current[] = ['collection' => $table['collection'], 'chunk' => $chunk, 'top' => $cursor];
+                // The table itself starts above its carried row.
+                $current[] = [
+                    'collection' => $table['collection'],
+                    'chunk'      => $chunk,
+                    'top'        => $carried ? $cursor - $rowHeight : $cursor,
+                    'carried'    => $carried,
+                ];
 
                 $cursor += $tall !== null
                     ? $rowHeight + array_sum(array_slice($tall, $offset, $take))
@@ -334,6 +375,47 @@ class PageStructure
         }
 
         return $pages;
+    }
+
+    /**
+     * The type's carried column (CGE-79): `pdf.carry` as `{collection, column}`, or null
+     * when the type carries nothing — and always on a roll, which has no pages.
+     *
+     * @return array{collection: string, column: string}|null
+     */
+    private function carry(TemplateType $type): ?array
+    {
+        $carry = $type->pdf['carry'] ?? null;
+
+        if (! is_array($carry) || PageGeometry::fromType($type->pdf)->medium === 'roll') {
+            return null;
+        }
+
+        $collection = (string) ($carry['collection'] ?? '');
+        $column     = (string) ($carry['column'] ?? '');
+
+        return $collection !== '' && $column !== '' ? ['collection' => $collection, 'column' => $column] : null;
+    }
+
+    /**
+     * The carried column summed over some rows. A cell that is not a number counts as
+     * zero: a blank amount must not stop a document from printing.
+     *
+     * @param  array<int, mixed>  $rows
+     */
+    private function carriedSum(array $rows, string $column): float
+    {
+        $sum = 0.0;
+
+        foreach ($rows as $row) {
+            $cell = is_array($row) ? ($row[$column] ?? null) : null;
+
+            if (is_int($cell) || is_float($cell) || (is_string($cell) && is_numeric(trim($cell)))) {
+                $sum += (float) $cell;
+            }
+        }
+
+        return $sum;
     }
 
     /**
