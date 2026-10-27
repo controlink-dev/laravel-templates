@@ -454,13 +454,47 @@ class RenderValidator
         }
     }
 
-    /** Whether a page's text carries the value, whitespace normalised. */
+    /**
+     * Whether a page's text carries the value, whitespace normalised: its words joined by
+     * a space, or else with a line that ends in a hyphen joined to the next by nothing.
+     *
+     * The second reading is a line the browser broke after a hyphen (CGE-97: on a roll,
+     * `… Esquerdo, 4200-` / `072 Porto`). `pdftotext -bbox` keeps the hyphen and gives the
+     * two halves as two words on two lines, which the space reading turns into «4200- 072»
+     * and R-02 then misses. Only a hyphen at the end of a line joins: within a line the
+     * space between words is real.
+     */
     private function pageContains(RenderedPdf $rendered, int $page, string $expected): bool
     {
-        return str_contains(
-            $this->normalise($rendered->textOn($page)),
-            $this->normalise($expected),
-        );
+        $target = $this->normalise($expected);
+
+        if (str_contains($this->normalise($rendered->textOn($page)), $target)) {
+            return true;
+        }
+
+        $words = $rendered->wordsOn($page);
+        $text  = '';
+
+        foreach ($words as $index => $word) {
+            $text .= ($index === 0 ? '' : $this->joint($words[$index - 1], $word, true)).$word['text'];
+        }
+
+        return str_contains($this->normalise($text), $target);
+    }
+
+    /**
+     * What goes between two consecutive words of the extracted text: a space, or — with
+     * `$hyphens`, when the first ends a line on a hyphen and the second starts the next
+     * line — nothing, the line broken after the hyphen.
+     *
+     * @param  array{text: string, top: float, bottom: float}  $before
+     * @param  array{text: string, top: float, bottom: float}  $after
+     */
+    private function joint(array $before, array $after, bool $hyphens): string
+    {
+        $nextLine = $after['top'] > $before['top'] + ($before['bottom'] - $before['top']) / 2;
+
+        return $hyphens && $nextLine && str_ends_with($before['text'], '-') ? '' : ' ';
     }
 
     /**
@@ -468,21 +502,30 @@ class RenderValidator
      *
      * The extractor breaks a value into words, so the run of consecutive words whose
      * text matches is what has to be found — and its union box is the box of the value
-     * as printed.
+     * as printed. Read the two ways `pageContains` reads the page: a value it found
+     * across a line broken after a hyphen is located there too, so R-04 still checks it.
      *
      * @return array{left: float, top: float, right: float, bottom: float}|null
      */
     private function locate(RenderedPdf $rendered, int $page, string $expected): ?array
     {
-        $words  = $rendered->wordsOn($page);
-        $target = $this->normalise($expected);
-        $count  = count($words);
+        return $this->locateRun($rendered->wordsOn($page), $this->normalise($expected), false)
+            ?? $this->locateRun($rendered->wordsOn($page), $this->normalise($expected), true);
+    }
+
+    /**
+     * @param  array<int, array{text: string, left: float, top: float, right: float, bottom: float}>  $words
+     * @return array{left: float, top: float, right: float, bottom: float}|null
+     */
+    private function locateRun(array $words, string $target, bool $hyphens): ?array
+    {
+        $count = count($words);
 
         for ($start = 0; $start < $count; $start++) {
             $text = '';
 
             for ($end = $start; $end < $count; $end++) {
-                $text   = trim($text.' '.$words[$end]['text']);
+                $text   = trim($end === $start ? $words[$end]['text'] : $text.$this->joint($words[$end - 1], $words[$end], $hyphens).$words[$end]['text']);
                 $joined = $this->normalise($text);
 
                 if ($joined === $target) {

@@ -135,6 +135,39 @@ class RenderValidatorTest extends TestCase
     }
 
     /**
+     * R-02 on a value the browser broke after a hyphen (CGE-97): a roll printing the issuer
+     * address as `… Esquerdo, 4200-` / `072 Porto`. `pdftotext -bbox` gives `4200-` and
+     * `072` as two words on two lines; the value is found whole, and boxed for R-04. A
+     * hyphen followed by a real space on one line (`9999- 888`) is not joined.
+     */
+    public function test_r02_finds_a_value_broken_after_a_hyphen_at_a_line_end(): void
+    {
+        $type = TemplateType::fromConfig('invoice', [
+            'output'   => 'pdf',
+            'nodes'    => ['documento' => ['model' => null]],
+            'bindings' => [
+                ['key' => 'emitente.morada', 'label' => 'Sede do emitente', 'type' => 'text', 'mandatory' => true, 'legal' => true, 'scope' => 'any_page'],
+                ['key' => 'codigo', 'label' => 'Código', 'type' => 'text', 'mandatory' => true, 'legal' => false],
+            ],
+            'pdf' => [
+                'medium' => 'roll', 'width_mm' => 80, 'fit' => 'measure', 'max_height_mm' => 4000,
+                'margins' => ['top' => 3, 'right' => 3, 'bottom' => 3, 'left' => 3],
+            ],
+        ]);
+        $pdf      = (string) file_get_contents(__DIR__.'/../Fixtures/pdf/r02-hyphen-break.pdf');
+        $validate = fn (string $codigo): array => app(RenderValidator::class)->validate($pdf, $type, [
+            'emitente.morada' => 'Rua Doutor António Bernardino de Almeida, n.º 1234, 5.º Esquerdo, 4200-072 Porto',
+            'codigo'          => $codigo,
+        ], 1.0, []);
+
+        $this->assertSame([], $validate('9999- 888'));
+
+        $problems = $validate('9999-888');
+        $this->assertSame(['R-02'], $this->codes($problems));
+        $this->assertStringContainsString('Código', $problems[0]['message']);
+    }
+
+    /**
      * R-03: present on one page, absent from another — and the failure has to name the
      * page, because "the ATCUD is missing" without one is not actionable.
      */
