@@ -755,20 +755,13 @@ function columnCard(component, column, index, config, redraw, reorder) {
     width.step = '1';
     width.inputMode = 'decimal';
     width.className = 'gjs-field';
-    // A width saved with its unit (a roll's `12ch`, CGE-97) shows its number here and the
-    // unit beside it, and keeps the unit when changed; a bare number is millimetres.
-    const stored = String(column.width ?? '').trim().toLowerCase().match(/^(\d*\.?\d+)([a-z%]+)$/);
-    const storedUnit = stored ? stored[2] : '';
-    width.value = stored ? stored[1] : (column.width ?? '');
+    const widthOf = columnWidthField(column.width, config.geometry?.medium === 'roll');
+    width.value = widthOf.value;
     width.placeholder = 'auto';
-    width.addEventListener('change', () => {
-        const typed = width.value.trim();
-
-        update({ width: typed !== '' && storedUnit ? typed + storedUnit : typed });
-    });
+    width.addEventListener('change', () => update({ width: widthOf.write(width.value) }));
     const unit = document.createElement('span');
     unit.className = 'tpl-col__unit';
-    unit.textContent = storedUnit || 'mm';
+    unit.textContent = widthOf.unit;
     widthWrap.append(width, unit);
     widthField.append(widthWrap);
 
@@ -1682,6 +1675,34 @@ function thStyle(column) {
     const width = normalizeWidth(column.width);
 
     return `text-align:${align}` + (width ? `;width:${width}` : '');
+}
+
+/**
+ * The column card's width field (CGE-97): the number shown, the unit beside it and what a
+ * typed number is saved as. A width saved with its unit (`12ch`) shows its number and keeps
+ * the unit when changed. Otherwise a roll's unit is the character — a bare number there
+ * would become millimetres, which V-21 forbids on a roll — and a sheet's is the millimetre,
+ * saved as the bare number it always was.
+ *
+ * @param {unknown} stored the column's saved width
+ * @param {boolean} roll
+ * @returns {{value: string, unit: string, write: (typed: string) => string}}
+ */
+export function columnWidthField(stored, roll) {
+    const match = String(stored ?? '').trim().toLowerCase().match(/^(\d*\.?\d+)([a-z%]+)$/);
+    const storedUnit = match ? match[2] : '';
+    const unit = storedUnit || (roll ? 'ch' : 'mm');
+    const suffix = storedUnit || (roll ? 'ch' : '');
+
+    return {
+        value: match ? match[1] : String(stored ?? ''),
+        unit,
+        write: (typed) => {
+            const value = String(typed ?? '').trim();
+
+            return value !== '' && suffix ? value + suffix : value;
+        },
+    };
 }
 
 /**

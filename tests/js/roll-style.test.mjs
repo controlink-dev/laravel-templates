@@ -155,11 +155,25 @@ assert.equal(writes, 0);
 // On a roll a styled block has the four, a cell also its width; on a sheet none.
 const cell = stubComponent('data-field', ['flow', 'esc-cell']);
 
+// A cell gets no «Letra»: the receipt prints a row's cells in the normal letter (a double
+// cell is E-04), so the editor offers only what the printer prints.
 syncRollTraits(cell, true, strings, 40);
-assert.deepEqual(cell.traitNames(), ['tpl-esc-size', 'tpl-esc-bold', 'tpl-esc-align', 'tpl-esc-gap', 'data-tpl-cols']);
+assert.deepEqual(cell.traitNames(), ['tpl-esc-bold', 'tpl-esc-align', 'tpl-esc-gap', 'data-tpl-cols']);
 assert.equal(cell.getTrait('data-tpl-cols').max, 40);
 syncRollTraits(cell, true, strings, 40);
-assert.equal(cell.traitNames().length, 5, 'syncing twice adds nothing');
+assert.equal(cell.traitNames().length, 4, 'syncing twice adds nothing');
+
+// A block that becomes a cell loses its «Letra»; one that leaves the row gets it back, in order.
+const moved = stubComponent('static-text', ['flow']);
+
+syncRollTraits(moved, true, strings, 40);
+assert.deepEqual(moved.traitNames(), ['tpl-esc-size', 'tpl-esc-bold', 'tpl-esc-align', 'tpl-esc-gap']);
+moved.setClass(['flow', 'esc-cell']);
+syncRollTraits(moved, true, strings, 40);
+assert.deepEqual(moved.traitNames(), ['tpl-esc-bold', 'tpl-esc-align', 'tpl-esc-gap', 'data-tpl-cols']);
+moved.setClass(['flow']);
+syncRollTraits(moved, true, strings, 40);
+assert.deepEqual(moved.traitNames(), ['tpl-esc-size', 'tpl-esc-bold', 'tpl-esc-align', 'tpl-esc-gap']);
 syncRollTraits(cell, false, strings, 40);
 assert.deepEqual(cell.traitNames(), []);
 

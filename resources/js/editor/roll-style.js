@@ -250,12 +250,17 @@ export function syncRollTraits(component, roll, strings, columns) {
     const styled = roll && ROLL_STYLED_TYPES.includes(type);
     const cell = roll && ROW_CELL_TYPES.includes(type) && component.getClasses().includes('esc-cell');
 
-    if (styled) {
-        rollStyleTraits(strings)
-            .filter((trait) => !component.getTrait(trait.name))
-            .forEach((trait) => component.addTrait(trait));
-    } else {
-        ROLL_TRAIT_NAMES.filter((name) => component.getTrait(name)).forEach((name) => component.removeTrait(name));
+    // A cell of a «Linha com colunas» has no «Letra»: the receipt prints a row in the normal
+    // letter (a double cell is E-04), so only what the printer prints is offered.
+    const wanted = styled
+        ? rollStyleTraits(strings).filter((trait) => !(cell && trait.name === 'tpl-esc-size'))
+        : [];
+    const present = ROLL_TRAIT_NAMES.filter((name) => component.getTrait(name));
+
+    if (present.join() !== wanted.map((trait) => trait.name).join()) {
+        // Rebuilt rather than patched, so the traits keep their order (the width last).
+        [...present, COLS_TRAIT].filter((name) => component.getTrait(name)).forEach((name) => component.removeTrait(name));
+        wanted.forEach((trait) => component.addTrait(trait));
     }
 
     if (cell && !component.getTrait(COLS_TRAIT)) {
