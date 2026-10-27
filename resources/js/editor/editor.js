@@ -13,7 +13,7 @@ import '../../css/editor.css';
 import grapesjs from 'grapesjs';
 import grapesjsMjml from 'grapesjs-mjml';
 import { applyRollMode, registerComponents } from './components.js';
-import { applyFormat } from './format-switch.js';
+import { applyFormat, replaceLayout } from './format-switch.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, pdfSelectionOf, plainProjectData, refreshPreview, selectionOf, truncationNotice } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
@@ -1560,13 +1560,9 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
      * identity and locking a freshly parsed document gets.
      */
     const loadLayout = (layout) => {
-        editor.setComponents(layout.html);
-
-        // setStyle replaces the whole sheet and re-renders the canvas in one step. The
-        // Css.clear()+addRules path updates the model but leaves the already-mounted canvas
-        // iframe showing the old rules, so a format switch kept the previous positions and
-        // the new layout's fields stacked at 0,0.
-        editor.setStyle(pageVariables(config) + (layout.css || ''));
+        // The order matters (format-switch.js `replaceLayout`): a seeded layout carries
+        // its rules', images' and slots' positions as inline styles.
+        replaceLayout(editor, layout.html, pageVariables(config) + (layout.css || ''));
 
         applyZoneIdentity(editor, config);
         lockLegalFields(editor);

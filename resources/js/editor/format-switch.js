@@ -25,3 +25,30 @@ export function applyFormat(config, geometry, { layout = null, loadLayout, apply
 
     applyPaper(config.geometry);
 }
+
+/**
+ * Replace the canvas with a layout's markup and its rules (a format's starting layout,
+ * loaded by the format tabs and the format select alike).
+ *
+ * A layout never saved from the editor is its seeded HTML: rules, images and code slots
+ * carry their position as INLINE styles, which GrapesJS moves into `#id` rules as the
+ * components are added; the data fields have theirs in the layout's css. So the order
+ * is fixed (CGE-97, Task 7b), and the same as the editor's own first open:
+ *
+ *  1. empty the canvas: a removed component takes its `#id` rule with it, so the blocks
+ *     on screen must go before the new sheet is in, or a block both formats share (the
+ *     same id) would take the new format's rule away;
+ *  2. the sheet: `setStyle` replaces it whole, and re-renders the mounted canvas;
+ *  3. the markup: its inline styles merge into the sheet just installed. Added before
+ *     the sheet, they were wiped by it — every rule of an A4 opened from a talão tab was
+ *     left with no style, 0×0, and a save would have kept it so.
+ *
+ * @param {object} editor the GrapesJS editor
+ * @param {string} html   the layout's markup
+ * @param {string} css    the whole sheet: the page variables and the layout's own rules
+ */
+export function replaceLayout(editor, html, css) {
+    editor.setComponents('');
+    editor.setStyle(css);
+    editor.setComponents(html);
+}
