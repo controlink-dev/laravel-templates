@@ -42,12 +42,15 @@ export function rollGridCss(geometry) {
         // the PDF's PageStructure::rollWrapCss gives it, over the canvas-wide 1.2 of
         // `table.lines td.tpl-wrap` (higher specificity, whatever the order).
         + 'html .page table.lines td.tpl-wrap{line-height:1.25}'
-        // The PDF's own roll layout (PageStructure::ROLL_FLOW, ::ROLL_CELLS, ::ROLL_CENTRED),
-        // byte for byte: a block in flow, as the printer prints everything in document
-        // order; line table cells without padding, so an Nch column holds N characters (it
-        // comes after the canvas-wide `padding: 0 1mm` in the frame, and so wins); and the
-        // code slot and images centred, as the printer centres them (`ESC a 1`).
+        // The PDF's own roll layout (PageStructure::ROLL_FLOW, ::ROLL_ZONES, ::ROLL_CELLS,
+        // ::ROLL_CENTRED), byte for byte: a block in flow, as the printer prints everything
+        // in document order; the zones in flow with no band height, so the receipt starts
+        // at the top margin as on paper (a roll shows no zone bands anyway); line table
+        // cells without padding, so an Nch column holds N characters (it comes after the
+        // canvas-wide `padding: 0 1mm` in the frame, and so wins); and the code slot and
+        // images centred, as the printer centres them (`ESC a 1`).
         + ROLL_FLOW
+        + ROLL_ZONES
         + ROLL_CELLS
         + ROLL_CENTRED;
 }
@@ -60,3 +63,6 @@ export const ROLL_CELLS = 'table.lines th,table.lines td{padding:0;vertical-alig
 
 /** PageStructure::ROLL_CENTRED: a roll's code slots and images centred. */
 export const ROLL_CENTRED = '.page [data-tpl-type="code-slot"],.page [data-tpl-type="image"]{display:block;margin-left:auto;margin-right:auto}';
+
+/** PageStructure::ROLL_ZONES: a roll's zones in flow, no band height; beats print.css `.zone`. */
+export const ROLL_ZONES = '.page .zone{position:static;height:auto}';

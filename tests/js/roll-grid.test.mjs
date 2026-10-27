@@ -26,14 +26,15 @@ assert.ok(rollGridCss(roll80).includes(
 // gives it (PageStructure::rollWrapCss, 1.25), beating the canvas-wide `td.tpl-wrap` 1.2.
 assert.ok(rollGridCss(roll80).includes('html .page table.lines td.tpl-wrap{line-height:1.25}'));
 
-// The canvas lays a roll's blocks out as the PDF does (Task 7): in flow, line table cells
+// The canvas lays a roll's blocks out as the PDF does (Task 7): in flow, its zones in flow
+// with no band height (Task 5c), line table cells
 // without padding (an Nch column holds N characters), and the code slot
 // and images centred, as the printer centres them. The rules are PageStructure's own
 // constants, read from the PHP, so the canvas and the PDF cannot drift apart.
 const pageStructure = readFileSync(new URL('../../src/Output/Pdf/PageStructure.php', import.meta.url), 'utf8');
 const constant = (name) => pageStructure.match(new RegExp(`const ${name} = '([^']*)';`))?.[1];
 
-for (const name of ['ROLL_FLOW', 'ROLL_CELLS', 'ROLL_CENTRED']) {
+for (const name of ['ROLL_FLOW', 'ROLL_ZONES', 'ROLL_CELLS', 'ROLL_CENTRED']) {
     assert.ok(constant(name), `PageStructure::${name} is declared`);
     assert.ok(rollGridCss(roll80).includes(constant(name)), `the canvas carries PageStructure::${name}`);
 }

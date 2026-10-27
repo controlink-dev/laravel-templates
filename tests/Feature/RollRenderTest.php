@@ -2,6 +2,7 @@
 
 namespace Controlink\Templates\Tests\Feature;
 
+use Controlink\Templates\Output\EscPos\Receipt;
 use Controlink\Templates\Output\EscPos\ReceiptBuilder;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Output\Pdf\PageStructure;
@@ -10,6 +11,7 @@ use Controlink\Templates\Output\Pdf\RenderedPdf;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Templates;
 use Controlink\Templates\Tests\TestCase;
+use Controlink\Templates\Toolkit\Documents;
 use Controlink\Templates\Types\TemplateType;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Group;
@@ -105,7 +107,9 @@ class RollRenderTest extends TestCase
         // first line of their row, both as on ESC/POS.
         // And a block is in flow, so what follows the table prints below it.
         // And a code slot and an image are centred, as ESC/POS centres them (ESC a 1).
-        $cells = '.page .block{position:static}table.lines th,table.lines td{padding:0;vertical-align:top}'
+        // And the zones are in flow with no band height.
+        $cells = '.page .block{position:static}.page .zone{position:static;height:auto}'
+            .'table.lines th,table.lines td{padding:0;vertical-align:top}'
             .'.page [data-tpl-type="code-slot"],.page [data-tpl-type="image"]{display:block;margin-left:auto;margin-right:auto}';
         $css   = app(PageStructure::class)->rollWrapCss($html);
         $this->assertSame($cells.$rule, $css);
@@ -272,5 +276,166 @@ class RollRenderTest extends TestCase
 
         $this->assertGreaterThan(250.0, $heightMm);
         $this->assertLessThan(500.0, $heightMm);
+    }
+
+    /**
+     * Each case puts its hyphen at the 40-column edge (ReceiptBuilderTest pins the same
+     * lines without the engine): where Chromium breaks after a hyphen, and where it does not.
+     */
+    private const HYPHEN_CASES = [
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx 4200-072 q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ABC-12345 q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx 123-abcde q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ab-12,00 q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ab-(123 q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx )-abcde q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -abcdefg q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ã-12345 q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx )-12345 q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx .-12345 q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ab-.1234 q',
+        'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx -12,00 q',
+    ];
+
+    private function engineUp(): void
+    {
+        Http::allowStrayRequests();
+
+        try {
+            Http::timeout(3)->get(rtrim((string) config('templates.pdf.gotenberg.url'), '/').'/health');
+        } catch (\Throwable) {
+            $this->markTestSkipped('The PDF engine is not reachable.');
+        }
+    }
+
+    /**
+     * The PDF's lines on page 1, top to bottom: the words of one line joined by a space.
+     *
+     * @return list<string>
+     */
+    private function pdfLines(RenderedPdf $pdf): array
+    {
+        $lines = [];
+
+        foreach ($pdf->wordsOn(1) as $word) {
+            $lines[(string) round($word['top'], 1)][] = $word['text'];
+        }
+
+        ksort($lines, SORT_NUMERIC);
+
+        return array_values(array_map(fn (array $words): string => implode(' ', $words), $lines));
+    }
+
+    /** @return list<string> the receipt's text lines, trailing padding removed */
+    private function receiptLines(Receipt $receipt): array
+    {
+        return array_values(array_filter(
+            array_map('rtrim', explode("\n", $receipt->text())),
+            fn (string $line): bool => $line !== '',
+        ));
+    }
+
+    /** The PDF breaks after a hyphen exactly where the receipt does (CGE-97). */
+    #[Group('render')]
+    public function test_roll_pdf_breaks_at_hyphens_where_escpos_does(): void
+    {
+        $this->engineUp();
+
+        $html = '<body><div class="zone zone--body">';
+
+        foreach (self::HYPHEN_CASES as $index => $text) {
+            $html .= '<div class="flow" id="tpl-case-'.$index.'">'.$text.'</div>';
+        }
+
+        $html .= '</div></body>';
+
+        $type     = $this->carrier(self::ROLL_80);
+        $composed = app(DocumentComposer::class)->compose($html, '', $type, []);
+        $receipt  = (new ReceiptBuilder)->build($composed, [], PageGeometry::fromType(self::ROLL_80));
+        $expected = $this->receiptLines($receipt);
+
+        $this->assertCount(24, $expected);
+
+        $out = app(PdfRenderer::class)->render($composed, $type);
+
+        RenderedPdf::open($out['pdf'], fn (RenderedPdf $pdf) => $this->assertSame($expected, $this->pdfLines($pdf)));
+    }
+
+    /**
+     * The issuer address breaks at its postal code's hyphen in the PDF («4200-» / «072
+     * Porto»): R-02 still finds it whole, and the receipt breaks it on the same lines.
+     */
+    #[Group('render')]
+    public function test_a_legal_address_broken_at_its_postal_code_is_found(): void
+    {
+        $this->engineUp();
+
+        $invoice = (require __DIR__.'/../Fixtures/types/invoice.php')['invoice'];
+        $fields  = array_values(array_filter($invoice['bindings'], fn (array $b): bool => $b['key'] === 'emitente.morada'));
+        $data    = ['emitente.morada' => $invoice['fixture']['emitente.morada']];
+        $layout  = [
+            'project_data' => [],
+            'html'         => '<div class="page"><div class="zone zone--body" data-tpl-zone="body">'
+                .'<div class="flow" data-tpl-type="data-field" data-tpl-binding="emitente.morada" data-tpl-format="" data-tpl-legal="1" id="tpl-emitente-morada">{{ emitente.morada }}</div>'
+                .'</div></div>',
+            'css' => '',
+        ];
+        $lines = [
+            'Rua Doutor António Bernardino de',
+            'Almeida, n.º 1234, 5.º Esquerdo, 4200-',
+            '072 Porto',
+        ];
+
+        $documents = app(Documents::class);
+        $pdf       = $documents->render($layout, $data, self::ROLL_80, '', $fields);
+
+        $this->assertSame([], $documents->validateRender($pdf, $fields, $data, self::ROLL_80, 1.0, [], $layout));
+        RenderedPdf::open($pdf, fn (RenderedPdf $rendered) => $this->assertSame($lines, $this->pdfLines($rendered)));
+
+        $escPos = $documents->escPos($layout, $data, self::ROLL_80, '', $fields);
+        $this->assertSame([], $escPos['problems']);
+        $this->assertMatchesRegularExpression('#Esquerdo, 4200- *</pre><pre[^>]*>072 Porto#u', $escPos['preview']);
+    }
+
+    /**
+     * A roll has no bands (CGE-97): its zones are in flow with no reserved height, so the
+     * receipt starts at the top margin, as the printer starts it. A sheet keeps its bands.
+     */
+    public function test_roll_zones_are_in_flow(): void
+    {
+        $html     = '<body><div class="zone zone--body"><div class="flow">Olá</div></div></body>';
+        $composer = app(DocumentComposer::class);
+
+        $this->assertSame('.page .zone{position:static;height:auto}', PageStructure::ROLL_ZONES);
+        $this->assertStringContainsString(PageStructure::ROLL_ZONES, $composer->compose($html, '', $this->carrier(self::ROLL_80), []));
+        $this->assertStringNotContainsString(PageStructure::ROLL_ZONES, $composer->compose($html, '', $this->carrier(['paper_format' => 'A4']), []));
+    }
+
+    #[Group('render')]
+    public function test_a_roll_pdf_starts_at_its_top_margin(): void
+    {
+        $this->engineUp();
+
+        $type = $this->carrier(self::ROLL_80);
+        $html = '<body><div class="page"><div class="zone zone--header"><div class="flow">Cabeçalho</div></div>'
+            .'<div class="zone zone--body"><div class="flow">Corpo</div></div>'
+            .'<div class="zone zone--footer"><div class="flow">Rodapé</div></div></div></body>';
+
+        $out = app(PdfRenderer::class)->render(app(DocumentComposer::class)->compose($html, '', $type, []), $type);
+
+        RenderedPdf::open($out['pdf'], function (RenderedPdf $pdf): void {
+            $words = [];
+
+            foreach ($pdf->wordsOn(1) as $word) {
+                $words[$word['text']] = $word;
+            }
+
+            // The first line sits at the 3 mm top margin, not below a 35 mm header band.
+            $this->assertLessThan(10.0, $words['Cabeçalho']['top']);
+
+            // The zones follow each other line by line: header, body, footer.
+            $this->assertEqualsWithDelta($words['Cabeçalho']['bottom'], $words['Corpo']['top'], 1.5);
+            $this->assertEqualsWithDelta($words['Corpo']['bottom'], $words['Rodapé']['top'], 1.5);
+        });
     }
 }

@@ -1271,7 +1271,7 @@ class PageStructure
      *
      * And a block is in flow on a roll (`ROLL_FLOW`): print.css places `.block` absolutely,
      * which on a roll would let what follows a line table draw over it; the printer prints
-     * everything in document order.
+     * everything in document order. So are its zones (`ROLL_ZONES`), with no band height.
      *
      * And a code slot or an image is centred on a roll (`ROLL_CENTRED`), as the printer
      * centres them (`ESC a 1`, EscPosEncoder).
@@ -1281,11 +1281,20 @@ class PageStructure
      */
     public function rollWrapCss(string $bodyHtml, string $css = ''): string
     {
-        return self::ROLL_FLOW.self::ROLL_CELLS.self::ROLL_CENTRED.$this->wrapRules($this->rollWrapping($this->tablesIn($bodyHtml, $css)), '1.25');
+        return self::ROLL_FLOW.self::ROLL_ZONES.self::ROLL_CELLS.self::ROLL_CENTRED.$this->wrapRules($this->rollWrapping($this->tablesIn($bodyHtml, $css)), '1.25');
     }
 
     /** A roll's blocks in document order, as ESC/POS prints them (CGE-97); beats print.css `.block`. */
     public const ROLL_FLOW = '.page .block{position:static}';
+
+    /**
+     * A roll's zones in document order with no reserved height (CGE-97): header, body and
+     * footer one after the other from the top margin, as the printer prints them. print.css
+     * draws them as the sheet's bands (absolute, a 35 mm header by default), which left
+     * the receipt's PDF starting far below its top margin. Beats print.css `.zone` and
+     * `.zone--header` (0,1,0) by specificity; the page padding already holds the margins.
+     */
+    public const ROLL_ZONES = '.page .zone{position:static;height:auto}';
 
     /** A roll's line table cells: no padding (the column is the grid) and on the first line of the row, as ESC/POS prints them (CGE-97). */
     public const ROLL_CELLS = 'table.lines th,table.lines td{padding:0;vertical-align:top}';
