@@ -1273,12 +1273,15 @@ class PageStructure
      * which on a roll would let what follows a line table draw over it; the printer prints
      * everything in document order.
      *
+     * And a code slot or an image is centred on a roll (`ROLL_CENTRED`), as the printer
+     * centres them (`ESC a 1`, EscPosEncoder).
+     *
      * Added by the composer next to `build()`'s CSS rather than inside it, so `build()`
      * keeps the bytes the pagination golden pins, and a sheet keeps every byte it had.
      */
     public function rollWrapCss(string $bodyHtml, string $css = ''): string
     {
-        return self::ROLL_FLOW.self::ROLL_CELLS.$this->wrapRules($this->rollWrapping($this->tablesIn($bodyHtml, $css)), '1.25');
+        return self::ROLL_FLOW.self::ROLL_CELLS.self::ROLL_CENTRED.$this->wrapRules($this->rollWrapping($this->tablesIn($bodyHtml, $css)), '1.25');
     }
 
     /** A roll's blocks in document order, as ESC/POS prints them (CGE-97); beats print.css `.block`. */
@@ -1286,6 +1289,13 @@ class PageStructure
 
     /** A roll's line table cells: no padding (the column is the grid) and on the first line of the row, as ESC/POS prints them (CGE-97). */
     public const ROLL_CELLS = 'table.lines th,table.lines td{padding:0;vertical-align:top}';
+
+    /**
+     * A roll's code slots and images centred, as ESC/POS prints them (`ESC a 1`, CGE-97).
+     * Beats print.css `.block--image{display:block}` (0,1,0) by specificity; V-21 lets the
+     * layout's `#id` rule set only their size, so nothing there sets a margin.
+     */
+    public const ROLL_CENTRED = '.page [data-tpl-type="code-slot"],.page [data-tpl-type="image"]{display:block;margin-left:auto;margin-right:auto}';
 
     /**
      * The wrap rule for each text column of each table: by position, or — a table whose

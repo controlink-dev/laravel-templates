@@ -104,7 +104,9 @@ class RollRenderTest extends TestCase
         // And the cells lose their padding (a 12ch column holds 12 characters) and sit on the
         // first line of their row, both as on ESC/POS.
         // And a block is in flow, so what follows the table prints below it.
-        $cells = '.page .block{position:static}table.lines th,table.lines td{padding:0;vertical-align:top}';
+        // And a code slot and an image are centred, as ESC/POS centres them (ESC a 1).
+        $cells = '.page .block{position:static}table.lines th,table.lines td{padding:0;vertical-align:top}'
+            .'.page [data-tpl-type="code-slot"],.page [data-tpl-type="image"]{display:block;margin-left:auto;margin-right:auto}';
         $css   = app(PageStructure::class)->rollWrapCss($html);
         $this->assertSame($cells.$rule, $css);
 
@@ -118,6 +120,7 @@ class RollRenderTest extends TestCase
         $this->assertStringNotContainsString('nth-child', $sheet);
         $this->assertStringNotContainsString($cells, $sheet);
         $this->assertStringNotContainsString('position:static', $sheet);
+        $this->assertStringNotContainsString('margin-left:auto', $sheet);
         $this->assertStringContainsString('padding:0 1mm', $sheet);
     }
 
