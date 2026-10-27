@@ -68,6 +68,10 @@ class Cp858Test extends TestCase
 
     public function test_decomposed_letters_are_composed_before_they_are_mapped(): void
     {
+        if (! class_exists(\Normalizer::class)) {
+            $this->markTestSkipped('Composition needs the intl extension.');
+        }
+
         // "c" + U+0327 (combining cedilla) and "a" + U+0303 (combining tilde), as some
         // keyboards and imports write them: printed as ç and ã, not E-03.
         $this->assertSame('ção', Cp858::normalize("c\u{0327}a\u{0303}o"));

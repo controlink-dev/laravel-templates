@@ -457,6 +457,10 @@ class ReceiptBuilderTest extends TestCase
 
     public function test_a_decomposed_letter_prints_as_one_character(): void
     {
+        if (! class_exists(\Normalizer::class)) {
+            $this->markTestSkipped('Composition needs the intl extension.');
+        }
+
         // "c" + combining cedilla is one ç on the receipt, as it is one glyph in the PDF:
         // no E-03, and the line keeps its 40 characters.
         $receipt = $this->build(
