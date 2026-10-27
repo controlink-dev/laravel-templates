@@ -21,6 +21,10 @@ assert.ok(rollGridCss(roll80).includes(
     '.page hr,.page [data-tpl-type="rule"]{border:0;border-top:1px dashed #000;margin:0.5em 0}',
 ));
 
+// A wrapped line-table text cell keeps the grid's line height on the canvas, as the PDF
+// gives it (PageStructure::rollWrapCss, 1.25), beating the canvas-wide `td.tpl-wrap` 1.2.
+assert.ok(rollGridCss(roll80).includes('html .page table.lines td.tpl-wrap{line-height:1.25}'));
+
 // A sheet has no grid: nothing is emitted, so its canvas keeps the family it had.
 assert.equal(rollGridCss({ medium: 'sheet', paper_format: 'A4' }), '');
 assert.equal(rollGridCss(undefined), '');
