@@ -343,6 +343,8 @@ return [
         'no_room'           => '":subject" has no room left on its line: the other cells take every column. Give it columns or make the others narrower.',
         'qr_empty'          => 'The QR code ":subject" is empty.',
         'untranslatable'    => '":subject" has no equivalent on the thermal printer.',
+        'value_missing'     => 'The value of ":subject" is not on the receipt, whole on one line. Place the field on the receipt, or give it a line wide enough.',
+        'qr_mismatch'       => 'The receipt does not print ":subject" with the document\'s content. Bind a QR code to the field ":subject".',
     ],
 
     // Formula fields and columns (CGE-37).

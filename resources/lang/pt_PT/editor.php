@@ -353,6 +353,8 @@ return [
         'no_room'           => '«:subject» não tem espaço na linha: as outras células ocupam todas as colunas. Dê-lhe colunas ou estreite as outras.',
         'qr_empty'          => 'O código QR «:subject» está vazio.',
         'untranslatable'    => '«:subject» não tem equivalente na impressora térmica.',
+        'value_missing'     => 'O valor de «:subject» não está no talão, inteiro numa linha. Ponha o campo no talão, ou dê-lhe uma linha com largura suficiente.',
+        'qr_mismatch'       => 'O talão não imprime o «:subject» com o conteúdo do documento. Ligue um código QR ao campo «:subject».',
     ],
 
     // Campos e colunas de fórmula (CGE-37).

@@ -3,6 +3,11 @@
 namespace Controlink\Templates\Toolkit;
 
 use Controlink\Templates\Formulas\Formula;
+use Controlink\Templates\Output\EscPos\EscPosEncoder;
+use Controlink\Templates\Output\EscPos\EscPosValidator;
+use Controlink\Templates\Output\EscPos\ReceiptBuilder;
+use Controlink\Templates\Output\EscPos\ReceiptPreview;
+use Controlink\Templates\Output\EscPos\RollVocabulary;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Output\Pdf\LayoutDocument;
 use Controlink\Templates\Output\Pdf\LayoutValidator;
@@ -10,6 +15,7 @@ use Controlink\Templates\Output\Pdf\PdfHash;
 use Controlink\Templates\Output\Pdf\PdfRenderer;
 use Controlink\Templates\Output\Pdf\RenderValidator;
 use Controlink\Templates\Rendering\FormatSpec;
+use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
 use Controlink\Templates\Versions\CanonicalHash;
 use InvalidArgumentException;
@@ -72,6 +78,59 @@ final class Documents
         $pdf   = $this->renderer->render($html, $type)['pdf'];
 
         return ['pdf' => $pdf, 'hash' => PdfHash::of($pdf), 'seconds' => microtime(true) - $start];
+    }
+
+    /**
+     * A roll as the thermal printer prints it (CGE-97): the ESC/POS bytes, their preview
+     * in HTML and the receipt's problems, all from one `Receipt`.
+     *
+     * In order: the receipt vocabulary (V-21) over the saved layout — a roll outside it is
+     * returned as is, never translated; then the document is composed exactly as
+     * `renderForActivation()` composes it for the PDF, laid on the character grid, and
+     * checked (E-01 a mandatory value missing, E-02 the QR payload, E-03/E-04 the
+     * builder's). With any problem there are no bytes (`''`): what reaches paper must have
+     * passed. The preview is still made, so the user sees what failed.
+     *
+     * @param  array{project_data?: array<string, mixed>, html: string, css?: string}  $layout
+     * @param  array<string, mixed>  $data  the values to print
+     * @param  array<string, mixed>  $geometry  a roll (`medium: roll`)
+     * @param  string  $css  overrides the layout's own stylesheet when not empty
+     * @param  list<array<string, mixed>>  $fields  the bindings: what is mandatory and legal
+     * @return array{bytes: string, preview: string, problems: list<array{code: string, component_id: ?string, message: string, key: string, subject: string}>}
+     *
+     * @throws InvalidArgumentException when the geometry is not a roll
+     */
+    public function escPos(array $layout, array $data, array $geometry = [], string $css = '', array $fields = []): array
+    {
+        $type  = $this->carrier($fields, $geometry);
+        $paper = PageGeometry::fromType($type->pdf);
+
+        if ($paper->medium !== 'roll' || $paper->columns === null) {
+            throw new InvalidArgumentException('Only a roll prints as an ESC/POS receipt.');
+        }
+
+        $css = $css !== '' ? $css : (string) ($layout['css'] ?? '');
+
+        $vocabulary = RollVocabulary::problems($layout['html'], $css, $paper->columns);
+
+        if ($vocabulary !== []) {
+            return ['bytes' => '', 'preview' => '', 'problems' => $vocabulary];
+        }
+
+        $html     = $this->composer->compose($layout['html'], $css, $type, $data);
+        $receipt  = (new ReceiptBuilder)->build($html, $data, $paper, $fields);
+        $problems = app(EscPosValidator::class)->validate(
+            $receipt,
+            $fields,
+            $data,
+            $this->placedFormats((array) ($layout['project_data'] ?? []), $layout['html']),
+        );
+
+        return [
+            'bytes'    => $problems === [] ? app(EscPosEncoder::class)->encode($receipt, $paper) : '',
+            'preview'  => app(ReceiptPreview::class)->html($receipt),
+            'problems' => $problems,
+        ];
     }
 
     /**
