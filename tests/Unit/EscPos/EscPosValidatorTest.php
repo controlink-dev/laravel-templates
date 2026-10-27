@@ -63,6 +63,20 @@ class EscPosValidatorTest extends TestCase
         $this->assertSame(['E-01'], $this->codes(new Receipt(40, [$line('Ana Silva-', ' '), $line('Santos', ' ')]), 'Ana Silva-Santos'));
     }
 
+    public function test_a_postal_code_split_at_its_hyphen_is_found(): void
+    {
+        $address = 'Rua Doutor António Bernardino de Almeida, n.º 1234, 5.º Esquerdo, 4200-072 Porto';
+        $line    = fn (string $text, string $joint): array => ['kind' => 'line', 'text' => $text, 'double' => false, 'bold' => [], 'sources' => ['tpl-morada'], 'group' => 1, 'joint' => $joint];
+        $lines   = [
+            $line('Rua Doutor António Bernardino de        ', ' '),
+            $line('Almeida, n.º 1234, 5.º Esquerdo, 4200-  ', ' '),
+        ];
+
+        // As the builder breaks it (ReceiptBuilderTest): «4200-» / «072 Porto», joined by nothing.
+        $this->assertSame([], $this->codes(new Receipt(40, [...$lines, $line('072 Porto', '')]), $address));
+        $this->assertSame(['E-01'], $this->codes(new Receipt(40, [...$lines, $line('072 Porto', ' ')]), $address));
+    }
+
     public function test_a_value_is_not_found_across_two_blocks(): void
     {
         $line = fn (string $text, array $sources, ?int $group): array => ['kind' => 'line', 'text' => $text, 'double' => false, 'bold' => [], 'sources' => $sources]

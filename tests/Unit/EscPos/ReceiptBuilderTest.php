@@ -209,10 +209,11 @@ class ReceiptBuilderTest extends TestCase
         $this->assertSame(45, strlen($atcud));
         $row = '<div class="flow esc-row"><div class="flow esc-cell" data-tpl-cols="10">ATCUD</div>'
             .'<div class="flow esc-cell esc-right" data-tpl-type="data-field" data-tpl-binding="document.atcud" id="tpl-atcud">'.$atcud.'</div></div>';
-        // (A hyphen before a digit is no break opportunity, as in the browser.)
+        // (A hyphen after a letter, before a digit, is a break opportunity, as in the
+        // browser: `Q-|1`, measured in RollRenderTest::HYPHEN_CASES.)
         $wrapped = [
-            'ATCUD'.str_repeat(' ', 18).'JFJ5KZ2Q-12345678',
-            str_repeat(' ', 13).'JFJ5KZ2Q-123456789 JFJ5KZ2Q',
+            'ATCUD'.str_repeat(' ', 8).'JFJ5KZ2Q-12345678 JFJ5KZ2Q-',
+            str_repeat(' ', 22).'123456789 JFJ5KZ2Q',
         ];
 
         $plain = $this->build($row);
@@ -289,6 +290,68 @@ class ReceiptBuilderTest extends TestCase
             'Santos'.str_repeat(' ', 34),
         ], $this->lines($receipt));
         $this->assertSame([], app(EscPosValidator::class)->validate($receipt, [$field], ['cliente.nome' => $name]));
+    }
+
+    public function test_a_postal_code_breaks_at_its_hyphen_like_the_pdf(): void
+    {
+        // The seeded issuer address: «4200-» reaches the 40th column, and Chromium breaks
+        // there (RollRenderTest::test_roll_pdf_breaks_at_hyphens_where_escpos_does).
+        $address = 'Rua Doutor António Bernardino de Almeida, n.º 1234, 5.º Esquerdo, 4200-072 Porto';
+        $field   = ['key' => 'issuer.address', 'label' => 'Sede do emitente', 'type' => 'text', 'mandatory' => true, 'legal' => true];
+
+        $receipt = $this->build('<div class="flow" data-tpl-type="data-field" data-tpl-binding="issuer.address" data-tpl-format="" data-tpl-legal="1" id="tpl-issuer-address">'.$address.'</div>');
+
+        $this->assertSame([], $receipt->problems);
+        $this->assertSame([
+            'Rua Doutor António Bernardino de        ',
+            'Almeida, n.º 1234, 5.º Esquerdo, 4200-  ',
+            '072 Porto'.str_repeat(' ', 31),
+        ], $this->lines($receipt));
+        $this->assertSame([' ', ' ', ''], array_column($receipt->blocks, 'joint'));
+
+        // E-01 reads it back whole: «4200-072», not «4200- 072».
+        $this->assertSame([], app(EscPosValidator::class)->validate($receipt, [$field], ['issuer.address' => $address]));
+    }
+
+    /**
+     * Where Chromium breaks after a hyphen, measured through Gotenberg (the cases of
+     * RollRenderTest::HYPHEN_CASES, each with its hyphen at the line's edge): before a
+     * letter, always; before an ASCII digit, only after an ASCII letter or digit (a minus
+     * sign stays on its number); before a full stop, never.
+     */
+    public function test_hyphen_breaks_follow_the_browser(): void
+    {
+        $x = fn (int $n): string => str_repeat('x', $n);
+
+        foreach ([
+            [$x(33).' 4200-072 q', [$x(33).' 4200-', '072 q']],
+            [$x(33).' ABC-12345 q', [$x(33).' ABC-', '12345 q']],
+            [$x(33).' 123-abcde q', [$x(33).' 123-', 'abcde q']],
+            [$x(33).' ab-12,00 q', [$x(33).' ab-', '12,00 q']],
+            [$x(33).' ab-(123 q', [$x(33).' ab-', '(123 q']],
+            [$x(33).' )-abcde q', [$x(33).' )-', 'abcde q']],
+            [$x(35).' -abcdefg q', [$x(35).' -', 'abcdefg q']],
+            [$x(33).' ã-12345 q', [$x(33), 'ã-12345 q']],
+            [$x(33).' )-12345 q', [$x(33), ')-12345 q']],
+            [$x(33).' .-12345 q', [$x(33), '.-12345 q']],
+            [$x(35).' ab-.1234 q', [$x(35), 'ab-.1234 q']],
+            [$x(36).' -12,00 q', [$x(36), '-12,00 q']],
+        ] as [$text, $expected]) {
+            $receipt = $this->build('<div class="flow" id="tpl-text">'.$text.'</div>');
+
+            $this->assertSame($expected, array_map('rtrim', $this->lines($receipt)), $text);
+        }
+
+        // A value that must stay whole stays whole: a formatted one and an esc-nowrap one
+        // move to the next line instead of breaking at their hyphen.
+        foreach ([
+            '<span data-tpl-type="data-field" data-tpl-binding="v" data-tpl-format="money" id="tpl-v">4200-072</span>',
+            '<span class="esc-nowrap" id="tpl-v">4200-072</span>',
+        ] as $value) {
+            $receipt = $this->build('<div class="flow" id="tpl-text">'.$x(33).' '.$value.' q</div>');
+
+            $this->assertSame([$x(33), '4200-072 q'], array_map('rtrim', $this->lines($receipt)), $value);
+        }
     }
 
     public function test_a_legal_token_wider_than_the_line_is_e04(): void

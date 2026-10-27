@@ -20,8 +20,8 @@ use Throwable;
  * It reads the receipt vocabulary (print.css, `RollVocabulary`) and breaks text the way
  * the browser breaks it in the PDF, so the receipt is the PDF line for line:
  *
- * - a block in flow is one or more lines; its text breaks on words (spaces, and a hyphen
- *   between a letter or digit and a letter), and a word wider than the line is E-04 —
+ * - a block in flow is one or more lines; its text breaks on words (spaces, and after a
+ *   hyphen where Chromium breaks: `4200-|072`, `Metalo-|Mecânicas`), and a word wider than the line is E-04 —
  *   the browser would let it overflow the paper;
  * - a value never breaks: an element with `esc-nowrap`, a formatted data field, a value
  *   cell of the line table (any column with a format or a formula, the
@@ -692,7 +692,7 @@ final class ReceiptBuilder
 
     /**
      * Greedy line breaking on the break opportunities: a space outside a lock, and after
-     * a hyphen between a letter or digit and a letter. A word wider than the line breaks
+     * a hyphen where Chromium breaks (`breaksAfterHyphen`). A word wider than the line breaks
      * anywhere when `$anywhere` (and it holds no locked character); otherwise it is E-04
      * and is cut only so the receipt keeps its shape.
      *
@@ -751,7 +751,7 @@ final class ReceiptBuilder
             $next     = $glyphs[$i + 1]['c'] ?? '';
 
             if ($glyph['c'] === '-' && ($glyph['l'] === null || $this->locks[$glyph['l']]['words'])
-                && preg_match('/^[\p{L}\p{N}]$/u', $previous) && preg_match('/^\p{L}$/u', $next)) {
+                && self::breaksAfterHyphen($previous, $next)) {
                 $words[] = [$before, $current];
                 $current = [];
                 $before  = null;
@@ -805,6 +805,26 @@ final class ReceiptBuilder
         $lines[] = $line;
 
         return $lines;
+    }
+
+    /**
+     * Whether Chromium breaks a line after this hyphen, measured through Gotenberg with the
+     * hyphen at the line's edge (RollRenderTest::HYPHEN_CASES):
+     *
+     * - before an ASCII digit, only after an ASCII letter or digit: `4200-|072`, `ABC-|123`,
+     *   but a minus sign stays on its number (` -12,00`, `ã-123`, `)-123`, `.-123`);
+     * - before a letter, `(`, `"`, `%`, `+` or a currency sign, always,
+     *   even word-initial (` -|abc`, `)-|abc`, `ab-|(123`);
+     * - before anything else (a full stop, a comma, a closing bracket, a space…), never:
+     *   only the characters above were measured, and not breaking keeps a value whole.
+     */
+    private static function breaksAfterHyphen(string $previous, string $next): bool
+    {
+        if (preg_match('/^[0-9]$/', $next)) {
+            return preg_match('/^[A-Za-z0-9]$/', $previous) === 1;
+        }
+
+        return preg_match('/^[\p{L}("%+\p{Sc}]$/u', $next) === 1;
     }
 
     /** @param list<array{c: string, b: bool, l: ?int}> $word */
