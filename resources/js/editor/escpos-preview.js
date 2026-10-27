@@ -1,3 +1,5 @@
+import { openDialog } from './dialog.js';
+
 /*
  * Thermal receipt preview (CGE-97).
  *
@@ -55,76 +57,34 @@ export async function requestEscposPreview(config, headers, selection) {
  * `preview_html` is server-generated and escaped there, so it is inserted as HTML.
  */
 export function showEscposDialog(payload, { root, strings }) {
-    return new Promise((resolve) => {
-        const host = root ?? document.body;
-        const previousFocus = document.activeElement;
+    const title = document.createElement('p');
+    title.className = 'tpl-dialog__message tpl-dialog__title';
+    title.textContent = strings['escpos.title'];
 
-        const overlay = document.createElement('div');
-        overlay.className = 'tpl-dialog';
-        overlay.setAttribute('role', 'dialog');
-        overlay.setAttribute('aria-modal', 'true');
+    const body = document.createElement('div');
+    body.className = 'tpl-escpos-preview';
+    body.innerHTML = payload.preview_html;
 
-        const box = document.createElement('div');
-        box.className = 'tpl-dialog__box tpl-dialog__box--escpos';
+    const download = () => {
+        const url = URL.createObjectURL(new Blob([bytesFromBase64(payload.bytes_base64)], {
+            type: 'application/octet-stream',
+        }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = payload.filename;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
 
-        const title = document.createElement('p');
-        title.className = 'tpl-dialog__message tpl-dialog__title';
-        title.textContent = strings['escpos.title'];
-
-        const body = document.createElement('div');
-        body.className = 'tpl-escpos-preview';
-        body.innerHTML = payload.preview_html;
-
-        const actions = document.createElement('div');
-        actions.className = 'tpl-dialog__actions';
-
-        const close = () => {
-            document.removeEventListener('keydown', onKey, true);
-            overlay.remove();
-            previousFocus?.focus?.();
-            resolve();
-        };
-
-        const download = document.createElement('button');
-        download.type = 'button';
-        download.className = 'tpl-dialog__btn tpl-dialog__btn--primary';
-        download.textContent = strings['escpos.download'];
-        download.addEventListener('click', () => {
-            const url = URL.createObjectURL(new Blob([bytesFromBase64(payload.bytes_base64)], {
-                type: 'application/octet-stream',
-            }));
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = payload.filename;
-            document.body.append(link);
-            link.click();
-            link.remove();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-        });
-
-        const closeButton = document.createElement('button');
-        closeButton.type = 'button';
-        closeButton.className = 'tpl-dialog__btn tpl-dialog__btn--ghost';
-        closeButton.textContent = strings['dialog.close'];
-        closeButton.addEventListener('click', close);
-
-        const onKey = (event) => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                close();
-            }
-        };
-        document.addEventListener('keydown', onKey, true);
-        overlay.addEventListener('mousedown', (event) => {
-            if (event.target === overlay) {
-                close();
-            }
-        });
-
-        actions.append(closeButton, download);
-        box.append(title, body, actions);
-        overlay.append(box);
-        host.append(overlay);
-        download.focus();
+    return openDialog({
+        root,
+        content: [title, body],
+        boxClass: 'tpl-dialog__box--escpos',
+        actions: [
+            { label: strings['dialog.close'], className: 'tpl-dialog__btn tpl-dialog__btn--ghost' },
+            { label: strings['escpos.download'], onClick: download },
+        ],
     });
 }

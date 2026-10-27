@@ -33,13 +33,12 @@
                 {!! $icons['file-pdf'] !!} {{ __('templates::editor.editor.preview') }}
             </button>
 
-            {{-- Roll only: hidden here on any other format, and the editor shows or hides
-                 it again on every format switch. Absent without a host endpoint. --}}
-            @if(! empty($urls['escpos_preview']))
-                <button type="button" class="tpl-btn tpl-btn--secondary" data-tpl-escpos-preview="1" @if((($geometry())['medium'] ?? null) !== 'roll') hidden @endif>
-                    {!! $icons['file-pdf'] !!} {{ __('templates::editor.escpos.preview') }}
-                </button>
-            @endif
+            {{-- Roll only: hidden unless the format is a roll and the host gave an endpoint.
+                 Always rendered, because the host may give the URL only for roll versions and
+                 the editor shows the button when a format switch reaches one. --}}
+            <button type="button" class="tpl-btn tpl-btn--secondary" data-tpl-escpos-preview="1" @if((($geometry())['medium'] ?? null) !== 'roll' || empty($urls['escpos_preview'])) hidden @endif>
+                {!! $icons['file-pdf'] !!} {{ __('templates::editor.escpos.preview') }}
+            </button>
 
             @unless($readOnly)
                 <button type="button" class="tpl-btn tpl-btn--secondary" data-tpl-save="1">

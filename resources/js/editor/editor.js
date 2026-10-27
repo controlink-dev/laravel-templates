@@ -598,6 +598,8 @@ async function mountEditor(el) {
                 pdfSelectionOf(config.preview),
             );
 
+            serverProblems = [];
+            refreshChecks();
             renderStatus('', root);
             await showEscposDialog(payload, { root, strings: config.strings });
         } catch (error) {

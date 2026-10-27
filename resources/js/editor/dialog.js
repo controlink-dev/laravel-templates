@@ -45,29 +45,94 @@ export function askHost(target, name, detail) {
     return claimed ? answer : null;
 }
 
-function mount(root, { message, buttons }) {
-    const host = root ?? document.body;
+/**
+ * The one modal every dialog is built on: overlay, aria, focus, Escape, backdrop.
+ *
+ * @param {object} options
+ * @param {Element} [options.root]  where it mounts (default: document.body)
+ * @param {Node[]} options.content  what goes in the box, above the buttons
+ * @param {Array<{label: string, className?: string, value?: any, onClick?: function}>} options.actions
+ *        a button closes the dialog with its `value`, unless it has an `onClick` (then it
+ *        only runs that, and the dialog stays open)
+ * @param {any} [options.escapeValue]  what Escape and a click on the backdrop resolve with
+ * @param {{value: any}} [options.enter]  when set, Enter closes with `enter.value`
+ * @param {string} [options.boxClass]  extra class on the box
+ * @param {number} [options.focus]  index of the action to focus (default: the last)
+ * @returns {Promise<any>}
+ */
+export function openDialog({ root, content, actions, escapeValue, enter, boxClass = '', focus }) {
+    return new Promise((resolve) => {
+        const host = root ?? document.body;
+        const previousFocus = document.activeElement;
 
-    const overlay = document.createElement('div');
-    overlay.className = 'tpl-dialog';
-    overlay.setAttribute('role', 'dialog');
-    overlay.setAttribute('aria-modal', 'true');
+        const overlay = document.createElement('div');
+        overlay.className = 'tpl-dialog';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
 
-    const box = document.createElement('div');
-    box.className = 'tpl-dialog__box';
+        const box = document.createElement('div');
+        box.className = ('tpl-dialog__box ' + boxClass).trim();
 
+        const bar = document.createElement('div');
+        bar.className = 'tpl-dialog__actions';
+
+        let done = false;
+        const close = (value) => {
+            if (done) {
+                return;
+            }
+            done = true;
+            document.removeEventListener('keydown', onKey, true);
+            overlay.remove();
+            if (previousFocus && typeof previousFocus.focus === 'function') {
+                previousFocus.focus();
+            }
+            resolve(value);
+        };
+
+        const buttons = actions.map((action) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = action.className ?? 'tpl-dialog__btn tpl-dialog__btn--primary';
+            button.textContent = action.label;
+            button.addEventListener('click', () => (action.onClick ? action.onClick() : close(action.value)));
+
+            return button;
+        });
+        bar.append(...buttons);
+
+        overlay.addEventListener('mousedown', (event) => {
+            if (event.target === overlay) {
+                close(escapeValue);
+            }
+        });
+
+        const onKey = (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                close(escapeValue);
+            } else if (event.key === 'Enter' && enter) {
+                event.preventDefault();
+                close(enter.value);
+            }
+        };
+        document.addEventListener('keydown', onKey, true);
+
+        box.append(...content, bar);
+        overlay.append(box);
+        host.append(overlay);
+
+        buttons[focus ?? buttons.length - 1]?.focus();
+    });
+}
+
+/** A paragraph of dialog text. */
+export function dialogMessage(message) {
     const text = document.createElement('p');
     text.className = 'tpl-dialog__message';
     text.textContent = message;
 
-    const actions = document.createElement('div');
-    actions.className = 'tpl-dialog__actions';
-
-    box.append(text, actions);
-    overlay.append(box);
-    host.append(overlay);
-
-    return { overlay, box, actions };
+    return text;
 }
 
 /**
@@ -84,56 +149,15 @@ export function confirmDialog(message, { root, confirmLabel = 'OK', cancelLabel 
         return hosted.then((value) => value === true);
     }
 
-    return new Promise((resolve) => {
-        const { overlay, box, actions } = mount(root, { message, buttons: 2 });
-        const previousFocus = document.activeElement;
-
-        let done = false;
-        const close = (value) => {
-            if (done) {
-                return;
-            }
-            done = true;
-            document.removeEventListener('keydown', onKey, true);
-            overlay.remove();
-            if (previousFocus && typeof previousFocus.focus === 'function') {
-                previousFocus.focus();
-            }
-            resolve(value);
-        };
-
-        const cancel = document.createElement('button');
-        cancel.type = 'button';
-        cancel.className = 'tpl-dialog__btn tpl-dialog__btn--ghost';
-        cancel.textContent = cancelLabel;
-        cancel.addEventListener('click', () => close(false));
-
-        const confirm = document.createElement('button');
-        confirm.type = 'button';
-        confirm.className = 'tpl-dialog__btn tpl-dialog__btn--primary';
-        confirm.textContent = confirmLabel;
-        confirm.addEventListener('click', () => close(true));
-
-        actions.append(cancel, confirm);
-
-        overlay.addEventListener('mousedown', (event) => {
-            if (event.target === overlay) {
-                close(false);
-            }
-        });
-
-        const onKey = (event) => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                close(false);
-            } else if (event.key === 'Enter') {
-                event.preventDefault();
-                close(true);
-            }
-        };
-        document.addEventListener('keydown', onKey, true);
-
-        confirm.focus();
+    return openDialog({
+        root,
+        content: [dialogMessage(message)],
+        actions: [
+            { label: cancelLabel, className: 'tpl-dialog__btn tpl-dialog__btn--ghost', value: false },
+            { label: confirmLabel, value: true },
+        ],
+        escapeValue: false,
+        enter: { value: true },
     });
 }
 
@@ -151,46 +175,11 @@ export function alertDialog(message, { root, closeLabel = 'OK' } = {}) {
         return hosted.then(() => undefined);
     }
 
-    return new Promise((resolve) => {
-        const { overlay, actions } = mount(root, { message, buttons: 1 });
-        const previousFocus = document.activeElement;
-
-        let done = false;
-        const close = () => {
-            if (done) {
-                return;
-            }
-            done = true;
-            document.removeEventListener('keydown', onKey, true);
-            overlay.remove();
-            if (previousFocus && typeof previousFocus.focus === 'function') {
-                previousFocus.focus();
-            }
-            resolve();
-        };
-
-        const ok = document.createElement('button');
-        ok.type = 'button';
-        ok.className = 'tpl-dialog__btn tpl-dialog__btn--primary';
-        ok.textContent = closeLabel;
-        ok.addEventListener('click', close);
-
-        actions.append(ok);
-
-        overlay.addEventListener('mousedown', (event) => {
-            if (event.target === overlay) {
-                close();
-            }
-        });
-
-        const onKey = (event) => {
-            if (event.key === 'Escape' || event.key === 'Enter') {
-                event.preventDefault();
-                close();
-            }
-        };
-        document.addEventListener('keydown', onKey, true);
-
-        ok.focus();
-    });
+    return openDialog({
+        root,
+        content: [dialogMessage(message)],
+        actions: [{ label: closeLabel, value: undefined }],
+        escapeValue: undefined,
+        enter: { value: undefined },
+    }).then(() => undefined);
 }
