@@ -2,6 +2,7 @@
 
 namespace Controlink\Templates\Tests\Unit\EscPos;
 
+use Controlink\Templates\Output\EscPos\EscPosValidator;
 use Controlink\Templates\Output\EscPos\Receipt;
 use Controlink\Templates\Output\EscPos\ReceiptBuilder;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
@@ -254,6 +255,40 @@ class ReceiptBuilderTest extends TestCase
         $two = $this->build('<div id="tpl-box"><div class="flow">Ana</div><div class="flow">Maria</div></div>');
         $this->assertSame([['tpl-box'], ['tpl-box']], array_column($two->blocks, 'sources'));
         $this->assertNotSame($two->blocks[0]['group'] ?? null, $two->blocks[1]['group'] ?? null);
+    }
+
+    public function test_a_legal_text_breaks_at_a_hyphen_like_the_pdf(): void
+    {
+        $name  = 'Empresa Comercial de Construções Metalo-Mecânicas, Lda';
+        $field = ['key' => 'customer.name', 'label' => 'Nome', 'type' => 'text', 'mandatory' => true, 'legal' => true];
+
+        $receipt = $this->build('<div class="flow" data-tpl-type="data-field" data-tpl-binding="customer.name" data-tpl-format="" data-tpl-legal="1" id="tpl-customer-name">'.$name.'</div>');
+
+        // The browser's line: «…Metalo-» fills the 40 columns, «Mecânicas, Lda» goes on.
+        $this->assertSame([], $receipt->problems);
+        $this->assertSame([
+            'Empresa Comercial de Construções Metalo-',
+            'Mecânicas, Lda'.str_repeat(' ', 26),
+        ], $this->lines($receipt));
+        $this->assertSame([' ', ''], array_column($receipt->blocks, 'joint'));
+
+        // E-01 reads it back as «Metalo-Mecânicas», not «Metalo- Mecânicas».
+        $this->assertSame([], app(EscPosValidator::class)->validate($receipt, [$field], ['customer.name' => $name]));
+    }
+
+    public function test_a_mandatory_value_split_at_a_hyphen_is_found(): void
+    {
+        // Not legal: an ordinary text, broken at its hyphen as the browser breaks it.
+        $name  = 'Ana Maria Albuquerque Vasconcelos Silva-Santos';
+        $field = ['key' => 'cliente.nome', 'label' => 'Nome', 'type' => 'text', 'mandatory' => true, 'legal' => false];
+
+        $receipt = $this->build('<div class="flow" data-tpl-type="data-field" data-tpl-binding="cliente.nome" id="tpl-nome">'.$name.'</div>');
+
+        $this->assertSame([
+            'Ana Maria Albuquerque Vasconcelos Silva-',
+            'Santos'.str_repeat(' ', 34),
+        ], $this->lines($receipt));
+        $this->assertSame([], app(EscPosValidator::class)->validate($receipt, [$field], ['cliente.nome' => $name]));
     }
 
     public function test_a_legal_token_wider_than_the_line_is_e04(): void

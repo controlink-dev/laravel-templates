@@ -28,10 +28,11 @@ use Throwable;
  *   `RowHeights::isText` rule), an absolutely positioned `.block` (print.css: nowrap). If
  *   it does not fit, it is E-04, never a cut;
  * - a legal text with no format (a name, an address) breaks on its spaces only, as the PDF
- *   wraps it; a token in it (a NIF, an ATCUD) never breaks, and wider than the line is E-04.
- *   (No hyphen break here, unlike the PDF: E-01 finds the value again by joining the
- *   block's lines with spaces, `EscPosValidator`);
- * - every line carries the number of the text block (or row) it comes from, `group`;
+ *   wraps it (spaces and hyphens); a legal token (no space in it: a NIF, an ATCUD) never
+ *   breaks, and wider than the line is E-04;
+ * - every line carries the number of the text block (or row) it comes from, `group`, and
+ *   how it joins the line before, `joint` (' ' after a space or a hard break, '' after a
+ *   hyphen or a cut word), so E-01 reads a wrapped value back whole (`EscPosValidator`);
  * - a line table's text cells break on words and, failing that, anywhere (PageStructure
  *   `rollWrapCss`: pre-line + overflow-wrap:anywhere); its header cells are bold and are
  *   clipped at their width, as the browser clips them;
@@ -281,7 +282,7 @@ final class ReceiptBuilder
         $group = ++$this->group;
 
         foreach ($this->wrap($this->collapse($glyphs, $preLine), $width, $preLine, $owner) as $line) {
-            $this->blocks[] = $this->lineBlock($this->pad($line, $width, $context['align']), $context['double'], $sources, $group);
+            $this->blocks[] = $this->lineBlock($this->pad($line, $width, $context['align']), $context['double'], $sources, $group, $line[0]['j'] ?? ' ');
         }
     }
 
@@ -454,13 +455,21 @@ final class ReceiptBuilder
         }
 
         for ($i = 0; $i < $height; $i++) {
-            $line = [];
+            $line   = [];
+            $joints = [];
 
             foreach ($columns as $column) {
                 array_push($line, ...$this->pad($column['lines'][$i] ?? [], $column['width'], $column['align']));
+
+                if (($column['lines'][$i] ?? []) !== []) {
+                    $joints[] = $column['lines'][$i][0]['j'] ?? ' ';
+                }
             }
 
-            $this->blocks[] = $this->lineBlock($this->pad(array_slice($line, 0, $width), $width, 'left'), $double, $sources, $group);
+            // Nothing between the lines only when every column that goes on broke a word.
+            $joint = $joints !== [] && array_unique($joints) === [''] ? '' : ' ';
+
+            $this->blocks[] = $this->lineBlock($this->pad(array_slice($line, 0, $width), $width, 'left'), $double, $sources, $group, $joint);
         }
     }
 
@@ -741,7 +750,7 @@ final class ReceiptBuilder
             $previous = $glyphs[$i - 1]['c'] ?? '';
             $next     = $glyphs[$i + 1]['c'] ?? '';
 
-            if ($glyph['c'] === '-' && $glyph['l'] === null
+            if ($glyph['c'] === '-' && ($glyph['l'] === null || $this->locks[$glyph['l']]['words'])
                 && preg_match('/^[\p{L}\p{N}]$/u', $previous) && preg_match('/^\p{L}$/u', $next)) {
                 $words[] = [$before, $current];
                 $current = [];
@@ -763,15 +772,25 @@ final class ReceiptBuilder
                 continue;
             }
 
+            // The line breaks here: the next one starts with how it joins this one, `j`
+            // (a space after a space, nothing after a hyphen), for E-01 to read it back.
             if ($line !== []) {
                 $lines[] = $line;
                 $line    = [];
+
+                if ($word !== []) {
+                    $word[0]['j'] = $separator === null ? '' : ' ';
+                }
             }
 
             if (count($word) > $width) {
                 $this->tooWide($word, $width, $anywhere, $owner);
 
-                foreach (array_chunk($word, $width) as $piece) {
+                foreach (array_chunk($word, $width) as $index => $piece) {
+                    if ($index > 0) {
+                        $piece[0]['j'] = '';
+                    }
+
                     $lines[] = $piece;
                 }
 
@@ -832,9 +851,9 @@ final class ReceiptBuilder
     /**
      * @param  list<array{c: string, b: bool, l: ?int}>  $glyphs
      * @param  list<?string>  $sources
-     * @return array{kind: 'line', text: string, double: bool, bold: list<array{0: int, 1: int}>, sources: list<string>, group: int}
+     * @return array{kind: 'line', text: string, double: bool, bold: list<array{0: int, 1: int}>, sources: list<string>, group: int, joint: string}
      */
-    private function lineBlock(array $glyphs, bool $double, array $sources, int $group): array
+    private function lineBlock(array $glyphs, bool $double, array $sources, int $group, string $joint = ' '): array
     {
         $bold  = [];
         $start = null;
@@ -855,6 +874,7 @@ final class ReceiptBuilder
             'bold'    => $bold,
             'sources' => array_values(array_unique(array_filter($sources, fn (?string $s): bool => $s !== null && $s !== ''))),
             'group'   => $group,
+            'joint'   => $joint,
         ];
     }
 
@@ -913,9 +933,10 @@ final class ReceiptBuilder
      *   formatted data field (money, number, date…). If it does not fit, it is E-04;
      * - `words` — a legal text with no format: the editor's mark (`data-tpl-legal="1"`, which
      *   it writes on every legal field it saves: components.js) or a binding `$fields` says
-     *   is legal (markup saved before the mark existed). It wraps on spaces, as the PDF wraps
-     *   it, and nowhere else: a token (a NIF, an ATCUD) wider than the line is E-04, and a
-     *   hyphen is no break, so E-01 can find the value again by joining the lines with spaces;
+     *   is legal (markup saved before the mark existed), with a space in it. It wraps as the
+     *   PDF wraps it, on spaces and hyphens, and never inside a word;
+     * - `whole` too — a legal value with no space in it (a NIF, an ATCUD): a token stays a
+     *   token, hyphen or not, and wider than the line is E-04;
      * - null — ordinary text, broken as the browser breaks it.
      *
      * @return 'whole'|'words'|null
@@ -928,10 +949,13 @@ final class ReceiptBuilder
             return 'whole';
         }
 
-        return $element->getAttribute('data-tpl-legal') === '1'
-            || ($field && isset($this->legal[$element->getAttribute('data-tpl-binding')]))
-            ? 'words'
-            : null;
+        if ($element->getAttribute('data-tpl-legal') !== '1'
+            && ! ($field && isset($this->legal[$element->getAttribute('data-tpl-binding')]))) {
+            return null;
+        }
+
+        // A legal token (no breaking space inside; NBSP is none) stays whole, hyphen or not.
+        return preg_match('/[ \t\n\r\f]/', trim((string) $element->textContent)) ? 'words' : 'whole';
     }
 
     /** The lock a block's or a cell's own text takes, if any (see `lockKind`). */

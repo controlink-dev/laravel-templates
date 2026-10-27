@@ -127,6 +127,12 @@ class EscPosDocumentsTest extends TestCase
         $this->assertSame([], $result['problems']);
         $this->assertNotSame('', $result['bytes']);
 
+        // A name that breaks at its hyphen, as the PDF breaks it, is still found.
+        $data   = ['adquirente.nome' => 'Empresa Comercial de Construções Metalo-Mecânicas, Lda'] + $this->data();
+        $result = app(Documents::class)->escPos($this->layout($body.self::ATCUD.self::TOTAL.self::QR), $data, self::ROLL_80, '', $fields);
+        $this->assertSame([], $result['problems']);
+        $this->assertStringContainsString('Metalo-', $result['preview']);
+
         // Without the address, E-01 names it: the other lines do not make it up.
         $result = app(Documents::class)->escPos(
             $this->layout(str_replace('{{ adquirente.morada }}', '', $body).self::ATCUD.self::TOTAL.self::QR),

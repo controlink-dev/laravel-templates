@@ -14,6 +14,8 @@ namespace Controlink\Templates\Output\EscPos;
  *   block, an `esc-row`, a line-table row) the line belongs to: the consecutive lines of
  *   one group are one text that wrapped (E-01 reads them as one). Optional: without it,
  *   consecutive lines with the same non-empty `sources` are taken as one group.
+ *   `joint` is how the line joins the one before it in its group: ' ' (it broke on a
+ *   space, or a hard break) or '' (after a hyphen, or a word cut at the width). Optional, ' '.
  * - `qr`: the payload, byte for byte; `binding` is the dataset key, null on a fixed slot.
  * - `image`: a PNG.
  *
@@ -23,7 +25,7 @@ namespace Controlink\Templates\Output\EscPos;
 final class Receipt
 {
     /**
-     * @param  list<array{kind: 'line', text: string, double: bool, bold: list<array{0: int, 1: int}>, sources: list<string>, group?: int}|array{kind: 'qr', payload: string, binding: ?string}|array{kind: 'image', png: string}>  $blocks
+     * @param  list<array{kind: 'line', text: string, double: bool, bold: list<array{0: int, 1: int}>, sources: list<string>, group?: int, joint?: string}|array{kind: 'qr', payload: string, binding: ?string}|array{kind: 'image', png: string}>  $blocks
      * @param  list<array{code: string, component_id: ?string, message: string, key: string, subject: string}>  $problems
      */
     public function __construct(

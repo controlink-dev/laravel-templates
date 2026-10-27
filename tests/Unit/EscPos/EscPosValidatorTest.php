@@ -54,6 +54,15 @@ class EscPosValidatorTest extends TestCase
         ]), $name));
     }
 
+    public function test_lines_join_as_they_broke(): void
+    {
+        $line = fn (string $text, string $joint): array => ['kind' => 'line', 'text' => $text, 'double' => false, 'bold' => [], 'sources' => ['tpl-nome'], 'group' => 1, 'joint' => $joint];
+
+        // After a hyphen, nothing between the lines; after a space, one space.
+        $this->assertSame([], $this->codes(new Receipt(40, [$line('Ana Silva-', ' '), $line('Santos', '')]), 'Ana Silva-Santos'));
+        $this->assertSame(['E-01'], $this->codes(new Receipt(40, [$line('Ana Silva-', ' '), $line('Santos', ' ')]), 'Ana Silva-Santos'));
+    }
+
     public function test_a_value_is_not_found_across_two_blocks(): void
     {
         $line = fn (string $text, array $sources, ?int $group): array => ['kind' => 'line', 'text' => $text, 'double' => false, 'bold' => [], 'sources' => $sources]

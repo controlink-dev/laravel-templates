@@ -94,7 +94,8 @@ final class EscPosValidator
 
     /**
      * The receipt's texts, one per block: the consecutive lines of one `group` (the lines a
-     * text wrapped into), each squashed and joined by one space. Without a `group`, the
+     * text wrapped into), each squashed and joined as it broke: by one space, or by nothing
+     * where the line has `joint: ''` (after a hyphen or a cut word). Without a `group`, the
      * consecutive lines with the same non-empty `sources` are one block; any other line, a
      * code or an image is a block of its own. Never across two blocks.
      *
@@ -118,7 +119,9 @@ final class EscPosValidator
                 : ($block['sources'] === [] ? null : 's:'.implode("\0", $block['sources']));
 
             if ($group !== null && $group === $key && $texts !== []) {
-                $texts[count($texts) - 1] = self::squash($texts[count($texts) - 1].' '.$line);
+                // As the line broke: on a space (or a hard break), or inside a word (a hyphen).
+                $joint                    = ($block['joint'] ?? ' ') === '' ? '' : ' ';
+                $texts[count($texts) - 1] = self::squash($texts[count($texts) - 1].$joint.$line);
             } else {
                 $texts[] = $line;
             }
@@ -131,7 +134,7 @@ final class EscPosValidator
 
     /**
      * Whether one block holds one of the texts whole: across the lines of a text that
-     * wrapped (joined by a space, as the builder breaks on spaces), never across two blocks.
+     * wrapped (joined as they broke), never across two blocks.
      *
      * @param  list<string>  $lines  already squashed, one per block (`texts`)
      * @param  list<string>  $candidates
