@@ -283,15 +283,17 @@ class PageStructure
      * How many rows from `$offset` fit below a cursor when each has its own height —
      * the summed counterpart of `rowsThatFit`, and equal to it when the heights are.
      *
+     * `$headerMm` is the table's header: one row, or one per row of a multi-row item
+     * (CGE-97).
+     *
      * @param  list<float>  $heights
      */
-    private function rowsThatFitHeights(array $heights, int $offset, TemplateType $type, float $cursorMm): int
+    private function rowsThatFitHeights(array $heights, int $offset, TemplateType $type, float $cursorMm, float $headerMm): int
     {
-        $rowHeight = max(1.0, (float) ($type->pdf['line_row_height_mm'] ?? 4.5));
         $available = $this->bodyHeight($type)
             - $cursorMm
             - (float) ($type->pdf['body_reserve_mm'] ?? 0)
-            - $rowHeight;
+            - $headerMm;
 
         $count = 0;
         $used  = 0.0;
@@ -343,9 +345,10 @@ class PageStructure
         };
 
         foreach ($bound as $table) {
-            $rows = $dataset[$table['collection']] ?? [];
-            $rows = is_array($rows) ? array_values($rows) : [];
-            $n    = count($rows);
+            $rows   = $dataset[$table['collection']] ?? [];
+            $rows   = is_array($rows) ? array_values($rows) : [];
+            $n      = count($rows);
+            $header = $this->headerHeight($table, $rowHeight);
 
             // A bound collection with no rows renders header-only, once, where the flow
             // reaches it (ruling T2-C). It takes the header row's worth of cursor.
@@ -355,7 +358,7 @@ class PageStructure
                 }
 
                 $current[] = ['collection' => $table['collection'], 'chunk' => [], 'top' => $cursor];
-                $cursor += $rowHeight;
+                $cursor += $header;
 
                 continue;
             }
@@ -377,7 +380,7 @@ class PageStructure
 
                 if ($tall !== null) {
                     // Wrapping rows (CGE-89): as many as their summed heights allow.
-                    $fit      = $this->rowsThatFitHeights($tall, $offset, $type, $cursor);
+                    $fit      = $this->rowsThatFitHeights($tall, $offset, $type, $cursor, $header);
                     $capacity = $atPageStart ? max(1, $fit) : $fit;
                 } else {
                     $capacity = $atPageStart
@@ -403,7 +406,7 @@ class PageStructure
                 ];
 
                 $cursor += $tall !== null
-                    ? $rowHeight + array_sum(array_slice($tall, $offset, $take))
+                    ? $header + array_sum(array_slice($tall, $offset, $take))
                     : (1 + $take) * $rowHeight;
                 $offset += $take;
 
@@ -502,6 +505,17 @@ class PageStructure
         return (int) floor($available / $rowHeight);
     }
 
+    /**
+     * How tall a table's header prints: one row, or one per row of a multi-row item
+     * (CGE-97), whose `<thead>` has a `<tr>` per segment.
+     *
+     * @param  array<string, mixed>  $table
+     */
+    private function headerHeight(array $table, float $rowHeight): float
+    {
+        return count(LineRows::segments($table['columns'] ?? [])) * $rowHeight;
+    }
+
     /** The body band's height on a sheet: the page minus its margins and both bands. */
     private function bodyHeight(TemplateType $type): float
     {
@@ -555,7 +569,7 @@ class PageStructure
             $fits = ($table['anchored'] ?? false)
                 && $table['collection'] !== ''
                 && $table['top'] >= $reserveTop - $tolerance
-                && $table['top'] + $rowHeight + $rowsHeight <= $bodyHeight + $tolerance;
+                && $table['top'] + $this->headerHeight($table, $rowHeight) + $rowsHeight <= $bodyHeight + $tolerance;
 
             if ($fits) {
                 $fixed[] = $table['collection'];
