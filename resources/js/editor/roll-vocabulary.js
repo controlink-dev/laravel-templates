@@ -38,9 +38,6 @@ const MM = /^(\d+(\.\d+)?|\.\d+)mm$/;
 
 const CHARACTERS = /^[1-9]\d*ch$/;
 
-/** A CSS length as the line table's `normalizeWidth` writes it. */
-const LENGTH = /^(\d+(\.\d+)?|\.\d+)(mm|cm|in|px|pt|%|ch)$/;
-
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 
 /**
@@ -310,7 +307,7 @@ function allowedStyle(element, lineTable) {
                 return ALIGNMENTS.includes(value);
             }
 
-            return property === 'width' && LENGTH.test(value);
+            return property === 'width' && CHARACTERS.test(value);
         });
     }
 

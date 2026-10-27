@@ -50,10 +50,10 @@ class RollVocabulary
      *   line-rows.js `colgroupHTML`/`rowsHTML`): `text-align` on every th/td and `width` on
      *   th/col, as `normalizeWidth` wrote it.
      *
-     * The line table's widths are judged once, from its `data-tpl-columns` (the source the
-     * markup is regenerated from on every save): a cell's inline `width` is accepted as any
-     * length so the same column is not reported twice. A width must be a whole number of
-     * characters (`12ch`): a receipt is a grid of characters.
+     * A line table width, in its `data-tpl-columns` (roll_column_width) and in a cell's
+     * inline `width` (roll_inline_style), must be a whole number of characters (`12ch`): a
+     * receipt is a grid of characters. A column in mm is reported by both, which also catches
+     * hand-written markup whose cells disagree with its `data-tpl-columns`.
      *
      * Not on the list, and reported if they appear: a print-rule's own size and colour
      * (components.js `applyGeometry` writes `#id{height;background-color}`; a receipt's
@@ -78,9 +78,6 @@ class RollVocabulary
     private const MM = '/^(\d+(\.\d+)?|\.\d+)mm$/D';
 
     private const CHARACTERS = '/^[1-9]\d*ch$/D';
-
-    /** A CSS length as the line table's `normalizeWidth` writes it. */
-    private const LENGTH = '/^(\d+(\.\d+)?|\.\d+)(mm|cm|in|px|pt|%|ch)$/D';
 
     /**
      * @return list<array{code: 'V-21', component_id: ?string, message: string, key: string, subject: string}>
@@ -334,7 +331,7 @@ class RollVocabulary
             foreach ($declarations as $property => $value) {
                 $allowed = match ($property) {
                     'text-align' => in_array($value, self::ALIGNMENTS, true),
-                    'width'      => (bool) preg_match(self::LENGTH, $value),
+                    'width'      => (bool) preg_match(self::CHARACTERS, $value),
                     default      => false,
                 };
 

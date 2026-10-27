@@ -37,12 +37,23 @@
             ]
         },
         {
-            "name": "5. a line table column in millimetres (the header cell carries it too, judged once)",
+            "name": "5. a line table column in millimetres (the header cell the editor writes carries it too: reported by both)",
             "html": "<div class=\"page\"><div class=\"block block--lines\" data-tpl-type=\"line-table\" data-tpl-columns=\"[{&quot;key&quot;:&quot;designation&quot;,&quot;label&quot;:&quot;Artigo&quot;},{&quot;key&quot;:&quot;unit_price&quot;,&quot;label&quot;:&quot;Preço&quot;,&quot;width&quot;:&quot;44mm&quot;,&quot;align&quot;:&quot;right&quot;}]\" id=\"tpl-lines\"><table class=\"lines\"><thead><tr><th style=\"text-align:left\">Artigo</th><th style=\"text-align:right;width:44mm\">Preço</th></tr></thead><tbody>{% for linha in lines %}<tr><td style=\"text-align:left\">{{ linha.designation }}</td><td style=\"text-align:right\">{{ linha.unit_price }}</td></tr>{% endfor %}</tbody></table></div></div>",
             "css": "",
             "columns": 40,
             "expected": [
-                { "key": "roll_column_width", "component_id": "tpl-lines", "subject": "Preço (44mm)" }
+                { "key": "roll_column_width", "component_id": "tpl-lines", "subject": "Preço (44mm)" },
+                { "key": "roll_inline_style", "component_id": "tpl-lines", "subject": "th" }
+            ]
+        },
+        {
+            "name": "11. a hand-written mm width on line table cells whose data-tpl-columns has none",
+            "html": "<div class=\"page\"><div class=\"block block--lines\" data-tpl-type=\"line-table\" data-tpl-columns=\"[]\" id=\"tpl-lines\"><table class=\"lines\"><colgroup><col style=\"width:44mm\"></colgroup><tr><td style=\"width:44mm\">x</td><td style=\"text-align:right;width:12ch\">y</td></tr></table></div></div>",
+            "css": "",
+            "columns": 40,
+            "expected": [
+                { "key": "roll_inline_style", "component_id": "tpl-lines", "subject": "col" },
+                { "key": "roll_inline_style", "component_id": "tpl-lines", "subject": "td" }
             ]
         },
         {
