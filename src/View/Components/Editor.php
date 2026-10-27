@@ -169,6 +169,7 @@ class Editor extends Component
             'block.line_table'          => __('templates::editor.blocks.line_table'),
             'block.code_slot'           => __('templates::editor.blocks.code_slot'),
             'block.page_number'         => __('templates::editor.blocks.page_number'),
+            'block.text_row'            => __('templates::editor.blocks.text_row'),
 
             'trait.collection'    => __('templates::editor.traits.collection'),
             'trait.columns'       => __('templates::editor.traits.columns'),
@@ -202,6 +203,15 @@ class Editor extends Component
             'trait.fit'           => __('templates::editor.traits.fit'),
             'trait.thickness'     => __('templates::editor.traits.thickness'),
             'trait.filled'        => __('templates::editor.traits.filled'),
+
+            // A receipt's fixed styling (CGE-97): the traits that replace the style panel on a roll.
+            'trait.esc_size'  => __('templates::editor.traits.esc_size'),
+            'trait.esc_bold'  => __('templates::editor.traits.esc_bold'),
+            'trait.esc_align' => __('templates::editor.traits.esc_align'),
+            'trait.esc_gap'   => __('templates::editor.traits.esc_gap'),
+            'trait.esc_cols'  => __('templates::editor.traits.esc_cols'),
+            'esc.size_normal' => __('templates::editor.traits.esc_size_normal'),
+            'esc.size_double' => __('templates::editor.traits.esc_size_double'),
 
             'page_format.x'      => __('templates::editor.page_formats.x'),
             'page_format.x_of_y' => __('templates::editor.page_formats.x_of_y'),
@@ -353,6 +363,16 @@ class Editor extends Component
             'check.missing_mandatory' => __('templates::editor.checks.missing_mandatory'),
             'check.overlapping'       => __('templates::editor.validation.overlapping'),
             'check.code_incomplete' => __('templates::editor.checks.code_incomplete'),
+
+            // L-ESC (CGE-97): the activation's V-21 messages, live on a roll; `:subject` and
+            // `:columns` are filled in by the JavaScript.
+            'check.roll_vocabulary'   => __('templates::editor.checks.roll_vocabulary'),
+            'check.roll_css'          => __('templates::editor.validation.roll_css'),
+            'check.roll_inline_style' => __('templates::editor.validation.roll_inline_style'),
+            'check.roll_class'        => __('templates::editor.validation.roll_class'),
+            'check.roll_cols'         => __('templates::editor.validation.roll_cols'),
+            'check.roll_table'        => __('templates::editor.validation.roll_table'),
+            'check.roll_column_width' => __('templates::editor.validation.roll_column_width'),
 
             'error.image_too_large'  => __('templates::editor.errors.image_too_large'),
             'error.catalogue_failed' => __('templates::editor.errors.catalogue_failed'),

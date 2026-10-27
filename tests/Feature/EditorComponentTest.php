@@ -202,6 +202,37 @@ class EditorComponentTest extends TestCase
         $this->assertStringNotContainsString('templates::editor.', $strings['check.code_incomplete']);
     }
 
+    /**
+     * A receipt (CGE-97): the traits that replace the style panel, the row block and the
+     * L-ESC messages — the activation's own V-21 text, with `:subject` (and `:columns`)
+     * left for the JavaScript to fill in — reach the bundle translated.
+     */
+    public function test_the_receipt_strings_reach_the_bundle_translated(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $strings = (new Editor($template, $version))->strings();
+
+        $keys = [
+            'block.text_row', 'trait.esc_size', 'trait.esc_bold', 'trait.esc_align', 'trait.esc_gap',
+            'trait.esc_cols', 'esc.size_normal', 'esc.size_double', 'check.roll_vocabulary',
+            'check.roll_css', 'check.roll_inline_style', 'check.roll_class', 'check.roll_cols',
+            'check.roll_table', 'check.roll_column_width',
+        ];
+
+        foreach ($keys as $key) {
+            $this->assertArrayHasKey($key, $strings);
+            $this->assertNotSame('', $strings[$key], "{$key} is empty.");
+            $this->assertStringNotContainsString('templates::editor.', $strings[$key], "{$key} reached the browser as a translation key.");
+        }
+
+        foreach (['check.roll_vocabulary', 'check.roll_css', 'check.roll_cols', 'check.roll_table'] as $key) {
+            $this->assertStringContainsString(':subject', $strings[$key], "{$key} keeps its placeholder for the JavaScript.");
+        }
+
+        $this->assertStringContainsString(':columns', $strings['check.roll_cols']);
+    }
+
     /** The formula mode of a data field (CGE-37) is labelled from the same pipeline. */
     public function test_the_formula_strings_reach_the_bundle_translated(): void
     {

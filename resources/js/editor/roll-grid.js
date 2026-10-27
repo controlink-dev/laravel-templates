@@ -41,5 +41,16 @@ export function rollGridCss(geometry) {
         // Canvas only: a wrapped line-table text cell stays on the grid's line height, as
         // the PDF's PageStructure::rollWrapCss gives it, over the canvas-wide 1.2 of
         // `table.lines td.tpl-wrap` (higher specificity, whatever the order).
-        + 'html .page table.lines td.tpl-wrap{line-height:1.25}';
+        + 'html .page table.lines td.tpl-wrap{line-height:1.25}'
+        // The PDF's own roll layout (PageStructure::ROLL_FLOW, ::ROLL_CENTRED), byte for
+        // byte: a block in flow, as the printer prints everything in document order, and
+        // the code slot and images centred, as it centres them (`ESC a 1`).
+        + ROLL_FLOW
+        + ROLL_CENTRED;
 }
+
+/** PageStructure::ROLL_FLOW: a roll's blocks in document order; beats print.css `.block`. */
+export const ROLL_FLOW = '.page .block{position:static}';
+
+/** PageStructure::ROLL_CENTRED: a roll's code slots and images centred. */
+export const ROLL_CENTRED = '.page [data-tpl-type="code-slot"],.page [data-tpl-type="image"]{display:block;margin-left:auto;margin-right:auto}';

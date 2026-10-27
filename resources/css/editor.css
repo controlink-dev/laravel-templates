@@ -2474,3 +2474,34 @@ select.tpl-pf-input {
 .tpl-editor-root .gjs-field-checkbox input:checked + .gjs-chk-icon {
     display: block;
 }
+
+/*
+ * A receipt (CGE-97): on a roll the style panel's sections are hidden — a receipt is
+ * styled only through its traits (Letra, Negrito, Alinhamento, Linhas em branco antes),
+ * which write the `esc-*` classes the thermal printer knows. The page panel (margins)
+ * beside them stays.
+ */
+.tpl-editor-root.tpl-roll-mode [data-tpl-styles] .gjs-sm-sectors {
+    display: none;
+}
+
+/* «Negrito»: a plain checkbox drawn from the classes (components.js `tpl-esc-check`). */
+.tpl-editor-root .gjs-field-tpl-esc-check {
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+.tpl-editor-root .tpl-esc-check {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.tpl-editor-root .tpl-esc-check input {
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    accent-color: var(--tpl-slate-900, #0f172a);
+    cursor: pointer;
+}

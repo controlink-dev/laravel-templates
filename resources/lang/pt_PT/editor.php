@@ -40,6 +40,8 @@ return [
         'line_table'          => 'Tabela de linhas',
         'code_slot'           => 'Código QR / barras',
         'page_number'         => 'Número de página',
+        // Talão (CGE-97): um rótulo e um valor lado a lado, cada um com N caracteres.
+        'text_row'            => 'Linha com colunas',
     ],
 
     'traits' => [
@@ -75,6 +77,14 @@ return [
         'code_source'   => 'Origem',
         'code_type'     => 'Tipo',
         'page_format'   => 'Formato',
+        // Talão (CGE-97): o estilo que a impressora térmica sabe imprimir, no lugar do painel de estilo.
+        'esc_size'        => 'Letra',
+        'esc_size_normal' => 'Normal',
+        'esc_size_double' => 'Dupla',
+        'esc_bold'        => 'Negrito',
+        'esc_align'       => 'Alinhamento',
+        'esc_gap'         => 'Linhas em branco antes',
+        'esc_cols'        => 'Largura (caracteres)',
     ],
 
     'states' => [

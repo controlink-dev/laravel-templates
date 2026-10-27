@@ -12,7 +12,7 @@ import '../../css/editor.css';
 
 import grapesjs from 'grapesjs';
 import grapesjsMjml from 'grapesjs-mjml';
-import { registerComponents } from './components.js';
+import { applyRollMode, registerComponents } from './components.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, pdfSelectionOf, plainProjectData, refreshPreview, selectionOf, truncationNotice } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
@@ -32,6 +32,7 @@ import {
     checkMandatoryTablesLocally,
     checkMandatoryFieldsLocally,
     checkOverlapLocally,
+    checkRollVocabularyLocally,
     restoreMissingLegalFields,
     snapIntoSheet,
     styleManagerSectors,
@@ -425,6 +426,8 @@ async function mountEditor(el) {
                     ...checkMandatoryTablesLocally(editor, config),
                     ...checkMandatoryFieldsLocally(editor, config),
                     ...checkOverlapLocally(editor, config),
+                    // CGE-97: on a roll, anything the thermal printer cannot print (L-ESC).
+                    ...checkRollVocabularyLocally(editor, config),
                 ]
                 : [];
             const problems = mergeProblems(serverProblems, local);
@@ -1480,6 +1483,12 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         // The canvas mode follows the format: the tabs change medium in place.
         rollMode  = geometry?.medium === 'roll';
         labelMode = isLabelGeometry(geometry);
+
+        // CGE-97: a roll is styled only through the receipt's traits, so the style panel's
+        // sections are hidden there (editor.css); the traits, the row block and the rules
+        // follow the medium.
+        root.classList.toggle('tpl-roll-mode', rollMode);
+        applyRollMode(editor, config);
 
         applyCanvasToFrame();
         syncModeChrome();

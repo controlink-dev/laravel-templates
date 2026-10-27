@@ -80,6 +80,14 @@ export const icons = {
         + 'd="M1.5 2.5h13v11h-13v-11Zm1.5 1.5v2h10V4H3Zm0 3.5v2h10v-2H3Zm0 3.5v1.5h10V11H3Z"/>'
         + '</svg>',
 
+    /** Two cells side by side: the receipt's «Linha com colunas» block (CGE-97). */
+    rowColumns: '<svg viewBox="0 0 16 16" width="1em" height="1em" fill="currentColor" aria-hidden="true">'
+        + '<rect x="1.5" y="6" width="5" height="1.6"/>'
+        + '<rect x="1.5" y="8.6" width="3.5" height="1.6"/>'
+        + '<rect x="8.5" y="6" width="6" height="1.6"/>'
+        + '<rect x="11" y="8.6" width="3.5" height="1.6"/>'
+        + '</svg>',
+
     /** A QR-code glyph: the code-slot block. */
     qrcode: '<svg viewBox="0 0 16 16" width="1em" height="1em" fill="currentColor" aria-hidden="true">'
         + '<path fill-rule="evenodd" clip-rule="evenodd" '

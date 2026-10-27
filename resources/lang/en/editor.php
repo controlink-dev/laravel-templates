@@ -40,6 +40,8 @@ return [
         'line_table'          => 'Line table',
         'code_slot'           => 'QR / barcode',
         'page_number'         => 'Page number',
+        // Receipt (CGE-97): a label and a value side by side, each N characters wide.
+        'text_row'            => 'Two columns: label + value',
     ],
 
     'traits' => [
@@ -75,6 +77,14 @@ return [
         'code_source'   => 'Source',
         'code_type'     => 'Type',
         'page_format'   => 'Format',
+        // Receipt (CGE-97): the styling the thermal printer can print, in place of the style panel.
+        'esc_size'        => 'Letter',
+        'esc_size_normal' => 'Normal',
+        'esc_size_double' => 'Double',
+        'esc_bold'        => 'Bold',
+        'esc_align'       => 'Alignment',
+        'esc_gap'         => 'Blank lines before',
+        'esc_cols'        => 'Width (characters)',
     ],
 
     'states' => [

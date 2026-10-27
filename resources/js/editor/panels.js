@@ -11,6 +11,9 @@ import { defaultSpecFor, specToAttributes } from './formats.js';
 import { PX_PER_MM, roundTo, snapOffsets } from './anchors.js';
 import { missingMandatoryFields } from './mandatory-fields.js';
 import { overlappingPairs } from './overlap.js';
+import { rollColumns } from './roll-grid.js';
+import { rollProblems } from './roll-vocabulary.js';
+import { rollMessage, rollSnapStyle } from './roll-style.js';
 
 /**
  * The Style Manager the user gets: typography, colour, box and position, and nothing
@@ -183,6 +186,10 @@ export function restoreMissingLegalFields(editor, config) {
     const zoneFor = (scope) =>
         wrapper.find('.' + (scope === 'every_page' ? 'zone--header' : 'zone--body'))[0];
 
+    // A roll flows and is written only in the receipt vocabulary (CGE-97): a restored field
+    // is a flow block with no style of its own, and a code slot keeps only its size.
+    const roll = config.geometry?.medium === 'roll';
+
     missingFields.forEach((binding, index) => {
         const zone = zoneFor(binding.scope);
 
@@ -193,12 +200,12 @@ export function restoreMissingLegalFields(editor, config) {
         zone.append({
             type: 'data-field',
             attributes: {
-                class: 'block block--field',
+                class: roll ? 'flow' : 'block block--field',
                 'data-tpl-type': 'data-field',
                 'data-tpl-binding': binding.key,
                 ...defaultFormatFor(binding),
             },
-            style: {
+            style: roll ? {} : {
                 position: 'absolute',
                 left: '10mm',
                 top: 10 + index * 6 + 'mm',
@@ -233,7 +240,7 @@ export function restoreMissingLegalFields(editor, config) {
                 'data-tpl-node': lastDot === -1 ? binding.key : binding.key.slice(0, lastDot),
                 'data-tpl-binding': binding.key,
             },
-            style: {
+            style: roll ? { width: codeSide + 'mm', height: codeSide + 'mm' } : {
                 position: 'absolute',
                 left: '10mm',
                 top: codesTop + index * (codeSide + 4) + 'mm',
@@ -296,8 +303,9 @@ function restoreTable(editor, config, body, binding) {
             'data-tpl-type': 'line-table',
             'data-tpl-collection': binding.key,
         },
-        // The starting layouts' table size.
-        style: isRoll ? { 'font-size': '7pt' } : {
+        // The starting layouts' table size. None on a roll: the receipt's letter is the
+        // grid's, and a size of its own is a style the printer cannot print (CGE-97, V-21).
+        style: isRoll ? {} : {
             position: 'absolute',
             left: '0mm',
             top: roundTo(below + 4, 0.5) + 'mm',
@@ -731,6 +739,30 @@ function snapComponent(component, metrics, isRoll, tolMm) {
 
     const pxPerMm = metrics.pxPerMm;
     const rect = el.getBoundingClientRect();
+
+    /*
+     * A roll flows (CGE-97): a block is never moved, and only an image or the code slot may
+     * be narrowed — a width or an offset on any other block is a style the thermal printer
+     * cannot print (V-21), which the editor must not write itself.
+     */
+    if (isRoll) {
+        const next = rollSnapStyle({
+            type: component.getAttributes()['data-tpl-type'],
+            tagName: component.get('tagName'),
+            widthMm: rect.width / pxPerMm,
+            printableWidthMm: metrics.printableWidthMm,
+            toleranceMm: tolMm,
+        });
+
+        if (Object.keys(next).length === 0) {
+            return false;
+        }
+
+        component.addStyle(next);
+
+        return true;
+    }
+
     const { dx, dy } = sheetOverflow(rect, metrics.printable, isRoll, metrics.tolPx);
     const style = component.getStyle();
 
@@ -751,10 +783,6 @@ function snapComponent(component, metrics, isRoll, tolMm) {
     }
 
     const { set: next } = snapOffsets(style, overflow);
-
-    if (isRoll && rect.width / pxPerMm > metrics.printableWidthMm + tolMm) {
-        next.width = roundTo(metrics.printableWidthMm, 0.1) + 'mm';
-    }
 
     if (Object.keys(next).length === 0) {
         return false;
@@ -821,4 +849,23 @@ export function checkTextOverflowLocally(editor, config) {
     });
 
     return problems;
+}
+
+/**
+ * Live check, on a roll only (CGE-97): what the thermal printer cannot print — L-ESC, the
+ * editor's mirror of the activation's V-21 (roll-vocabulary.js). It reads the layout as
+ * the save sends it (`getHtml`/`getCss`), so it says what the activation will.
+ */
+export function checkRollVocabularyLocally(editor, config) {
+    if (config.geometry?.medium !== 'roll') {
+        return [];
+    }
+
+    const columns = rollColumns(config.geometry);
+
+    return rollProblems(editor.getHtml(), editor.getCss(), columns).map((problem) => ({
+        code: problem.code,
+        componentId: problem.componentId,
+        message: rollMessage(problem, config.strings, columns),
+    }));
 }
