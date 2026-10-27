@@ -18,9 +18,14 @@ assert.ok(rollGridCss(roll80).includes(
     'html .page{font-family:"Liberation Mono","Courier New",monospace;font-size:3.083mm;line-height:1.25}',
 ));
 assert.ok(rollGridCss({ ...roll80, width_mm: 58 }).includes('font-size:2.708mm'));
-assert.ok(rollGridCss(roll80).includes(
-    '.page hr,.page [data-tpl-type="rule"]{border:0;border-top:1px dashed #000;margin:0.5em 0}',
-));
+// The rule is dashed and nothing else: `background:none` drops print.css's filled-box
+// `.block--rule{background:#000}`, which painted a solid line under the dashes.
+const dashedRule = '.page hr,.page [data-tpl-type="rule"]{border:0;border-top:1px dashed #000;background:none;margin:0.5em 0}';
+assert.ok(rollGridCss(roll80).includes(dashedRule));
+assert.ok(
+    readFileSync(new URL('../../src/Output/Pdf/DocumentComposer.php', import.meta.url), 'utf8').includes(dashedRule),
+    'the PDF draws the same rule (DocumentComposer::rollGrid)',
+);
 
 // A wrapped line-table text cell keeps the grid's line height on the canvas, as the PDF
 // gives it (PageStructure::rollWrapCss, 1.25), beating the canvas-wide `td.tpl-wrap` 1.2.

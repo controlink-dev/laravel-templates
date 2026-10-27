@@ -193,7 +193,7 @@ class DocumentComposer
 
         return 'html .page{font-family:"Liberation Mono","Courier New",monospace;'
             .'font-size:'.round($g->fontSizeMm(), 3).'mm;line-height:1.25}'
-            .'.page hr,.page [data-tpl-type="rule"]{border:0;border-top:1px dashed #000;margin:0.5em 0}';
+            .'.page hr,.page [data-tpl-type="rule"]{border:0;border-top:1px dashed #000;background:none;margin:0.5em 0}';
     }
 
     /**

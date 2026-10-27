@@ -37,7 +37,7 @@ export function rollGridCss(geometry) {
 
     return 'html .page{font-family:"Liberation Mono","Courier New",monospace;'
         + 'font-size:' + fontMm + 'mm;line-height:1.25}'
-        + '.page hr,.page [data-tpl-type="rule"]{border:0;border-top:1px dashed #000;margin:0.5em 0}'
+        + '.page hr,.page [data-tpl-type="rule"]{border:0;border-top:1px dashed #000;background:none;margin:0.5em 0}'
         // Canvas only: a wrapped line-table text cell stays on the grid's line height, as
         // the PDF's PageStructure::rollWrapCss gives it, over the canvas-wide 1.2 of
         // `table.lines td.tpl-wrap` (higher specificity, whatever the order).

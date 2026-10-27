@@ -68,7 +68,7 @@ class RollRenderTest extends TestCase
 
         $this->assertStringContainsString('html .page{font-family:"Liberation Mono","Courier New",monospace;font-size:3.083mm;line-height:1.25}', $roll);
         // The dashed rule is the roll's own: on a sheet a rule block is a filled box.
-        $this->assertStringContainsString('.page hr,.page [data-tpl-type="rule"]{border:0;border-top:1px dashed #000;margin:0.5em 0}', $roll);
+        $this->assertStringContainsString('.page hr,.page [data-tpl-type="rule"]{border:0;border-top:1px dashed #000;background:none;margin:0.5em 0}', $roll);
         $this->assertStringContainsString('font-size:2.708mm', $composer->geometryStyles(PageGeometry::fromType(['width_mm' => 58] + self::ROLL_80)));
 
         $print = (string) file_get_contents(__DIR__.'/../../resources/css/print.css');
