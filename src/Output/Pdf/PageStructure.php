@@ -72,10 +72,24 @@ class PageStructure
         // A roll is one continuous page: every row, no repeated header or footer. Every
         // table renders all of its rows (spec 3.1); no chunking, so the body is unchanged.
         if (PageGeometry::fromType($type->pdf)->medium === 'roll') {
+            $rollDataset = $this->datasetFor($dataset, $this->allRowsByCollection($tables, $dataset), 1, 1);
+
+            // A carrying layout moved to a roll (CGE-79): its one page is the last, so a
+            // page formula prints the totals rather than an empty "carried forward".
+            $carry = $type->pdf['carry'] ?? null;
+
+            if (is_array($carry) && isset($carry['collection'], $carry['column'])) {
+                $rows = $dataset[(string) $carry['collection']] ?? [];
+
+                $rollDataset[self::CARRIED_IN]  = 0.0;
+                $rollDataset[self::CARRIED_OUT] = $this->carriedSum(is_array($rows) ? $rows : [], (string) $carry['column']);
+                $rollDataset[self::IS_LAST]     = true;
+            }
+
             return [
                 'pages' => [[
                     'template' => $this->wrapPage($zones, $zones['body']),
-                    'dataset'  => $this->datasetFor($dataset, $this->allRowsByCollection($tables, $dataset), 1, 1),
+                    'dataset'  => $rollDataset,
                 ]],
                 'css' => $this->css($type),
             ];

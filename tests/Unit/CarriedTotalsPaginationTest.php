@@ -83,6 +83,22 @@ class CarriedTotalsPaginationTest extends TestCase
         $this->assertSame(12.5, $pages[0]['dataset'][PageStructure::CARRIED_OUT]);
     }
 
+    /** A carrying layout moved to a roll still reads as its own last page, not as "carried". */
+    public function test_a_roll_with_carry_is_its_own_last_page(): void
+    {
+        $config = (require __DIR__.'/../Fixtures/types/invoice.php')['invoice'];
+
+        $config['pdf'] = ['medium' => 'roll', 'width_mm' => 80, 'carry' => ['collection' => 'a', 'column' => 'v']] + $config['pdf'];
+
+        $pages = (new PageStructure)->build($this->body([['a', 0, false]]), TemplateType::fromConfig('invoice', $config), ['a' => $this->rows('a', 120)])['pages'];
+
+        $this->assertCount(1, $pages);
+        $this->assertTrue($pages[0]['dataset'][PageStructure::IS_LAST]);
+        $this->assertSame(0.0, $pages[0]['dataset'][PageStructure::CARRIED_IN]);
+        $this->assertSame(1200.0, $pages[0]['dataset'][PageStructure::CARRIED_OUT]);
+        $this->assertStringNotContainsString('lines__carried', $pages[0]['template']);
+    }
+
     public function test_wrapping_rows_with_carry_never_reach_the_reserve(): void
     {
         $type = $this->carryType();
