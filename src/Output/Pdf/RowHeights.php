@@ -27,6 +27,15 @@ class RowHeights
     /** The cell's horizontal padding, both sides (`padding: 0 1mm` in `PageStructure::css`). */
     private const PADDING_MM = 2.0;
 
+    /**
+     * The padding to take off a column: none on a roll (`$chMm` given), whose cells
+     * `PageStructure::ROLL_CELLS` sets to `padding:0` (CGE-97).
+     */
+    private static function padding(?float $chMm): float
+    {
+        return $chMm === null ? self::PADDING_MM : 0.0;
+    }
+
     /** The line height the wrapping cells are given (`line-height: 1.2`). */
     public const LINE_HEIGHT = 1.2;
 
@@ -131,7 +140,7 @@ class RowHeights
                 continue;
             }
 
-            $widths[(string) $column['key']] = max(0.1, ($layout[$index] - self::PADDING_MM) * self::SAFETY);
+            $widths[(string) $column['key']] = max(0.1, ($layout[$index] - self::padding($chMm)) * self::SAFETY);
         }
 
         return $widths;
@@ -161,7 +170,7 @@ class RowHeights
                 $at  += $span;
 
                 if (self::isText($column) && ($column['key'] ?? '') !== '') {
-                    $widths[(string) $column['key']] = max(0.1, ($room - self::PADDING_MM) * self::SAFETY);
+                    $widths[(string) $column['key']] = max(0.1, ($room - self::padding($chMm)) * self::SAFETY);
                 }
             }
 

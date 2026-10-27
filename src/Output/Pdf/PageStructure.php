@@ -1269,13 +1269,20 @@ class PageStructure
      * And a cell has no padding on a roll: a column `Nch` wide holds N characters, as on
      * the ESC/POS printer (ReceiptBuilder). Separating columns is the layout's job.
      *
+     * And a block is in flow on a roll (`ROLL_FLOW`): print.css places `.block` absolutely,
+     * which on a roll would let what follows a line table draw over it; the printer prints
+     * everything in document order.
+     *
      * Added by the composer next to `build()`'s CSS rather than inside it, so `build()`
      * keeps the bytes the pagination golden pins, and a sheet keeps every byte it had.
      */
     public function rollWrapCss(string $bodyHtml, string $css = ''): string
     {
-        return self::ROLL_CELLS.$this->wrapRules($this->rollWrapping($this->tablesIn($bodyHtml, $css)), '1.25');
+        return self::ROLL_FLOW.self::ROLL_CELLS.$this->wrapRules($this->rollWrapping($this->tablesIn($bodyHtml, $css)), '1.25');
     }
+
+    /** A roll's blocks in document order, as ESC/POS prints them (CGE-97); beats print.css `.block`. */
+    public const ROLL_FLOW = '.page .block{position:static}';
 
     /** A roll's line table cells: no padding (the column is the grid) and on the first line of the row, as ESC/POS prints them (CGE-97). */
     public const ROLL_CELLS = 'table.lines th,table.lines td{padding:0;vertical-align:top}';

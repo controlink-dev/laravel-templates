@@ -179,6 +179,21 @@ class RowHeightsTest extends TestCase
         $this->assertNull(RowHeights::of($table, $this->type, $rows));
     }
 
+    public function test_a_roll_cell_has_no_padding_to_take_off(): void
+    {
+        // CGE-97: a roll's cells have `padding:0` (PageStructure::ROLL_CELLS), so `10ch` keeps
+        // its 18.5 mm: 17 mm of text fits (18.5 × 0.97 = 17.9), where taking 2 mm of padding
+        // off (16.5 × 0.97 = 16.0) would wrap it.
+        $table = $this->table(width: 74.0, columns: [
+            ['key' => 'a', 'width' => '10ch', 'format' => ''],
+            ['key' => 'b', 'width' => '', 'format' => ''],
+        ]);
+        $font = FontMetrics::fromConfig(400);
+
+        $this->assertNull(RowHeights::of($table, $this->rollType(), ['lines' => [['a' => $this->textOfWidth($font, 17.0)]]]));
+        $this->assertNotNull(RowHeights::of($table, $this->rollType(), ['lines' => [['a' => $this->textOfWidth($font, 20.0)]]]));
+    }
+
     private function rollType(): TemplateType
     {
         $base = $this->type;

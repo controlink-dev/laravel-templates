@@ -103,7 +103,8 @@ class RollRenderTest extends TestCase
         // The description (1st) breaks into lines on the grid; the money column (2nd) never does.
         // And the cells lose their padding (a 12ch column holds 12 characters) and sit on the
         // first line of their row, both as on ESC/POS.
-        $cells = 'table.lines th,table.lines td{padding:0;vertical-align:top}';
+        // And a block is in flow, so what follows the table prints below it.
+        $cells = '.page .block{position:static}table.lines th,table.lines td{padding:0;vertical-align:top}';
         $css   = app(PageStructure::class)->rollWrapCss($html);
         $this->assertSame($cells.$rule, $css);
 
@@ -116,6 +117,7 @@ class RollRenderTest extends TestCase
         $sheet = $composer->compose($html, '', $this->carrier(['paper_format' => 'A4']), []);
         $this->assertStringNotContainsString('nth-child', $sheet);
         $this->assertStringNotContainsString($cells, $sheet);
+        $this->assertStringNotContainsString('position:static', $sheet);
         $this->assertStringContainsString('padding:0 1mm', $sheet);
     }
 
@@ -139,12 +141,13 @@ class RollRenderTest extends TestCase
             ['key' => 'designation', 'label' => 'Artigo', 'width' => '', 'format' => ''],
             ['key' => 'total', 'label' => 'Total', 'width' => '12ch', 'format' => 'money', 'align' => 'right'],
         ]), ENT_QUOTES);
-        $html = '<body><div class="zone zone--body"><div class="block block--lines" data-tpl-type="line-table"'
+        $html = '<body><div class="zone zone--body"><div class="flow" id="tpl-before">Antes</div>'
+            .'<div class="block block--lines" data-tpl-type="line-table"'
             .' data-tpl-binding="lines" data-tpl-columns="'.$columns.'" id="tpl-lines"><table class="lines">'
             .'<thead><tr><th style="text-align:left">Artigo</th><th style="text-align:right;width:12ch">Total</th></tr></thead>'
             .'<tbody>{% for linha in lines %}<tr><td style="text-align:left">{{ linha.designation }}</td>'
             .'<td style="text-align:right">{{ linha.total }}</td></tr>{% endfor %}</tbody></table></div>'
-            .'</div></body>';
+            .'<div class="flow" id="tpl-after">Fim</div></div></body>';
         $dataset = ['lines' => [
             ['designation' => 'Chapa de aço galvanizado com duas faces', 'total' => '1.229.999,98'],
             ['designation' => 'Segundo', 'total' => '1,00'],
@@ -157,10 +160,12 @@ class RollRenderTest extends TestCase
         $receipt = (new ReceiptBuilder)->build($composed, $dataset, PageGeometry::fromType(self::ROLL_80));
         $this->assertSame([], $receipt->problems);
         $this->assertSame([
+            'Antes'.str_repeat(' ', 35),
             'Artigo'.str_repeat(' ', 29).'Total',
             'Chapa de aço galvanizado com1.229.999,98',
             'duas faces'.str_repeat(' ', 30),
             'Segundo'.str_repeat(' ', 29).'1,00',
+            'Fim'.str_repeat(' ', 37),
         ], explode("\n", $receipt->text()));
 
         $out = app(PdfRenderer::class)->render($composed, $type);
@@ -179,6 +184,10 @@ class RollRenderTest extends TestCase
 
             // The row grew: the wrapped line sits above the next row instead of being clipped.
             $this->assertGreaterThan($words['duas']['top'] + 1.0, $words['Segundo']['top']);
+
+            // The table is in flow (no absolute .block): below what precedes it, above what follows.
+            $this->assertGreaterThan($words['Antes']['top'] + 1.0, $words['Artigo']['top']);
+            $this->assertGreaterThan($words['Segundo']['top'] + 1.0, $words['Fim']['top']);
         });
     }
 
