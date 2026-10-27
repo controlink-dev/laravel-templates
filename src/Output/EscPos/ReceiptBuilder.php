@@ -23,10 +23,15 @@ use Throwable;
  * - a block in flow is one or more lines; its text breaks on words (spaces, and a hyphen
  *   between a letter or digit and a letter), and a word wider than the line is E-04 —
  *   the browser would let it overflow the paper;
- * - a value never breaks: an element with `esc-nowrap`, a formatted or legal data field,
- *   a value cell of the line table (any column with a format or a formula, the
+ * - a value never breaks: an element with `esc-nowrap`, a formatted data field, a value
+ *   cell of the line table (any column with a format or a formula, the
  *   `RowHeights::isText` rule), an absolutely positioned `.block` (print.css: nowrap). If
  *   it does not fit, it is E-04, never a cut;
+ * - a legal text with no format (a name, an address) breaks on its spaces only, as the PDF
+ *   wraps it; a token in it (a NIF, an ATCUD) never breaks, and wider than the line is E-04.
+ *   (No hyphen break here, unlike the PDF: E-01 finds the value again by joining the
+ *   block's lines with spaces, `EscPosValidator`);
+ * - every line carries the number of the text block (or row) it comes from, `group`;
  * - a line table's text cells break on words and, failing that, anywhere (PageStructure
  *   `rollWrapCss`: pre-line + overflow-wrap:anywhere); its header cells are bold and are
  *   clipped at their width, as the browser clips them;
@@ -82,6 +87,9 @@ final class ReceiptBuilder
     /** @var array<int, array{owner: ?string, subject: string}> the unbreakable runs */
     private array $locks;
 
+    /** The last text block's number: its lines carry it as `group` (see `Receipt`). */
+    private int $group;
+
     /**
      * @param  array<string, mixed>  $dataset  the flat dataset the document was composed with
      * @param  list<array<string, mixed>>  $fields  the type's bindings (`key`, `legal`), the
@@ -102,6 +110,7 @@ final class ReceiptBuilder
         $this->problems = [];
         $this->reported = [];
         $this->locks    = [];
+        $this->group    = 0;
 
         foreach ($fields as $field) {
             if (is_array($field) && ($field['legal'] ?? false) && isset($field['key'])) {
@@ -207,7 +216,7 @@ final class ReceiptBuilder
             $width = $context['double'] ? intdiv($this->columns, 2) : $this->columns;
 
             for ($i = 0; $i < (int) $gap[1]; $i++) {
-                $this->blocks[] = $this->lineBlock($this->pad([], $width, 'left'), $context['double'], []);
+                $this->blocks[] = $this->lineBlock($this->pad([], $width, 'left'), $context['double'], [], ++$this->group);
             }
         }
 
@@ -224,7 +233,7 @@ final class ReceiptBuilder
         }
 
         if ($tag === 'hr' || $type === 'rule') {
-            $this->blocks[] = $this->lineBlock($this->glyphs(str_repeat('-', $this->columns)), false, array_filter([$this->nearestId($element)]));
+            $this->blocks[] = $this->lineBlock($this->glyphs(str_repeat('-', $this->columns)), false, array_filter([$this->nearestId($element)]), ++$this->group);
 
             return;
         }
@@ -253,7 +262,7 @@ final class ReceiptBuilder
         // it is set to wrap (pre-wrap, overflow-wrap:anywhere).
         $wraps  = $element->getAttribute('data-tpl-wrap') === '1';
         $nowrap = $context['nowrap'] || ($this->hasClass($element, 'block') && ! $wraps);
-        $lock   = $nowrap || $this->isValueField($element) ? $this->lock($element) : null;
+        $lock   = $this->lockFor($element, $nowrap);
         $glyphs = $this->collect($element, $context, $lock, $this->fieldOf($element));
 
         $this->textLines($glyphs, $context, $wraps, [$this->nearestId($element)], $this->nearestId($element));
@@ -269,9 +278,10 @@ final class ReceiptBuilder
     private function textLines(array $glyphs, array $context, bool $preLine, array $sources, ?string $owner): void
     {
         $width = $context['double'] ? intdiv($this->columns, 2) : $this->columns;
+        $group = ++$this->group;
 
         foreach ($this->wrap($this->collapse($glyphs, $preLine), $width, $preLine, $owner) as $line) {
-            $this->blocks[] = $this->lineBlock($this->pad($line, $width, $context['align']), $context['double'], $sources);
+            $this->blocks[] = $this->lineBlock($this->pad($line, $width, $context['align']), $context['double'], $sources, $group);
         }
     }
 
@@ -306,7 +316,7 @@ final class ReceiptBuilder
 
         foreach ($cells as $index => $cell) {
             $cellContext = ['double' => $double] + $this->contextOf($cell, $context);
-            $lock        = $cellContext['nowrap'] || $this->isValueField($cell) ? $this->lock($cell) : null;
+            $lock        = $this->lockFor($cell, $cellContext['nowrap']);
             $glyphs      = $this->collapse($this->collect($cell, $cellContext, $lock, $this->fieldOf($cell)), false);
 
             if ($glyphs !== []) {
@@ -437,6 +447,7 @@ final class ReceiptBuilder
     private function emitColumns(array $columns, int $width, bool $double, array $sources, int $minimum = 0): void
     {
         $height = $columns === [] ? 0 : $minimum;
+        $group  = ++$this->group;
 
         foreach ($columns as $column) {
             $height = max($height, count($column['lines']));
@@ -449,7 +460,7 @@ final class ReceiptBuilder
                 array_push($line, ...$this->pad($column['lines'][$i] ?? [], $column['width'], $column['align']));
             }
 
-            $this->blocks[] = $this->lineBlock($this->pad(array_slice($line, 0, $width), $width, 'left'), $double, $sources);
+            $this->blocks[] = $this->lineBlock($this->pad(array_slice($line, 0, $width), $width, 'left'), $double, $sources, $group);
         }
     }
 
@@ -592,8 +603,13 @@ final class ReceiptBuilder
             $this->problem('E-04', 'mixed_size', $this->nearestId($node), $this->nearestId($node) ?? $tag);
         }
 
-        if ($lock === null && ($inner['nowrap'] || $this->isValueField($node))) {
-            $lock = $this->lock($node);
+        // A value inside a legal text that wraps on words stays whole all the same.
+        if ($lock === null || $this->locks[$lock]['words']) {
+            $kind = $this->lockKind($node, $inner['nowrap']);
+
+            if ($kind === 'whole' || ($kind === 'words' && $lock === null)) {
+                $lock = $this->lock($node, words: $kind === 'words');
+            }
         }
 
         $field  = $this->fieldOf($node) ?? $field;
@@ -712,7 +728,7 @@ final class ReceiptBuilder
         for ($i = 0; $i < $count; $i++) {
             $glyph = $glyphs[$i];
 
-            if ($glyph['c'] === ' ' && $glyph['l'] === null) {
+            if ($glyph['c'] === ' ' && ($glyph['l'] === null || $this->locks[$glyph['l']]['words'])) {
                 $words[] = [$before, $current];
                 $current = [];
                 $before  = $glyph;
@@ -816,9 +832,9 @@ final class ReceiptBuilder
     /**
      * @param  list<array{c: string, b: bool, l: ?int}>  $glyphs
      * @param  list<?string>  $sources
-     * @return array{kind: 'line', text: string, double: bool, bold: list<array{0: int, 1: int}>, sources: list<string>}
+     * @return array{kind: 'line', text: string, double: bool, bold: list<array{0: int, 1: int}>, sources: list<string>, group: int}
      */
-    private function lineBlock(array $glyphs, bool $double, array $sources): array
+    private function lineBlock(array $glyphs, bool $double, array $sources, int $group): array
     {
         $bold  = [];
         $start = null;
@@ -838,6 +854,7 @@ final class ReceiptBuilder
             'double'  => $double,
             'bold'    => $bold,
             'sources' => array_values(array_unique(array_filter($sources, fn (?string $s): bool => $s !== null && $s !== ''))),
+            'group'   => $group,
         ];
     }
 
@@ -890,19 +907,39 @@ final class ReceiptBuilder
     }
 
     /**
-     * A value that must stay whole: anything the editor marked legal (`data-tpl-legal="1"`,
-     * which it writes on every legal field it saves: components.js), or a data field that is
-     * formatted (money, number, date…) or whose binding `$fields` says is legal. The mark is
-     * the safe default; `$fields` also covers markup saved before the mark existed.
+     * How an element's text may break:
+     *
+     * - `whole` — never: in a nowrap context (`esc-nowrap`, an unwrapped `.block`) or a
+     *   formatted data field (money, number, date…). If it does not fit, it is E-04;
+     * - `words` — a legal text with no format: the editor's mark (`data-tpl-legal="1"`, which
+     *   it writes on every legal field it saves: components.js) or a binding `$fields` says
+     *   is legal (markup saved before the mark existed). It wraps on spaces, as the PDF wraps
+     *   it, and nowhere else: a token (a NIF, an ATCUD) wider than the line is E-04, and a
+     *   hyphen is no break, so E-01 can find the value again by joining the lines with spaces;
+     * - null — ordinary text, broken as the browser breaks it.
+     *
+     * @return 'whole'|'words'|null
      */
-    private function isValueField(DOMElement $element): bool
+    private function lockKind(DOMElement $element, bool $nowrap): ?string
     {
-        if ($element->getAttribute('data-tpl-legal') === '1') {
-            return true;
+        $field = $element->getAttribute('data-tpl-type') === 'data-field';
+
+        if ($nowrap || ($field && $element->getAttribute('data-tpl-format') !== '')) {
+            return 'whole';
         }
 
-        return $element->getAttribute('data-tpl-type') === 'data-field'
-            && ($element->getAttribute('data-tpl-format') !== '' || isset($this->legal[$element->getAttribute('data-tpl-binding')]));
+        return $element->getAttribute('data-tpl-legal') === '1'
+            || ($field && isset($this->legal[$element->getAttribute('data-tpl-binding')]))
+            ? 'words'
+            : null;
+    }
+
+    /** The lock a block's or a cell's own text takes, if any (see `lockKind`). */
+    private function lockFor(DOMElement $element, bool $nowrap): ?int
+    {
+        $kind = $this->lockKind($element, $nowrap);
+
+        return $kind === null ? null : $this->lock($element, words: $kind === 'words');
     }
 
     /**
@@ -927,14 +964,18 @@ final class ReceiptBuilder
             : null;
     }
 
-    /** A new unbreakable run, reported by the element's id and its field (or id). */
-    private function lock(DOMElement $element, ?string $subject = null, ?string $owner = null): int
+    /**
+     * A new locked run, reported by the element's id and its field (or id). With `$words`
+     * it still breaks on its spaces (a legal text), never inside a word.
+     */
+    private function lock(DOMElement $element, ?string $subject = null, ?string $owner = null, bool $words = false): int
     {
         $owner ??= $this->nearestId($element);
 
         $this->locks[] = [
             'owner'   => $owner,
             'subject' => $subject ?? $this->fieldOf($element) ?? $owner ?? strtolower($element->tagName),
+            'words'   => $words,
         ];
 
         return count($this->locks) - 1;

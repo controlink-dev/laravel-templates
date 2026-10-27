@@ -6,7 +6,7 @@ use Controlink\Templates\Output\EscPos\EscPosValidator;
 use Controlink\Templates\Output\EscPos\Receipt;
 use Controlink\Templates\Tests\TestCase;
 
-/** E-01 reads the receipt's lines (CGE-97): spaces and NBSP alike, never across a break. */
+/** E-01 reads the receipt by block (CGE-97): spaces and NBSP alike, across a block's own lines, never across two blocks. */
 class EscPosValidatorTest extends TestCase
 {
     private const FIELD = ['key' => 'cliente.nome', 'label' => 'Nome', 'type' => 'text', 'mandatory' => true, 'legal' => true];
@@ -34,6 +34,49 @@ class EscPosValidatorTest extends TestCase
     public function test_a_value_split_over_two_lines_is_e01(): void
     {
         $this->assertSame(['E-01'], $this->codes($this->receipt(['Cliente: Ana', 'Maria Sá']), 'Ana Maria Sá'));
+    }
+
+    public function test_a_wrapped_legal_value_is_found_across_its_own_lines(): void
+    {
+        $name    = 'Sociedade Comercial de Equipamentos Industriais e Agricolas de Leiria, Unip.';
+        $receipt = new Receipt(40, [
+            ['kind' => 'line', 'text' => 'Cliente:'.str_repeat(' ', 32), 'double' => false, 'bold' => [], 'sources' => ['tpl-label'], 'group' => 0],
+            ['kind' => 'line', 'text' => 'Sociedade Comercial de Equipamentos     ', 'double' => false, 'bold' => [], 'sources' => ['tpl-name'], 'group' => 1],
+            ['kind' => 'line', 'text' => "Industriais e Agricolas de Leiria,\u{00A0}Unip.", 'double' => false, 'bold' => [], 'sources' => ['tpl-name'], 'group' => 1],
+        ]);
+
+        $this->assertSame([], $this->codes($receipt, $name));
+
+        // With no group, consecutive lines of the same source are one block.
+        $this->assertSame([], $this->codes(new Receipt(40, [
+            ['kind' => 'line', 'text' => 'Sociedade Comercial de Equipamentos', 'double' => false, 'bold' => [], 'sources' => ['tpl-name']],
+            ['kind' => 'line', 'text' => 'Industriais e Agricolas de Leiria, Unip.', 'double' => false, 'bold' => [], 'sources' => ['tpl-name']],
+        ]), $name));
+    }
+
+    public function test_a_value_is_not_found_across_two_blocks(): void
+    {
+        $line = fn (string $text, array $sources, ?int $group): array => ['kind' => 'line', 'text' => $text, 'double' => false, 'bold' => [], 'sources' => $sources]
+            + ($group === null ? [] : ['group' => $group]);
+
+        // Two blocks, by group even when they share a source (an id'd container's two texts).
+        $this->assertSame(['E-01'], $this->codes(new Receipt(40, [
+            $line('Cliente: Ana', ['tpl-box'], 0),
+            $line('Maria Sá', ['tpl-box'], 1),
+        ]), 'Ana Maria Sá'));
+
+        // Two blocks, by source.
+        $this->assertSame(['E-01'], $this->codes(new Receipt(40, [
+            $line('Cliente: Ana', ['tpl-a'], null),
+            $line('Maria Sá', ['tpl-b'], null),
+        ]), 'Ana Maria Sá'));
+
+        // The same source, not consecutive: a line of another block between them.
+        $this->assertSame(['E-01'], $this->codes(new Receipt(40, [
+            $line('Cliente: Ana', ['tpl-a'], null),
+            $line('---', [], null),
+            $line('Maria Sá', ['tpl-a'], null),
+        ]), 'Ana Maria Sá'));
     }
 
     public function test_a_value_with_a_line_break_or_tab_printed_on_one_line_is_found(): void

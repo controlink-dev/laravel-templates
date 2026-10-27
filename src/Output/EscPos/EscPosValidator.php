@@ -9,8 +9,9 @@ use Controlink\Templates\Rendering\TemplateRenderer;
 /**
  * The legal checks over a receipt (CGE-97), what R-02 and R-05 are to the PDF:
  *
- * - E-01: a mandatory value is on no line of the receipt, in any of the texts the field
- *   prints it as (`LegalValueText`, the same R-02 looks for);
+ * - E-01: a mandatory value is in no block of the receipt (one line, or the lines one
+ *   text wrapped into), in any of the texts the field prints it as (`LegalValueText`, the
+ *   same R-02 looks for);
  * - E-02: a legal QR code is not printed with the dataset's payload, byte for byte;
  * - E-03 / E-04: the builder's own problems, passed through.
  *
@@ -29,7 +30,7 @@ final class EscPosValidator
     public function validate(Receipt $receipt, array $fields, array $dataset, array $placedFormats = []): array
     {
         $problems = [];
-        $lines    = array_map(fn (string $line): string => self::squash($line), explode("\n", $receipt->text()));
+        $lines    = self::texts($receipt);
         $values   = new LegalValueText($this->renderer);
 
         foreach ($fields as $field) {
@@ -92,10 +93,47 @@ final class EscPosValidator
     }
 
     /**
-     * Whether one line holds one of the texts whole. Never across a break: a value split
-     * over two lines is not a value the customer can read.
+     * The receipt's texts, one per block: the consecutive lines of one `group` (the lines a
+     * text wrapped into), each squashed and joined by one space. Without a `group`, the
+     * consecutive lines with the same non-empty `sources` are one block; any other line, a
+     * code or an image is a block of its own. Never across two blocks.
      *
-     * @param  list<string>  $lines  already squashed
+     * @return list<string>
+     */
+    private static function texts(Receipt $receipt): array
+    {
+        $texts = [];
+        $key   = null;
+
+        foreach ($receipt->blocks as $block) {
+            if ($block['kind'] !== 'line') {
+                $key = null;
+
+                continue;
+            }
+
+            $line  = self::squash($block['text']);
+            $group = array_key_exists('group', $block)
+                ? 'g:'.$block['group']
+                : ($block['sources'] === [] ? null : 's:'.implode("\0", $block['sources']));
+
+            if ($group !== null && $group === $key && $texts !== []) {
+                $texts[count($texts) - 1] = self::squash($texts[count($texts) - 1].' '.$line);
+            } else {
+                $texts[] = $line;
+            }
+
+            $key = $group;
+        }
+
+        return $texts;
+    }
+
+    /**
+     * Whether one block holds one of the texts whole: across the lines of a text that
+     * wrapped (joined by a space, as the builder breaks on spaces), never across two blocks.
+     *
+     * @param  list<string>  $lines  already squashed, one per block (`texts`)
      * @param  list<string>  $candidates
      */
     private function onALine(array $lines, array $candidates): bool

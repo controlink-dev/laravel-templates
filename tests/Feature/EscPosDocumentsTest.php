@@ -107,6 +107,35 @@ class EscPosDocumentsTest extends TestCase
         $this->assertSame('', $result['bytes']);
     }
 
+    public function test_long_legal_texts_wrap_and_are_still_found(): void
+    {
+        // The issuer's name and address and the customer's are wider than 40 columns: they
+        // wrap on words, as in the PDF, and E-01 finds each across its own lines.
+        $keys   = ['emitente.nome', 'emitente.morada', 'adquirente.nome', 'adquirente.morada'];
+        $fields = [...$this->fields(), ...array_values(array_filter(
+            (require __DIR__.'/../Fixtures/types/invoice.php')['invoice']['bindings'],
+            fn (array $binding): bool => in_array($binding['key'], $keys, true),
+        ))];
+        $body = '';
+
+        foreach ($keys as $key) {
+            $body .= '<div class="flow" data-tpl-type="data-field" data-tpl-binding="'.$key.'" data-tpl-format="" data-tpl-legal="1" id="tpl-'.str_replace('.', '-', $key).'">{{ '.$key.' }}</div>';
+        }
+
+        $result = app(Documents::class)->escPos($this->layout($body.self::ATCUD.self::TOTAL.self::QR), $this->data(), self::ROLL_80, '', $fields);
+
+        $this->assertSame([], $result['problems']);
+        $this->assertNotSame('', $result['bytes']);
+
+        // Without the address, E-01 names it: the other lines do not make it up.
+        $result = app(Documents::class)->escPos(
+            $this->layout(str_replace('{{ adquirente.morada }}', '', $body).self::ATCUD.self::TOTAL.self::QR),
+            $this->data(), self::ROLL_80, '', $fields,
+        );
+        $this->assertSame(['E-01'], array_column($result['problems'], 'code'));
+        $this->assertSame('Morada do adquirente', $result['problems'][0]['subject']);
+    }
+
     public function test_builder_problems_come_through(): void
     {
         // A word longer than the line is E-04 from the builder, reported as is.

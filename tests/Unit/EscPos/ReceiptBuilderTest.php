@@ -202,35 +202,99 @@ class ReceiptBuilderTest extends TestCase
         ], $this->lines($receipt));
         $this->assertSame([], $receipt->problems);
 
-        // A legal value never breaks: 45 characters in a 30-character cell is E-04.
+        // 45 characters with spaces in a 30-character cell break on their words, legal or
+        // not: a legal text without a format wraps as the PDF wraps it.
         $atcud = 'JFJ5KZ2Q-12345678 JFJ5KZ2Q-123456789 JFJ5KZ2Q';
         $this->assertSame(45, strlen($atcud));
         $row = '<div class="flow esc-row"><div class="flow esc-cell" data-tpl-cols="10">ATCUD</div>'
             .'<div class="flow esc-cell esc-right" data-tpl-type="data-field" data-tpl-binding="document.atcud" id="tpl-atcud">'.$atcud.'</div></div>';
-
-        $legal = $this->build($row, 80, [], [['key' => 'document.atcud', 'legal' => true]]);
-        $this->assertCount(1, $legal->problems);
-        $this->assertSame('E-04', $legal->problems[0]['code']);
-        $this->assertSame('tpl-atcud', $legal->problems[0]['component_id']);
-        $this->assertStringContainsString('document.atcud', $legal->problems[0]['message']);
-
-        // The same text, not legal, breaks on its words like the browser does.
-        $plain = $this->build($row);
-        $this->assertSame([], $plain->problems);
         // (A hyphen before a digit is no break opportunity, as in the browser.)
-        $this->assertSame([
+        $wrapped = [
             'ATCUD'.str_repeat(' ', 18).'JFJ5KZ2Q-12345678',
             str_repeat(' ', 13).'JFJ5KZ2Q-123456789 JFJ5KZ2Q',
-        ], $this->lines($plain));
+        ];
 
-        // The editor's legal mark says it with no field list: three arguments are safe.
+        $plain = $this->build($row);
+        $this->assertSame([], $plain->problems);
+        $this->assertSame($wrapped, $this->lines($plain));
+
+        // Legal by the field list or by the editor's mark: the same lines.
+        $legal = $this->build($row, 80, [], [['key' => 'document.atcud', 'legal' => true]]);
+        $this->assertSame([], $legal->problems);
+        $this->assertSame($wrapped, $this->lines($legal));
+
         $marked = $this->build(str_replace('id="tpl-atcud"', 'id="tpl-atcud" data-tpl-legal="1"', $row));
-        $this->assertSame(['E-04', 'tpl-atcud'], [$marked->problems[0]['code'] ?? null, $marked->problems[0]['component_id'] ?? null]);
-        $this->assertStringContainsString('document.atcud', $marked->problems[0]['message']);
+        $this->assertSame([], $marked->problems);
+        $this->assertSame($wrapped, $this->lines($marked));
 
-        // `esc-nowrap` says the same without a field list.
+        // `esc-nowrap` keeps it whole: it does not fit, so it is E-04, never a cut.
         $nowrap = $this->build(str_replace('esc-cell esc-right"', 'esc-cell esc-right esc-nowrap"', $row));
-        $this->assertSame('E-04', $nowrap->problems[0]['code'] ?? null);
+        $this->assertSame(['E-04', 'tpl-atcud'], [$nowrap->problems[0]['code'] ?? null, $nowrap->problems[0]['component_id'] ?? null]);
+        $this->assertStringContainsString('document.atcud', $nowrap->problems[0]['message']);
+    }
+
+    public function test_a_long_legal_name_wraps_on_words(): void
+    {
+        $name = 'Sociedade Comercial de Equipamentos Industriais e Agricolas de Leiria, Unip.';
+        $this->assertSame(76, strlen($name));
+
+        $receipt = $this->build('<div class="flow" data-tpl-type="data-field" data-tpl-binding="customer.name" data-tpl-format="" data-tpl-legal="1" id="tpl-customer-name">'.$name.'</div>');
+
+        $this->assertSame([], $receipt->problems);
+        $this->assertSame([
+            'Sociedade Comercial de Equipamentos     ',
+            'Industriais e Agricolas de Leiria, Unip.',
+        ], $this->lines($receipt));
+        $this->assertSame(['tpl-customer-name'], $receipt->blocks[1]['sources']);
+
+        // Both lines are one block's: E-01 reads them as one text.
+        $this->assertSame($receipt->blocks[0]['group'] ?? null, $receipt->blocks[1]['group'] ?? 'none');
+
+        // Two texts under one id'd container share their source, never their group.
+        $two = $this->build('<div id="tpl-box"><div class="flow">Ana</div><div class="flow">Maria</div></div>');
+        $this->assertSame([['tpl-box'], ['tpl-box']], array_column($two->blocks, 'sources'));
+        $this->assertNotSame($two->blocks[0]['group'] ?? null, $two->blocks[1]['group'] ?? null);
+    }
+
+    public function test_a_legal_token_wider_than_the_line_is_e04(): void
+    {
+        $token = str_repeat('ABCDEFGHI', 5);
+        $this->assertSame(45, strlen($token));
+
+        foreach ([
+            $token,
+            // A hyphen is no break inside a legal text: a token stays a token.
+            'ABCDEFGHIJKLMNOPQRSTU-vwxyzabcdefghijklmnopq',
+        ] as $value) {
+            $receipt = $this->build('<div class="flow" data-tpl-type="data-field" data-tpl-binding="document.atcud" data-tpl-format="" data-tpl-legal="1" id="tpl-atcud">'.$value.'</div>');
+
+            $this->assertSame(['E-04'], array_column($receipt->problems, 'code'), $value);
+            $this->assertSame('value_too_wide', $receipt->problems[0]['key']);
+            $this->assertSame('tpl-atcud', $receipt->problems[0]['component_id']);
+            $this->assertSame('document.atcud', $receipt->problems[0]['subject']);
+        }
+    }
+
+    public function test_a_formatted_legal_value_never_wraps(): void
+    {
+        // A formatted value stays whole even with spaces in it: legal or not, and inside
+        // a legal text that may itself wrap.
+        $value = '1 234 567 890 123 456 789 012 345 678,90 EUR';
+        $this->assertSame(44, strlen($value));
+        $field = '<span data-tpl-type="data-field" data-tpl-binding="totals.total" data-tpl-format="money" id="tpl-total">'.$value.'</span>';
+
+        foreach ([
+            str_replace('<span ', '<div class="flow" data-tpl-legal="1" ', str_replace('</span>', '</div>', $field)),
+            str_replace('<span ', '<div class="flow" ', str_replace('</span>', '</div>', $field)),
+            '<div class="flow" data-tpl-legal="1" id="tpl-outer">Total '.$field.'</div>',
+        ] as $html) {
+            $receipt = $this->build($html);
+
+            $this->assertSame(['E-04'], array_column($receipt->problems, 'code'), $html);
+            $this->assertSame('value_too_wide', $receipt->problems[0]['key']);
+            $this->assertSame('tpl-total', $receipt->problems[0]['component_id']);
+            $this->assertSame('totals.total', $receipt->problems[0]['subject']);
+        }
     }
 
     public function test_qr_slot_becomes_a_qr_block_with_the_dataset_payload(): void
