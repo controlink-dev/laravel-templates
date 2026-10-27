@@ -257,11 +257,12 @@ class PageStructure
     }
 
     /**
-     * The text columns of each wrapping table, by the table's `id`, for `css`.
+     * The text columns of each wrapping table, by the table's `id`, for `css`. A table
+     * whose items span several rows (CGE-97) gets `null`: its text cells carry a class.
      *
      * @param  list<array<string, mixed>>  $tables
      * @param  array<string, list<float>>  $heights
-     * @return array<string, list<int>>
+     * @return array<string, list<int>|null>
      */
     private function wrapping(array $tables, array $heights): array
     {
@@ -269,7 +270,9 @@ class PageStructure
 
         foreach ($tables as $table) {
             if (isset($heights[$table['collection']])) {
-                $wrapping[$table['id']] = RowHeights::textColumnIndexes($table['columns']);
+                $wrapping[$table['id']] = LineRows::isMultiRow($table['columns'])
+                    ? null
+                    : RowHeights::textColumnIndexes($table['columns']);
             }
         }
 
@@ -785,25 +788,34 @@ class PageStructure
      * before it merge into one that holds the label, and the ones after it stay empty.
      * Done on the string, like `repositionTop`, so nothing else in the body moves. A
      * table that does not show the carried column gets no row.
+     *
+     * An item spanning several rows (CGE-97) has a `<tr>` per row: the carried row is
+     * built from the one that shows the column, and the label spans as many grid columns
+     * as the cells before it do.
      */
     private function withCarriedRow(string $bodyHtml, string $collection, string $column): string
     {
-        $loop = '/\{%\s*for\s+(\w+)\s+in\s+'.preg_quote($collection, '/').'\s*%\}\s*<tr\b[^>]*>(.*?)<\/tr>/s';
+        $loop = '/\{%\s*for\s+(\w+)\s+in\s+'.preg_quote($collection, '/').'\s*%\}(.*?)\{%\s*endfor\s*%\}/s';
 
         if (! preg_match($loop, $bodyHtml, $match, PREG_OFFSET_CAPTURE)) {
             return $bodyHtml;
         }
 
-        preg_match_all('/<td\b([^>]*)>(.*?)<\/td>/s', $match[2][0], $cells, PREG_SET_ORDER);
+        preg_match_all('/<tr\b[^>]*>(.*?)<\/tr>/s', $match[2][0], $rows, PREG_SET_ORDER);
 
         $value = '/\b'.preg_quote($match[1][0].'.'.$column, '/').'(?![\w.])/';
+        $cells = [];
         $at    = null;
 
-        foreach ($cells as $index => $cell) {
-            if (preg_match($value, $cell[2])) {
-                $at = $index;
+        foreach ($rows as $tr) {
+            preg_match_all('/<td\b([^>]*)>(.*?)<\/td>/s', $tr[1], $cells, PREG_SET_ORDER);
 
-                break;
+            foreach ($cells as $index => $cell) {
+                if (preg_match($value, $cell[2])) {
+                    $at = $index;
+
+                    break 2;
+                }
             }
         }
 
@@ -811,8 +823,14 @@ class PageStructure
             return $bodyHtml;
         }
 
+        $span = 0;
+
+        foreach (array_slice($cells, 0, $at) as $cell) {
+            $span += preg_match('/\bcolspan\s*=\s*["\']?(\d+)/i', $cell[1], $m) === 1 ? max(1, (int) $m[1]) : 1;
+        }
+
         $row = $at > 0
-            ? '<td colspan="'.$at.'">'.htmlspecialchars((string) __('templates::editor.render.carried_in'), ENT_QUOTES).'</td>'
+            ? '<td colspan="'.$span.'">'.htmlspecialchars((string) __('templates::editor.render.carried_in'), ENT_QUOTES).'</td>'
             : '';
 
         $row .= '<td'.$cells[$at][1].'>'.preg_replace($value, self::CARRIED_IN, $cells[$at][2]).'</td>';
@@ -1176,12 +1194,20 @@ class PageStructure
         // CGE-89: in a table with a row that wraps, its text columns break into lines;
         // `RowHeights` counted those lines with the same breaking and line height. Only
         // emitted when something wraps, so every other document keeps its bytes.
+        // A table whose items span several rows (CGE-97) has no column position to name:
+        // its text cells carry `LineRows::TEXT_CLASS` instead.
         $wraps = '';
+        $rule  = '{white-space:pre-line;overflow-wrap:anywhere;text-overflow:clip;line-height:'.RowHeights::LINE_HEIGHT.'}';
 
         foreach ($wrapping as $id => $indexes) {
+            if ($indexes === null) {
+                $wraps .= '#'.$id.' td.'.LineRows::TEXT_CLASS.$rule;
+
+                continue;
+            }
+
             foreach ($indexes as $index) {
-                $wraps .= '#'.$id.' td:nth-child('.$index.'){white-space:pre-line;overflow-wrap:anywhere;'
-                    .'text-overflow:clip;line-height:'.RowHeights::LINE_HEIGHT.'}';
+                $wraps .= '#'.$id.' td:nth-child('.$index.')'.$rule;
             }
         }
 

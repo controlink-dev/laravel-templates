@@ -210,6 +210,50 @@ class CarriedTotalsPaginationTest extends TestCase
         $this->assertSame('Total transportado', __('templates::editor.render.carried_in'));
     }
 
+    public function test_carried_row_is_built_from_the_row_that_shows_the_carried_column(): void
+    {
+        $columns = htmlspecialchars((string) json_encode([
+            ['key' => 'code', 'width' => '20', 'format' => ''],
+            ['key' => 'description', 'width' => '', 'format' => ''],
+            ['key' => 'unit_price', 'width' => '20', 'format' => 'money', 'break' => true],
+            ['key' => 'quantity', 'width' => '20', 'format' => 'number'],
+            ['key' => 'vat_rate', 'width' => '20', 'format' => 'percent'],
+            ['key' => 'amount', 'width' => '20', 'format' => 'money'],
+        ]));
+
+        $table = '<div class="block block--lines" data-tpl-type="line-table" data-tpl-collection="lines" data-tpl-columns="'.$columns.'"'
+            .' id="tpl-lines" style="top:0mm;width:80mm;font-size:8pt">'
+            .'<table class="lines"><tbody>{% for item in lines %}'
+            .'<tr><td>{{ item.code }}</td><td colspan="3" class="lines__text">{{ item.description }}</td></tr>'
+            .'<tr><td>{{ item.unit_price }}</td><td>{{ item.quantity }}</td><td>{{ item.vat_rate }}</td><td style="text-align:right">{{ item.amount }}</td></tr>'
+            .'{% endfor %}</tbody></table></div>';
+
+        $body = str_replace('<div class="block" data-tpl-type="static-text"', $table.'<div class="block" data-tpl-type="static-text"', $this->body([]));
+
+        $config                 = (require __DIR__.'/../Fixtures/types/invoice.php')['invoice'];
+        $config['pdf']['carry'] = ['collection' => 'lines', 'column' => 'amount'];
+
+        $rows = array_map(fn (int $i): array => ['code' => 'A'.$i, 'description' => 'Artigo', 'amount' => 10], range(1, 120));
+
+        $result = (new PageStructure)->build($body, TemplateType::fromConfig('invoice', $config), ['lines' => $rows]);
+        $pages  = $result['pages'];
+
+        // Its text cells wrap by class, not by position.
+        $this->assertStringContainsString('#tpl-lines td.lines__text{white-space:pre-line;overflow-wrap:anywhere;text-overflow:clip;line-height:1.2}', $result['css']);
+        $this->assertStringNotContainsString('nth-child', $result['css']);
+
+        $row = '<tr class="lines__carried"><td colspan="3">'.e(__('templates::editor.render.carried_in')).'</td>'
+            .'<td style="text-align:right">{{ page.carried_in }}</td></tr>'
+            .'{% for item in lines %}';
+
+        $this->assertGreaterThan(1, count($pages));
+        $this->assertStringNotContainsString('lines__carried', $pages[0]['template']);
+
+        foreach (array_slice($pages, 1) as $index => $page) {
+            $this->assertStringContainsString($row, $page['template'], 'page '.($index + 1));
+        }
+    }
+
     public function test_no_carried_row_when_the_carry_column_is_not_in_the_table(): void
     {
         $pages = (new PageStructure)->build($this->body([['a', 0, false]]), $this->carryType('zz'), ['a' => $this->rows('a', 120)])['pages'];

@@ -134,6 +134,37 @@ class RowHeightsTest extends TestCase
         $this->assertNotNull(RowHeights::of($this->table(weight: 700), $this->type, ['lines' => [['description' => $text]]]));
     }
 
+    public function test_multi_row_item_height_sums_its_segments(): void
+    {
+        // Grid = the 2nd segment, four 20 mm columns; `description` spans grid columns 2-4.
+        $table = $this->table(columns: [
+            ['key' => 'code', 'width' => '20', 'format' => ''],
+            ['key' => 'description', 'width' => '', 'format' => ''],
+            ['key' => 'unit_price', 'width' => '20', 'format' => 'money', 'break' => true],
+            ['key' => 'quantity', 'width' => '20', 'format' => 'number'],
+            ['key' => 'vat_rate', 'width' => '20', 'format' => 'percent'],
+            ['key' => 'amount', 'width' => '20', 'format' => 'money'],
+        ]);
+
+        // Two segments, nothing wraps: still a list, each item 2 rows tall.
+        $short = [['code' => 'A1', 'description' => 'Parafuso'], ['code' => 'A2', 'description' => 'Porca']];
+        $this->assertEqualsWithDelta([9.0, 9.0], RowHeights::of($table, $this->type, ['lines' => $short]), 0.0001);
+
+        // A description that breaks into 3 lines across the 60 mm it spans.
+        $font = FontMetrics::fromConfig(400);
+        $long = 'Chapa';
+        while (TextLines::count($font, $long, 8, (60 - 2) * 0.97) < 3) {
+            $long .= ' galvanizada';
+        }
+        $this->assertSame(3, TextLines::count($font, $long, 8, (60 - 2) * 0.97));
+
+        $this->assertEqualsWithDelta(
+            [9.0, 9.0 + 2 * self::LINE_MM],
+            RowHeights::of($table, $this->type, ['lines' => [['description' => 'Curta'], ['description' => $long]]]),
+            0.0001,
+        );
+    }
+
     /**
      * The table record `PageStructure::tablesIn` produces.
      *

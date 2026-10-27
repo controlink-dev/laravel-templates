@@ -16,7 +16,8 @@ use Controlink\Templates\Types\TemplateType;
  * line too many: that leaves white space, never rows printed over the totals.
  *
  * `null` when no row needs a second line — the signal that keeps the fixed-height
- * pagination, byte for byte.
+ * pagination, byte for byte. A table whose items span several rows (CGE-97) always has
+ * heights: each item sums its rows, every row measured on the grid columns its cells span.
  */
 class RowHeights
 {
@@ -46,9 +47,14 @@ class RowHeights
             return null;
         }
 
-        $widths = self::textWidths($columns, $table['widthMm'] ?? self::printableWidth($type));
+        $tableWidth = $table['widthMm'] ?? self::printableWidth($type);
 
-        if ($widths === []) {
+        // An item spanning several rows (CGE-97) is as tall as its rows, each measured
+        // like a row of its own. Its height is never the fixed one, so it is always given.
+        $multiRow = LineRows::isMultiRow($columns);
+        $segments = $multiRow ? self::segmentWidths($columns, $tableWidth) : [self::textWidths($columns, $tableWidth)];
+
+        if (! $multiRow && $segments[0] === []) {
             return null;
         }
 
@@ -61,20 +67,26 @@ class RowHeights
         $wraps   = false;
 
         foreach (array_values($rows) as $row) {
-            $lines = 1;
+            $height = 0.0;
 
-            foreach ($widths as $key => $width) {
-                $value = data_get($row, $key);
-                $text  = is_scalar($value) ? (string) $value : '';
+            foreach ($segments as $widths) {
+                $lines = 1;
 
-                $lines = max($lines, TextLines::count($font, $text, $fontPt, $width));
+                foreach ($widths as $key => $width) {
+                    $value = data_get($row, $key);
+                    $text  = is_scalar($value) ? (string) $value : '';
+
+                    $lines = max($lines, TextLines::count($font, $text, $fontPt, $width));
+                }
+
+                $wraps  = $wraps || $lines > 1;
+                $height += $rowHeight + ($lines - 1) * $lineMm;
             }
 
-            $wraps     = $wraps || $lines > 1;
-            $heights[] = $rowHeight + ($lines - 1) * $lineMm;
+            $heights[] = $height;
         }
 
-        return $wraps ? $heights : null;
+        return $wraps || $multiRow ? $heights : null;
     }
 
     /**
@@ -107,9 +119,7 @@ class RowHeights
     private static function textWidths(array $columns, float $tableWidth): array
     {
         $visible = self::visible($columns);
-        $stated  = array_map(fn (array $column): ?float => self::statedWidth($column['width'] ?? ''), $visible);
-        $autos   = count(array_filter($stated, fn (?float $width): bool => $width === null));
-        $share   = $autos > 0 ? max(0.0, $tableWidth - array_sum(array_filter($stated))) / $autos : 0.0;
+        $layout  = self::columnWidths($visible, $tableWidth);
 
         $widths = [];
 
@@ -118,10 +128,60 @@ class RowHeights
                 continue;
             }
 
-            $widths[(string) $column['key']] = max(0.1, (($stated[$index] ?? $share) - self::PADDING_MM) * self::SAFETY);
+            $widths[(string) $column['key']] = max(0.1, ($layout[$index] - self::PADDING_MM) * self::SAFETY);
         }
 
         return $widths;
+    }
+
+    /**
+     * Text room of each text cell of a multi-row table (CGE-97), per segment, keyed by the
+     * column's key: the grid columns the cell spans, laid out like `textWidths`.
+     *
+     * @param  list<array<string, mixed>>  $columns
+     * @return list<array<string, float>>
+     */
+    private static function segmentWidths(array $columns, float $tableWidth): array
+    {
+        $grid  = self::columnWidths(LineRows::grid($columns), $tableWidth);
+        $spans = LineRows::spans($columns);
+
+        $segments = [];
+
+        foreach (LineRows::segments($columns) as $s => $segment) {
+            $widths = [];
+            $at     = 0;
+
+            foreach ($segment as $i => $column) {
+                $span = $spans[$s][$i];
+                $room = array_sum(array_slice($grid, $at, $span));
+                $at  += $span;
+
+                if (self::isText($column) && ($column['key'] ?? '') !== '') {
+                    $widths[(string) $column['key']] = max(0.1, ($room - self::PADDING_MM) * self::SAFETY);
+                }
+            }
+
+            $segments[] = $widths;
+        }
+
+        return $segments;
+    }
+
+    /**
+     * Each column's width, laid out like `table-layout: fixed`: stated widths first, the
+     * rest shared by the auto ones.
+     *
+     * @param  list<array<string, mixed>>  $visible
+     * @return list<float>
+     */
+    private static function columnWidths(array $visible, float $tableWidth): array
+    {
+        $stated = array_map(fn (array $column): ?float => self::statedWidth($column['width'] ?? ''), $visible);
+        $autos  = count(array_filter($stated, fn (?float $width): bool => $width === null));
+        $share  = $autos > 0 ? max(0.0, $tableWidth - array_sum(array_filter($stated))) / $autos : 0.0;
+
+        return array_map(fn (?float $width): float => $width ?? $share, $stated);
     }
 
     /** A bare number is millimetres (the editor's convention); `NNmm` too; anything else is auto. */
@@ -142,7 +202,7 @@ class RowHeights
      */
     private static function visible(array $columns): array
     {
-        return array_values(array_filter($columns, fn (mixed $column): bool => is_array($column) && empty($column['hidden'])));
+        return LineRows::visible($columns);
     }
 
     /**
