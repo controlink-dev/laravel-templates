@@ -52,9 +52,13 @@ class DocumentComposer
          * to run it). The results go into the dataset now, over the WHOLE dataset —
          * PageStructure slices the collections per sheet next, and a SUM computed after
          * that would be one sheet's subtotal printed as the document's total.
+         *
+         * A formula that reads a page value (CGE-79) is evaluated again per sheet below,
+         * over the same whole dataset, once that sheet's page values are known.
          */
         $formulas = FormulaSet::fromHtml($html);
         $html     = $formulas->strippedHtml();
+        $whole    = $dataset;
         $dataset  = $formulas->inject($dataset);
 
         $this->guardHtml($html);
@@ -74,7 +78,7 @@ class DocumentComposer
          * needs that `top` to order the line tables and compute each page's capacity
          * (spec 3.1). Without it every editor-placed table would resolve to top 0.
          */
-        $structure = app(PageStructure::class)->build($this->bodyOf($html), $type, $dataset, $css);
+        $structure = app(PageStructure::class)->build($this->bodyOf($html), $type, $dataset, $css, $formulas->pageFields());
 
         $renderer = app(TemplateRenderer::class);
         $codes    = app(CodeImageGenerator::class);
@@ -95,6 +99,8 @@ class DocumentComposer
              * loose on all of that is one stray `{{` away from a render failure with no
              * explanation.
              */
+            $page['dataset'] = $formulas->injectPage($page['dataset'], $whole);
+
             $sheet = $renderer->render($page['template'], $page['dataset']);
 
             // Step 5: the code slots, generated on the server and embedded.
