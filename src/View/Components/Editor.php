@@ -49,7 +49,7 @@ class Editor extends Component
      * @param  string  $height  any CSS length; the component fills its container's width
      * @param  bool  $actions  render the save/preview/activate bar, or leave it to the host page
      * @param  string  $mode  phase 1 supports only `print`
-     * @param  array<string, string>  $urls  the host's own endpoints (the package registers no routes): load, save, preview, activate, catalogue, stylesheet, font (with {family}/{weight}), format_switch (with the literal {@see self::FORMAT_PLACEHOLDER})
+     * @param  array<string, string>  $urls  the host's own endpoints (the package registers no routes): load, save, preview, escpos_preview (a roll's thermal receipt preview, optional), activate, catalogue, stylesheet, font (with {family}/{weight}), format_switch (with the literal {@see self::FORMAT_PLACEHOLDER})
      * @param  bool  $formatSelector  render the in-toolbar page-format `<select>`. A host that drives format switching from its own page chrome (format tabs that hit `urls['format_switch']`) turns this off so the two controls do not both show.
      * @param  bool  $hostNotices  hand outcome messages (saved, refused, render failed) to the host instead of the editor's own status line. The editor still announces each as a bubbling `templates:message` DOM event ({@see resources/js/editor/editor.js}); turn this on only where the host page actually listens for it, or the message is lost.
      */
@@ -398,6 +398,9 @@ class Editor extends Component
             'dialog.confirm' => __('templates::editor.dialog.confirm'),
             'dialog.cancel'  => __('templates::editor.dialog.cancel'),
             'dialog.close'   => __('templates::editor.dialog.close'),
+
+            'escpos.title'    => __('templates::editor.escpos.title'),
+            'escpos.download' => __('templates::editor.escpos.download'),
 
             // The sample-data panel (real records, never saved).
             'preview.tab' => __('templates::editor.preview.tab'),

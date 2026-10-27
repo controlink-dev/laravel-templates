@@ -353,6 +353,9 @@ return [
     // A tradução do talão para a impressora térmica (ESC/POS, CGE-97). `:subject` é o campo
     // (ou o elemento) em causa; `:columns` a largura do talão em caracteres.
     'escpos' => [
+        'preview'           => 'Pré-visualizar talão térmico',
+        'title'             => 'Pré-visualização do talão térmico',
+        'download'          => 'Descarregar',
         'unencodable_field' => 'O campo «:subject» tem o carácter «:char», que a impressora térmica não consegue imprimir. Corrija o valor do campo.',
         'unencodable'       => 'O texto de «:subject» tem o carácter «:char», que a impressora térmica não consegue imprimir.',
         'value_too_wide'    => 'O valor «:subject» não cabe numa linha do talão (:width caracteres) e não pode ser partido. Dê-lhe mais colunas ou uma linha só para ele.',
