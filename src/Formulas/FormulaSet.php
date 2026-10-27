@@ -3,6 +3,7 @@
 namespace Controlink\Templates\Formulas;
 
 use Controlink\Templates\Exceptions\UnsafeTemplateException;
+use Controlink\Templates\Output\Pdf\PageStructure;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
@@ -121,6 +122,63 @@ final class FormulaSet
     public function strippedHtml(): string
     {
         return $this->strippedHtml;
+    }
+
+    /**
+     * The data-field formulas that read a page value (CGE-79): their result differs per
+     * sheet, so the compositor evaluates them once per sheet with `injectPage`.
+     *
+     * @return list<string> binding keys (`formula.<id>`)
+     */
+    public function pageFields(): array
+    {
+        $keys = [];
+
+        foreach ($this->fields as $key => $source) {
+            foreach (Formula::references($source) as $reference) {
+                if (str_starts_with($reference, PageStructure::PAGE_PREFIX)) {
+                    $keys[] = $key;
+
+                    break;
+                }
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
+     * One sheet's dataset with its page formulas evaluated (CGE-79).
+     *
+     * Evaluated over `$whole` — the dataset as it reached the compositor, every
+     * collection entire, so a SUM is still the document's — plus this sheet's page
+     * values. Every other formula keeps the result `inject` gave it.
+     *
+     * @param  array<string, mixed>  $pageDataset  the sheet's dataset, page values included
+     * @param  array<string, mixed>  $whole  the dataset before any formula ran
+     * @return array<string, mixed>
+     */
+    public function injectPage(array $pageDataset, array $whole): array
+    {
+        $keys = $this->pageFields();
+
+        if ($keys === []) {
+            return $pageDataset;
+        }
+
+        foreach ($pageDataset as $key => $value) {
+            if (str_starts_with((string) $key, PageStructure::PAGE_PREFIX)) {
+                $whole[$key] = $value;
+            }
+        }
+
+        $aggregates = new AggregateCache;
+
+        foreach ($keys as $key) {
+            $pageDataset[$key] = Formula::compile($this->fields[$key])->evaluate($whole, aggregates: $aggregates);
+        }
+
+        return $pageDataset;
     }
 
     /**

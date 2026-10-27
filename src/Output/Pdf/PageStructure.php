@@ -37,6 +37,18 @@ class PageStructure
     /** `data-tpl-anchor` of a line table drawn at its own place on the last page (CGE-67). */
     public const ANCHOR_LAST_PAGE = 'last-page';
 
+    /** What the pages before this one carried of the type's `pdf.carry` column (CGE-79). */
+    public const CARRIED_IN = 'page.carried_in';
+
+    /** What this page carries forward: everything up to the end of it (CGE-79). */
+    public const CARRIED_OUT = 'page.carried_out';
+
+    /** Whether this is the document's last page (CGE-79). */
+    public const IS_LAST = 'page.is_last';
+
+    /** The prefix of every per-page value a field or a formula may read (CGE-79). */
+    public const PAGE_PREFIX = 'page.';
+
     /**
      * The document, as one page template per sheet plus the dataset each needs.
      *
@@ -45,10 +57,14 @@ class PageStructure
      * each editor-placed line table, which lives in a `#id{…}` rule rather than inline
      * (the canvas runs with `avoidInlineStyle: true`). See `topMm`.
      *
+     * `$pageFields` are the field bindings (formula keys) that read a per-page value: on
+     * a type that carries a total (CGE-79) they keep their value on the middle pages,
+     * where every other field of the body prints empty.
+     *
      * @param  array<string, mixed>  $dataset
      * @return array{pages: array<int, array{template: string, dataset: array<string, mixed>}>, css: string}
      */
-    public function build(string $editorHtml, TemplateType $type, array $dataset, string $css = ''): array
+    public function build(string $editorHtml, TemplateType $type, array $dataset, string $css = '', array $pageFields = []): array
     {
         $zones  = $this->zonesOf($editorHtml);
         $tables = $this->tablesIn($zones['body'], $css);
@@ -56,10 +72,24 @@ class PageStructure
         // A roll is one continuous page: every row, no repeated header or footer. Every
         // table renders all of its rows (spec 3.1); no chunking, so the body is unchanged.
         if (PageGeometry::fromType($type->pdf)->medium === 'roll') {
+            $rollDataset = $this->datasetFor($dataset, $this->allRowsByCollection($tables, $dataset), 1, 1);
+
+            // A carrying layout moved to a roll (CGE-79): its one page is the last, so a
+            // page formula prints the totals rather than an empty "carried forward".
+            $carry = $type->pdf['carry'] ?? null;
+
+            if (is_array($carry) && isset($carry['collection'], $carry['column'])) {
+                $rows = $dataset[(string) $carry['collection']] ?? [];
+
+                $rollDataset[self::CARRIED_IN]  = 0.0;
+                $rollDataset[self::CARRIED_OUT] = $this->carriedSum(is_array($rows) ? $rows : [], (string) $carry['column']);
+                $rollDataset[self::IS_LAST]     = true;
+            }
+
             return [
                 'pages' => [[
                     'template' => $this->wrapPage($zones, $zones['body']),
-                    'dataset'  => $this->datasetFor($dataset, $this->allRowsByCollection($tables, $dataset), 1, 1),
+                    'dataset'  => $rollDataset,
                 ]],
                 'css' => $this->css($type),
             ];
@@ -74,14 +104,18 @@ class PageStructure
 
         [$flowing, $fixed] = $this->splitFixed($tables, $type, $dataset, $heights);
 
+        // A type that carries a total across its pages (CGE-79) always takes the stacked
+        // flow: it is the one that knows, per page, where the carried row goes.
+        $carry = $this->carry($type);
+
         // One table (or none), nothing wrapping, paginates exactly as it always has: a
         // single DOM round-trip is never taken, so the emitted strings are byte-for-byte
         // what they were. A wrapping table takes the stacked flow, which sums heights.
-        if ($heights === [] && count($flowing) <= 1) {
+        if ($heights === [] && count($flowing) <= 1 && $carry === null) {
             return $this->buildSingle($zones, $flowing[0] ?? null, $type, $dataset);
         }
 
-        return $this->buildStacked($zones, $flowing, $type, $dataset, $fixed, $heights, $this->wrapping($tables, $heights));
+        return $this->buildStacked($zones, $flowing, $type, $dataset, $fixed, $heights, $this->wrapping($tables, $heights), $pageFields);
     }
 
     /**
@@ -128,10 +162,19 @@ class PageStructure
      * @param  array<string, mixed>  $dataset
      * @return array{pages: array<int, array{template: string, dataset: array<string, mixed>}>, css: string}
      */
-    private function buildStacked(array $zones, array $tables, TemplateType $type, array $dataset, array $fixed = [], array $heights = [], array $wrapping = []): array
+    private function buildStacked(array $zones, array $tables, TemplateType $type, array $dataset, array $fixed = [], array $heights = [], array $wrapping = [], array $pageFields = []): array
     {
-        $placements = $this->flow($tables, $type, $dataset, $heights);
+        $carry      = $this->carry($type);
+        $placements = $this->flow($tables, $type, $dataset, $heights, $carry);
         $total      = count($placements);
+
+        // With a carried total (CGE-79) the middle pages draw the whole body, with its
+        // fields empty — except those that read a page value, and the legal ones the
+        // law wants on every page.
+        $keep = $carry === null ? [] : [...$pageFields, ...array_keys(array_filter(
+            $type->bindingsByKey(),
+            fn (array $binding): bool => ($binding['scope'] ?? null) === 'every_page',
+        ))];
 
         // Every bound collection the body carries: a page that shows none of a table's
         // rows still declares it as [] (exhausted, or not yet started).
@@ -140,7 +183,8 @@ class PageStructure
             fn (string $collection): bool => $collection !== '',
         ));
 
-        $pages = [];
+        $pages   = [];
+        $carried = 0.0;
 
         foreach ($placements as $index => $page) {
             $isLast = $index === $total - 1;
@@ -156,9 +200,36 @@ class PageStructure
                 $chunkMap[$collection] = $placed[$collection] ?? [];
             }
 
+            // A table fixed on the last page shows only its header on a middle one.
+            if ($carry !== null && ! $isLast) {
+                foreach ($fixed as $collection) {
+                    $chunkMap[$collection] = [];
+                }
+            }
+
+            $pageDataset = $this->datasetFor($dataset, $chunkMap, $index + 1, $total);
+
+            if ($carry !== null) {
+                $here = $this->carriedSum($placed[$carry['collection']] ?? [], $carry['column']);
+
+                $pageDataset[self::CARRIED_IN]  = $carried;
+                $pageDataset[self::CARRIED_OUT] = $carried + $here;
+                $pageDataset[self::IS_LAST]     = $isLast;
+
+                $carried += $here;
+            }
+
+            $body = $this->stackedBody($zones['body'], $page, $isLast, $fixed, $carry !== null && ! $isLast ? $keep : null);
+
+            foreach ($page as $placement) {
+                if ($placement['carried'] ?? false) {
+                    $body = $this->withCarriedRow($body, $placement['collection'], (string) $carry['column']);
+                }
+            }
+
             $pages[] = [
-                'template' => $this->wrapPage($zones, $this->stackedBody($zones['body'], $page, $isLast, $fixed)),
-                'dataset'  => $this->datasetFor($dataset, $chunkMap, $index + 1, $total),
+                'template' => $this->wrapPage($zones, $body),
+                'dataset'  => $pageDataset,
             ];
         }
 
@@ -245,7 +316,7 @@ class PageStructure
      * @param  array<string, mixed>  $dataset
      * @return list<list<array{collection: string, chunk: array<int, array<string, mixed>>, top: float}>>
      */
-    private function flow(array $tables, TemplateType $type, array $dataset, array $heights = []): array
+    private function flow(array $tables, TemplateType $type, array $dataset, array $heights = [], ?array $carry = null): array
     {
         // The flow is over bound tables only; an unbound one carries no collection to
         // paginate (spec 3.1, ruling T2-F) and stays in the DOM untouched.
@@ -291,6 +362,11 @@ class PageStructure
             while ($offset < $n) {
                 $atPageStart = $current === [];
 
+                // The carried row (CGE-79): a continuation of the carrying table opens with
+                // it, and it takes a row's worth of the page like the table's own header.
+                $carried = $carry !== null && $table['collection'] === $carry['collection'] && $offset > 0;
+                $cursor += $carried ? $rowHeight : 0.0;
+
                 // The first table on a page uses the clamped value, so a lone table is
                 // exactly today's chunking; a later table uses the raw fit, which may be
                 // zero or negative — then the page closes and the table continues fresh.
@@ -315,7 +391,13 @@ class PageStructure
                 $take  = min($capacity, $n - $offset);
                 $chunk = array_slice($rows, $offset, $take);
 
-                $current[] = ['collection' => $table['collection'], 'chunk' => $chunk, 'top' => $cursor];
+                // The table itself starts above its carried row.
+                $current[] = [
+                    'collection' => $table['collection'],
+                    'chunk'      => $chunk,
+                    'top'        => $carried ? $cursor - $rowHeight : $cursor,
+                    'carried'    => $carried,
+                ];
 
                 $cursor += $tall !== null
                     ? $rowHeight + array_sum(array_slice($tall, $offset, $take))
@@ -334,6 +416,47 @@ class PageStructure
         }
 
         return $pages;
+    }
+
+    /**
+     * The type's carried column (CGE-79): `pdf.carry` as `{collection, column}`, or null
+     * when the type carries nothing — and always on a roll, which has no pages.
+     *
+     * @return array{collection: string, column: string}|null
+     */
+    private function carry(TemplateType $type): ?array
+    {
+        $carry = $type->pdf['carry'] ?? null;
+
+        if (! is_array($carry) || PageGeometry::fromType($type->pdf)->medium === 'roll') {
+            return null;
+        }
+
+        $collection = (string) ($carry['collection'] ?? '');
+        $column     = (string) ($carry['column'] ?? '');
+
+        return $collection !== '' && $column !== '' ? ['collection' => $collection, 'column' => $column] : null;
+    }
+
+    /**
+     * The carried column summed over some rows. A cell that is not a number counts as
+     * zero: a blank amount must not stop a document from printing.
+     *
+     * @param  array<int, mixed>  $rows
+     */
+    private function carriedSum(array $rows, string $column): float
+    {
+        $sum = 0.0;
+
+        foreach ($rows as $row) {
+            $cell = is_array($row) ? ($row[$column] ?? null) : null;
+
+            if (is_int($cell) || is_float($cell) || (is_string($cell) && is_numeric(trim($cell)))) {
+                $sum += (float) $cell;
+            }
+        }
+
+        return $sum;
     }
 
     /**
@@ -579,9 +702,14 @@ class PageStructure
      * from the DOM so an exhausted header never prints over the next block (ruling T2-C),
      * and the surviving tables repositioned to their cursor.
      *
+     * With a carried total (CGE-79) a middle page takes the last page's path too, and
+     * `$keep` is given: every data field outside a line table prints empty unless its
+     * binding reads a page value or is listed there.
+     *
      * @param  list<array{collection: string, chunk: array<int, array<string, mixed>>, top: float}>  $page
+     * @param  list<string>|null  $keep  null: no field is emptied
      */
-    private function stackedBody(string $bodyHtml, array $page, bool $isLast, array $fixed = []): string
+    private function stackedBody(string $bodyHtml, array $page, bool $isLast, array $fixed = [], ?array $keep = null): string
     {
         // Where each placed collection renders on this page.
         $topByCollection = [];
@@ -589,7 +717,7 @@ class PageStructure
             $topByCollection[$placement['collection']] = $placement['top'];
         }
 
-        if (! $isLast) {
+        if (! $isLast && $keep === null) {
             // Only the placed tables, in flow order, each at its cursor position.
             $body = '';
 
@@ -632,9 +760,68 @@ class PageStructure
             $this->setTopMm($node, $topByCollection[$collection]);
         }
 
+        if ($keep !== null) {
+            $fields = $xpath->query('//*[@data-tpl-type="data-field"][not(ancestor::*[@data-tpl-type="line-table"])]');
+
+            foreach ($fields ?: [] as $node) {
+                $binding = $node instanceof DOMElement ? $node->getAttribute('data-tpl-binding') : '';
+
+                if ($node instanceof DOMElement && ! str_starts_with($binding, self::PAGE_PREFIX) && ! in_array($binding, $keep, true)) {
+                    $node->textContent = '';
+                }
+            }
+        }
+
         $root = $xpath->query('//*[@id="tpl-root"]')->item(0);
 
         return $root instanceof DOMElement ? $this->innerHtml($root) : $bodyHtml;
+    }
+
+    /**
+     * The carried-forward row (CGE-79), put before the rows of `$collection`'s table.
+     *
+     * Built from the table's own row template, so it has the same cells, styles and
+     * format: the cell printing `$column` prints `page.carried_in` instead, the cells
+     * before it merge into one that holds the label, and the ones after it stay empty.
+     * Done on the string, like `repositionTop`, so nothing else in the body moves. A
+     * table that does not show the carried column gets no row.
+     */
+    private function withCarriedRow(string $bodyHtml, string $collection, string $column): string
+    {
+        $loop = '/\{%\s*for\s+(\w+)\s+in\s+'.preg_quote($collection, '/').'\s*%\}\s*<tr\b[^>]*>(.*?)<\/tr>/s';
+
+        if (! preg_match($loop, $bodyHtml, $match, PREG_OFFSET_CAPTURE)) {
+            return $bodyHtml;
+        }
+
+        preg_match_all('/<td\b([^>]*)>(.*?)<\/td>/s', $match[2][0], $cells, PREG_SET_ORDER);
+
+        $value = '/\b'.preg_quote($match[1][0].'.'.$column, '/').'(?![\w.])/';
+        $at    = null;
+
+        foreach ($cells as $index => $cell) {
+            if (preg_match($value, $cell[2])) {
+                $at = $index;
+
+                break;
+            }
+        }
+
+        if ($at === null) {
+            return $bodyHtml;
+        }
+
+        $row = $at > 0
+            ? '<td colspan="'.$at.'">'.htmlspecialchars((string) __('templates::editor.render.carried_in'), ENT_QUOTES).'</td>'
+            : '';
+
+        $row .= '<td'.$cells[$at][1].'>'.preg_replace($value, self::CARRIED_IN, $cells[$at][2]).'</td>';
+
+        foreach (array_slice($cells, $at + 1) as $cell) {
+            $row .= '<td'.$cell[1].'></td>';
+        }
+
+        return substr_replace($bodyHtml, '<tr class="lines__carried">'.$row.'</tr>', $match[0][1], 0);
     }
 
     /**
@@ -1011,6 +1198,9 @@ class PageStructure
                 .'overflow:hidden;white-space:nowrap;text-overflow:ellipsis;'
                 .'box-sizing:border-box;padding:0 1mm;vertical-align:middle}',
             $wraps,
+
+            // CGE-79: the carried-forward row stands out from the lines it precedes.
+            $this->carry($type) !== null ? 'tr.lines__carried td{font-weight:700}' : '',
         ]);
     }
 

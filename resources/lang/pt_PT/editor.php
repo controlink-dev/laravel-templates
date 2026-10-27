@@ -519,6 +519,7 @@ return [
         'too_slow'            => 'A renderização levou :seconds s; o limite é :limit s.',
         'too_many_pages'      => 'O documento saiu com :pages páginas; o limite deste tipo de documento é :limit.',
         'value_missing'       => 'O valor de «:field» não aparece no PDF gerado.',
+        'carried_in'          => 'Total transportado',
         'missing_on_page'     => 'Página :page: «:field» tem de aparecer em todas as páginas e falta nesta.',
         'outside_printable'   => 'Página :page: «:field» saiu fora da área imprimível.',
         'page_size_mismatch'  => 'O PDF gerado tem :actual mas o modelo pede :expected.',
