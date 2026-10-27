@@ -89,11 +89,14 @@ export function withRollState(classes, patch) {
  * A text block's classes on a roll, inside a «Linha com colunas» (`inRow`) or out of one.
  * Always a flow block, never an absolutely placed `block`: print.css keeps a `.block` on
  * one line, so a long text could not wrap and was E-04, where ESC/POS breaks it on words.
- * In a row it is also a cell (`esc-cell`); out of one it is not. The `esc-*` styling stays.
+ * In a row it is also a cell (`esc-cell`) in the normal letter — a cell has no «Letra» and
+ * a double one is E-04, so `esc-double` goes; out of one it is not. The rest of the `esc-*`
+ * styling stays.
  */
 export function cellClasses(classes, inRow) {
     const kept = [...(classes ?? [])]
-        .filter((name) => name !== 'block' && !name.startsWith('block--') && name !== 'flow' && name !== 'esc-cell');
+        .filter((name) => name !== 'block' && !name.startsWith('block--') && name !== 'flow' && name !== 'esc-cell')
+        .filter((name) => !inRow || name !== 'esc-double');
 
     return inRow ? ['flow', 'esc-cell', ...kept] : ['flow', ...kept];
 }

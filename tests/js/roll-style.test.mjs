@@ -94,6 +94,10 @@ assert.deepEqual(cellClasses(['flow', 'esc-cell', 'esc-right'], false), ['flow',
 assert.deepEqual(cellClasses(['flow', 'esc-cell'], true), ['flow', 'esc-cell']);
 assert.deepEqual(cellClasses(['block', 'block--text'], false), ['flow']);
 assert.deepEqual(cellClasses(['block', 'block--field', 'esc-center'], false), ['flow', 'esc-center']);
+// A cell prints in the normal letter (a double cell is E-04, and a cell has no «Letra» to
+// undo it): a «Dupla» block dropped into a row loses its double size, keeps the rest.
+assert.deepEqual(cellClasses(['flow', 'esc-double', 'esc-bold'], true), ['flow', 'esc-cell', 'esc-bold']);
+assert.deepEqual(cellClasses(['flow', 'esc-double', 'esc-bold'], false), ['flow', 'esc-double', 'esc-bold']);
 assert.deepEqual(cellClasses(['block', 'block--page-number'], false), ['flow']);
 assert.deepEqual(cellClasses(['flow', 'esc-bold'], false), ['flow', 'esc-bold']);
 
