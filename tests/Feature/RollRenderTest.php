@@ -2,6 +2,7 @@
 
 namespace Controlink\Templates\Tests\Feature;
 
+use Controlink\Templates\Output\EscPos\ReceiptBuilder;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Output\Pdf\PageStructure;
 use Controlink\Templates\Output\Pdf\PdfRenderer;
@@ -100,13 +101,85 @@ class RollRenderTest extends TestCase
         $rule = '#tpl-lines td:nth-child(1){white-space:pre-line;overflow-wrap:anywhere;text-overflow:clip;line-height:1.25}';
 
         // The description (1st) breaks into lines on the grid; the money column (2nd) never does.
-        $css = app(PageStructure::class)->rollWrapCss($html);
-        $this->assertSame($rule, $css);
+        // And the cells lose their padding (a 12ch column holds 12 characters) and sit on the
+        // first line of their row, both as on ESC/POS.
+        $cells = 'table.lines th,table.lines td{padding:0;vertical-align:top}';
+        $css   = app(PageStructure::class)->rollWrapCss($html);
+        $this->assertSame($cells.$rule, $css);
 
-        // And the composed roll carries it; a sheet's composed document has no such rule.
+        // And the composed roll carries both, after the base cell rule (which they beat by
+        // order); a sheet's composed document has neither.
         $composer = app(DocumentComposer::class);
-        $this->assertStringContainsString($rule, $composer->compose($html, '', $this->carrier(self::ROLL_80), []));
-        $this->assertStringNotContainsString('nth-child', $composer->compose($html, '', $this->carrier(['paper_format' => 'A4']), []));
+        $roll     = $composer->compose($html, '', $this->carrier(self::ROLL_80), []);
+        $this->assertStringContainsString($cells.$rule, $roll);
+        $this->assertGreaterThan(strpos($roll, 'padding:0 1mm'), strpos($roll, $cells));
+        $sheet = $composer->compose($html, '', $this->carrier(['paper_format' => 'A4']), []);
+        $this->assertStringNotContainsString('nth-child', $sheet);
+        $this->assertStringNotContainsString($cells, $sheet);
+        $this->assertStringContainsString('padding:0 1mm', $sheet);
+    }
+
+    /**
+     * The PDF and the ESC/POS receipt break a line table the same way (CGE-97): with no cell
+     * padding, the 28-character description column holds 28 characters, and the row grows
+     * to the wrapped lines instead of clipping them.
+     */
+    #[Group('render')]
+    public function test_roll_pdf_wraps_a_description_where_escpos_does(): void
+    {
+        Http::allowStrayRequests();
+
+        try {
+            Http::timeout(3)->get(rtrim((string) config('templates.pdf.gotenberg.url'), '/').'/health');
+        } catch (\Throwable) {
+            $this->markTestSkipped('The PDF engine is not reachable.');
+        }
+
+        $columns = htmlspecialchars((string) json_encode([
+            ['key' => 'designation', 'label' => 'Artigo', 'width' => '', 'format' => ''],
+            ['key' => 'total', 'label' => 'Total', 'width' => '12ch', 'format' => 'money', 'align' => 'right'],
+        ]), ENT_QUOTES);
+        $html = '<body><div class="zone zone--body"><div class="block block--lines" data-tpl-type="line-table"'
+            .' data-tpl-binding="lines" data-tpl-columns="'.$columns.'" id="tpl-lines"><table class="lines">'
+            .'<thead><tr><th style="text-align:left">Artigo</th><th style="text-align:right;width:12ch">Total</th></tr></thead>'
+            .'<tbody>{% for linha in lines %}<tr><td style="text-align:left">{{ linha.designation }}</td>'
+            .'<td style="text-align:right">{{ linha.total }}</td></tr>{% endfor %}</tbody></table></div>'
+            .'</div></body>';
+        $dataset = ['lines' => [
+            ['designation' => 'Chapa de aço galvanizado com duas faces', 'total' => '1.229.999,98'],
+            ['designation' => 'Segundo', 'total' => '1,00'],
+        ]];
+
+        $type     = $this->carrier(self::ROLL_80);
+        $composed = app(DocumentComposer::class)->compose($html, '', $type, $dataset);
+
+        // ESC/POS: 28 + 12 columns.
+        $receipt = (new ReceiptBuilder)->build($composed, $dataset, PageGeometry::fromType(self::ROLL_80));
+        $this->assertSame([], $receipt->problems);
+        $this->assertSame([
+            'Artigo'.str_repeat(' ', 29).'Total',
+            'Chapa de aço galvanizado com1.229.999,98',
+            'duas faces'.str_repeat(' ', 30),
+            'Segundo'.str_repeat(' ', 29).'1,00',
+        ], explode("\n", $receipt->text()));
+
+        $out = app(PdfRenderer::class)->render($composed, $type);
+
+        RenderedPdf::open($out['pdf'], function (RenderedPdf $pdf): void {
+            $words = [];
+
+            foreach ($pdf->wordsOn(1) as $word) {
+                $words[$word['text']] ??= $word;
+            }
+
+            // The PDF breaks after "com", as the receipt does, and the value is whole.
+            $this->assertEqualsWithDelta($words['Chapa']['top'], $words['com']['top'], 0.5);
+            $this->assertEqualsWithDelta($words['Chapa']['top'], $words['1.229.999,98']['top'], 0.5);
+            $this->assertGreaterThan($words['com']['top'] + 1.0, $words['duas']['top']);
+
+            // The row grew: the wrapped line sits above the next row instead of being clipped.
+            $this->assertGreaterThan($words['duas']['top'] + 1.0, $words['Segundo']['top']);
+        });
     }
 
     #[Group('render')]

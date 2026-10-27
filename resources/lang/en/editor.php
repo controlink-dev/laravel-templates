@@ -340,6 +340,7 @@ return [
         'row_too_wide'      => 'The columns of ":subject" add up to :width characters, more than the receipt\'s :columns.',
         'mixed_size'        => 'In ":subject", only part of the line is double size. On the thermal printer, double size is for the whole line.',
         'image_type'        => 'The image ":subject" is neither PNG nor JPEG. The thermal printer only prints images of these two types.',
+        'no_room'           => '":subject" has no room left on its line: the other cells take every column. Give it columns or make the others narrower.',
         'qr_empty'          => 'The QR code ":subject" is empty.',
         'untranslatable'    => '":subject" has no equivalent on the thermal printer.',
     ],

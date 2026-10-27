@@ -350,6 +350,7 @@ return [
         'row_too_wide'      => 'As colunas de «:subject» somam :width caracteres, mais do que os :columns do talão.',
         'mixed_size'        => 'Em «:subject», só uma parte da linha está em letra dupla. Na impressora térmica, a letra dupla é para a linha inteira.',
         'image_type'        => 'A imagem «:subject» não é PNG nem JPEG. A impressora térmica só imprime imagens destes dois tipos.',
+        'no_room'           => '«:subject» não tem espaço na linha: as outras células ocupam todas as colunas. Dê-lhe colunas ou estreite as outras.',
         'qr_empty'          => 'O código QR «:subject» está vazio.',
         'untranslatable'    => '«:subject» não tem equivalente na impressora térmica.',
     ],

@@ -6,6 +6,7 @@ use BaconQrCode\Common\ErrorCorrectionLevel;
 use BaconQrCode\Encoder\Encoder;
 use Controlink\Templates\Support\PageGeometry;
 use GdImage;
+use InvalidArgumentException;
 use Throwable;
 
 /**
@@ -24,8 +25,19 @@ final class EscPosEncoder
     /** The legal minimum side of the QR: 30 mm at 8 dots/mm. */
     private const QR_MIN_DOTS = 240;
 
+    /**
+     * @throws InvalidArgumentException for a receipt with problems: its `?` (E-03) or cut
+     *                                  value (E-04) must never reach paper
+     */
     public function encode(Receipt $receipt, PageGeometry $geometry): string
     {
+        if ($receipt->problems !== []) {
+            throw new InvalidArgumentException(sprintf(
+                'A receipt with problems is not printed (%s).',
+                implode(', ', array_unique(array_column($receipt->problems, 'code'))),
+            ));
+        }
+
         $printable = $geometry->widthMm >= 76 ? 576 : 384;
         $area      = min($printable, $receipt->columns * self::DOTS_PER_CHARACTER);
         $margin    = intdiv($printable - $area, 2);

@@ -109,6 +109,19 @@ class EscPosEncoderTest extends TestCase
         $this->assertStringContainsString("\x1Ba\x01\x1Dv0\x00\x02\x00\x02\x00\xFF\x00\xFF\x00", $bytes);
     }
 
+    public function test_a_receipt_with_problems_is_never_encoded(): void
+    {
+        // An E-03 left a `?` in the line: it must not reach paper.
+        $receipt = new Receipt(40, [$this->line('Cliente ?'.str_repeat(' ', 31))], [
+            ['code' => 'E-03', 'component_id' => 'tpl-name', 'message' => 'x', 'key' => 'unencodable_field', 'subject' => 'customer.name'],
+        ]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('E-03');
+
+        (new EscPosEncoder)->encode($receipt, $this->geometry());
+    }
+
     public function test_ends_with_feed_and_partial_cut(): void
     {
         $bytes = (new EscPosEncoder)->encode(new Receipt(40, [$this->line(str_repeat(' ', 40))]), $this->geometry());

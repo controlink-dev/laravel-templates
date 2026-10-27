@@ -1266,13 +1266,19 @@ class PageStructure
      * pages to count, so the receipt grows instead of cutting a description. Values stay
      * on one line. The wrapped lines keep the roll's character grid (line-height 1.25).
      *
+     * And a cell has no padding on a roll: a column `Nch` wide holds N characters, as on
+     * the ESC/POS printer (ReceiptBuilder). Separating columns is the layout's job.
+     *
      * Added by the composer next to `build()`'s CSS rather than inside it, so `build()`
-     * keeps the bytes the pagination golden pins.
+     * keeps the bytes the pagination golden pins, and a sheet keeps every byte it had.
      */
     public function rollWrapCss(string $bodyHtml, string $css = ''): string
     {
-        return $this->wrapRules($this->rollWrapping($this->tablesIn($bodyHtml, $css)), '1.25');
+        return self::ROLL_CELLS.$this->wrapRules($this->rollWrapping($this->tablesIn($bodyHtml, $css)), '1.25');
     }
+
+    /** A roll's line table cells: no padding (the column is the grid) and on the first line of the row, as ESC/POS prints them (CGE-97). */
+    public const ROLL_CELLS = 'table.lines th,table.lines td{padding:0;vertical-align:top}';
 
     /**
      * The wrap rule for each text column of each table: by position, or — a table whose

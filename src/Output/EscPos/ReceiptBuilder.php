@@ -84,9 +84,10 @@ final class ReceiptBuilder
 
     /**
      * @param  array<string, mixed>  $dataset  the flat dataset the document was composed with
-     * @param  list<array<string, mixed>>  $fields  the type's bindings (`key`, `legal`): a legal
-     *                                               field never breaks. Optional: without it, only
-     *                                               `esc-nowrap` and formatted fields say so.
+     * @param  list<array<string, mixed>>  $fields  the type's bindings (`key`, `legal`), the
+     *                                               authoritative list of legal fields, which never
+     *                                               break. Optional: the editor's `data-tpl-legal="1"`
+     *                                               mark already says so on what it saved.
      */
     public function build(string $composedHtml, array $dataset, PageGeometry $geometry, array $fields = []): Receipt
     {
@@ -313,9 +314,7 @@ final class ReceiptBuilder
             }
 
             $columns[] = [
-                'lines' => $widths[$index] > 0 || $glyphs !== []
-                    ? $this->wrap($glyphs, max(1, $widths[$index]), false, $this->nearestId($cell))
-                    : [],
+                'lines' => $this->cellLines($glyphs, $widths[$index], false, $this->nearestId($cell), $this->nearestId($cell) ?? 'esc-cell'),
                 'width' => $widths[$index],
                 'align' => $cellContext['align'],
             ];
@@ -399,13 +398,33 @@ final class ReceiptBuilder
             // A header is nowrap and clipped at its width, as the browser draws it.
             $lines = $header
                 ? ($glyphs === [] ? [] : [array_slice(array_map(fn (array $g): array => $g['c'] === "\n" ? ['c' => ' '] + $g : $g, $glyphs), 0, $width)])
-                : $this->wrap($glyphs, max(1, $width), true, $owner);
+                : $this->cellLines($glyphs, $width, true, $owner, (string) (is_array($column) ? ($column['label'] ?? $column['key'] ?? '') : '') ?: ($owner ?? 'td'));
 
             $columns[] = ['lines' => $lines, 'width' => $width, 'align' => $cellContext['align']];
         }
 
         // A table row has its height even when empty (PageStructure: a fixed row height).
         $this->emitColumns($columns, $this->columns, false, [$owner], 1);
+    }
+
+    /**
+     * A cell's lines in its width. A cell with text and no columns left (the sized cells
+     * took the whole line) is E-04: its text would vanish, never print.
+     *
+     * @param  list<array{c: string, b: bool, l: ?int}>  $glyphs  collapsed
+     * @return list<list<array{c: string, b: bool, l: ?int}>>
+     */
+    private function cellLines(array $glyphs, int $width, bool $anywhere, ?string $owner, string $subject): array
+    {
+        if ($width <= 0) {
+            if ($glyphs !== []) {
+                $this->problem('E-04', 'no_room', $owner, $subject);
+            }
+
+            return [];
+        }
+
+        return $this->wrap($glyphs, $width, $anywhere, $owner);
     }
 
     /**
@@ -870,9 +889,18 @@ final class ReceiptBuilder
         return false;
     }
 
-    /** A data field whose value must stay whole: a formatted one (money, number, date…) or a legal one. */
+    /**
+     * A value that must stay whole: anything the editor marked legal (`data-tpl-legal="1"`,
+     * which it writes on every legal field it saves: components.js), or a data field that is
+     * formatted (money, number, date…) or whose binding `$fields` says is legal. The mark is
+     * the safe default; `$fields` also covers markup saved before the mark existed.
+     */
     private function isValueField(DOMElement $element): bool
     {
+        if ($element->getAttribute('data-tpl-legal') === '1') {
+            return true;
+        }
+
         return $element->getAttribute('data-tpl-type') === 'data-field'
             && ($element->getAttribute('data-tpl-format') !== '' || isset($this->legal[$element->getAttribute('data-tpl-binding')]));
     }

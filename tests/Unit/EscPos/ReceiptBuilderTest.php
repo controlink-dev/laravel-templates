@@ -108,6 +108,43 @@ class ReceiptBuilderTest extends TestCase
         $this->assertSame(['NIF'.str_repeat(' ', 28).'123456789'], $this->lines($shared));
     }
 
+    public function test_a_cell_with_text_and_no_columns_left_is_e04(): void
+    {
+        // The sized cells take all 40 columns: the auto cell has none, and its short word
+        // would silently vanish.
+        $receipt = $this->build(
+            '<div class="flow esc-row" id="tpl-row"><div class="flow esc-cell" data-tpl-cols="20">A</div>'
+            .'<div class="flow esc-cell" data-tpl-cols="20">B</div>'
+            .'<div class="flow esc-cell" data-tpl-cols="0" id="tpl-lost">Hi</div></div>'
+        );
+
+        $this->assertSame([['E-04', 'no_room', 'tpl-lost']], array_map(
+            fn (array $p): array => [$p['code'], $p['key'], $p['component_id']],
+            $receipt->problems,
+        ));
+
+        // An empty auto cell with no room is fine: nothing is lost.
+        $empty = $this->build(
+            '<div class="flow esc-row"><div class="flow esc-cell" data-tpl-cols="40">A</div><div class="flow esc-cell"></div></div>'
+        );
+        $this->assertSame([], $empty->problems);
+
+        // Same in the line table: a 40ch column leaves the auto one nothing.
+        $columns = htmlspecialchars((string) json_encode([
+            ['key' => 'designation', 'label' => 'Artigo', 'width' => '', 'format' => ''],
+            ['key' => 'total', 'label' => 'Total', 'width' => '40ch', 'format' => 'money'],
+        ]), ENT_QUOTES);
+        $table = $this->build(
+            '<div class="block block--lines" data-tpl-type="line-table" data-tpl-columns="'.$columns.'" id="tpl-lines">'
+            .'<table class="lines"><tbody><tr><td>Parafuso</td><td>1,00</td></tr></tbody></table></div>'
+        );
+        $this->assertSame([['E-04', 'no_room', 'tpl-lines']], array_map(
+            fn (array $p): array => [$p['code'], $p['key'], $p['component_id']],
+            $table->problems,
+        ));
+        $this->assertStringContainsString('Artigo', $table->problems[0]['message']);
+    }
+
     public function test_multi_row_line_table_prints_each_segment_as_a_line(): void
     {
         $columns = htmlspecialchars((string) json_encode([
@@ -185,6 +222,11 @@ class ReceiptBuilderTest extends TestCase
             'ATCUD'.str_repeat(' ', 18).'JFJ5KZ2Q-12345678',
             str_repeat(' ', 13).'JFJ5KZ2Q-123456789 JFJ5KZ2Q',
         ], $this->lines($plain));
+
+        // The editor's legal mark says it with no field list: three arguments are safe.
+        $marked = $this->build(str_replace('id="tpl-atcud"', 'id="tpl-atcud" data-tpl-legal="1"', $row));
+        $this->assertSame(['E-04', 'tpl-atcud'], [$marked->problems[0]['code'] ?? null, $marked->problems[0]['component_id'] ?? null]);
+        $this->assertStringContainsString('document.atcud', $marked->problems[0]['message']);
 
         // `esc-nowrap` says the same without a field list.
         $nowrap = $this->build(str_replace('esc-cell esc-right"', 'esc-cell esc-right esc-nowrap"', $row));
