@@ -52,7 +52,10 @@ class RowHeights
         // An item spanning several rows (CGE-97) is as tall as its rows, each measured
         // like a row of its own. Its height is never the fixed one, so it is always given.
         $multiRow = LineRows::isMultiRow($columns);
-        $segments = $multiRow ? self::segmentWidths($columns, $tableWidth) : [self::textWidths($columns, $tableWidth)];
+        // A width in characters (`12ch`, CGE-97) is the roll's grid; on a sheet it is auto, as ever.
+        $geometry = PageGeometry::fromType($type->pdf);
+        $chMm     = $geometry->columns !== null && $geometry->charWidthMm() > 0 ? $geometry->charWidthMm() : null;
+        $segments = $multiRow ? self::segmentWidths($columns, $tableWidth, $chMm) : [self::textWidths($columns, $tableWidth, $chMm)];
 
         if (! $multiRow && $segments[0] === []) {
             return null;
@@ -116,10 +119,10 @@ class RowHeights
      * @param  list<array<string, mixed>>  $columns
      * @return array<string, float>
      */
-    private static function textWidths(array $columns, float $tableWidth): array
+    private static function textWidths(array $columns, float $tableWidth, ?float $chMm = null): array
     {
         $visible = self::visible($columns);
-        $layout  = self::columnWidths($visible, $tableWidth);
+        $layout  = self::columnWidths($visible, $tableWidth, $chMm);
 
         $widths = [];
 
@@ -141,9 +144,9 @@ class RowHeights
      * @param  list<array<string, mixed>>  $columns
      * @return list<array<string, float>>
      */
-    private static function segmentWidths(array $columns, float $tableWidth): array
+    private static function segmentWidths(array $columns, float $tableWidth, ?float $chMm = null): array
     {
-        $grid  = self::columnWidths(LineRows::grid($columns), $tableWidth);
+        $grid  = self::columnWidths(LineRows::grid($columns), $tableWidth, $chMm);
         $spans = LineRows::spans($columns);
 
         $segments = [];
@@ -175,19 +178,26 @@ class RowHeights
      * @param  list<array<string, mixed>>  $visible
      * @return list<float>
      */
-    private static function columnWidths(array $visible, float $tableWidth): array
+    private static function columnWidths(array $visible, float $tableWidth, ?float $chMm = null): array
     {
-        $stated = array_map(fn (array $column): ?float => self::statedWidth($column['width'] ?? ''), $visible);
+        $stated = array_map(fn (array $column): ?float => self::statedWidth($column['width'] ?? '', $chMm), $visible);
         $autos  = count(array_filter($stated, fn (?float $width): bool => $width === null));
         $share  = $autos > 0 ? max(0.0, $tableWidth - array_sum(array_filter($stated))) / $autos : 0.0;
 
         return array_map(fn (?float $width): float => $width ?? $share, $stated);
     }
 
-    /** A bare number is millimetres (the editor's convention); `NNmm` too; anything else is auto. */
-    private static function statedWidth(mixed $width): ?float
+    /**
+     * A bare number is millimetres (the editor's convention); `NNmm` too; `NNch` is NN
+     * characters of a roll's grid (CGE-97) when `$chMm` is given; anything else is auto.
+     */
+    private static function statedWidth(mixed $width, ?float $chMm = null): ?float
     {
         $width = strtolower(trim((string) $width));
+
+        if ($chMm !== null && preg_match('/^(\d+(?:\.\d+)?)ch$/', $width, $m) === 1 && (float) $m[1] > 0) {
+            return (float) $m[1] * $chMm;
+        }
 
         if (preg_match('/^(\d+(?:\.\d+)?)(mm)?$/', $width, $m) !== 1 || (float) $m[1] <= 0) {
             return null;

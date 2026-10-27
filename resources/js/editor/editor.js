@@ -18,6 +18,7 @@ import { mountPreviewPanel, pdfSelectionOf, plainProjectData, refreshPreview, se
 import { createFormatPreview } from './format-preview.js';
 import { createFormulaPreview, formulaFunctionsOf, refreshFormulaTraits, selectionHeading } from './formula.js';
 import { createFormulaLibrary } from './formula-library.js';
+import { rollGridCss } from './roll-grid.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
 import { freeSpotForCopy } from './copy-offset.js';
@@ -1417,7 +1418,11 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             + (roll
                 ? 'height:auto;min-height:0;overflow:visible;padding:'
                     + mm(m.top) + ' ' + mm(m.right) + ' ' + mm(m.bottom) + ' ' + mm(m.left) + ';}'
-                : 'height:' + paper.height + 'mm;overflow:hidden;padding:0;}');
+                : 'height:' + paper.height + 'mm;overflow:hidden;padding:0;}')
+            // CGE-97: a roll is a monospace character grid, the PDF's letter exactly. Here
+            // and not in `canvasDecorations()`: that is baked once at mount, so a roll opened
+            // first and switched to A4 would keep the receipt's letter on the sheet.
+            + (roll ? rollGridCss({ ...geometry, margins: m }) : '');
     };
 
     /*

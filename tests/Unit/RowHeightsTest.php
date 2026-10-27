@@ -165,6 +165,34 @@ class RowHeightsTest extends TestCase
         );
     }
 
+    public function test_a_width_in_characters_is_the_rolls_grid_and_auto_elsewhere(): void
+    {
+        // CGE-97: a roll 80 with 3 mm margins is 40 columns of 1.85 mm, so `10ch` is 18.5 mm
+        // and a 30 mm text wraps in it. Read as auto (a sheet), the column is half of 74 mm.
+        $table = $this->table(width: 74.0, columns: [
+            ['key' => 'a', 'width' => '10ch', 'format' => ''],
+            ['key' => 'b', 'width' => '', 'format' => ''],
+        ]);
+        $rows = ['lines' => [['a' => $this->textOfWidth(FontMetrics::fromConfig(400), 30.0)]]];
+
+        $this->assertNotNull(RowHeights::of($table, $this->rollType(), $rows));
+        $this->assertNull(RowHeights::of($table, $this->type, $rows));
+    }
+
+    private function rollType(): TemplateType
+    {
+        $base = $this->type;
+
+        return new TemplateType(
+            $base->code, $base->label, $base->output, $base->seeded, $base->layoutRevision,
+            $base->bindings, $base->nodes, $base->fixture, $base->fixtureRepeats,
+            $base->initialLayout,
+            ['medium' => 'roll', 'width_mm' => 80, 'fit' => 'measure', 'max_height_mm' => 4000,
+                'margins' => ['top' => 3, 'right' => 3, 'bottom' => 3, 'left' => 3]],
+            [],
+        );
+    }
+
     /**
      * The table record `PageStructure::tablesIn` produces.
      *

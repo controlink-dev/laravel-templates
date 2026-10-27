@@ -130,3 +130,75 @@ html, body {
 .block--image[data-tpl-fit="fill"] {
     object-fit: fill;
 }
+
+/* ---------------------------------------------------------------------------
+ * The receipt vocabulary (CGE-97)
+ *
+ * A roll is a monospace character grid: DocumentComposer::geometryStyles (and the
+ * editor's canvas) set its font so that `columns` characters fill the printable width.
+ * These classes are what a receipt is written in, and each has an ESC/POS equivalent:
+ * double size, bold, alignment, blank lines, and rows of cells N characters wide. They
+ * are inert on a sheet, where nothing carries them.
+ * ------------------------------------------------------------------------ */
+
+.esc-double{font-size:2em;line-height:1.25}
+.esc-bold{font-weight:700}
+.esc-left{text-align:left}
+.esc-center{text-align:center}
+.esc-right{text-align:right}
+.esc-gap-1{margin-top:1.25em}
+.esc-gap-2{margin-top:2.5em}
+.esc-gap-3{margin-top:3.75em}
+.esc-row{display:flex}
+.esc-cell{flex:1 1 0;min-width:0}
+.esc-nowrap{white-space:nowrap}
+
+/* A cell N characters wide: N = 1 to 48 (the widest grid has 48 columns). */
+.esc-cell[data-tpl-cols="1"]{flex:0 0 1ch}
+.esc-cell[data-tpl-cols="2"]{flex:0 0 2ch}
+.esc-cell[data-tpl-cols="3"]{flex:0 0 3ch}
+.esc-cell[data-tpl-cols="4"]{flex:0 0 4ch}
+.esc-cell[data-tpl-cols="5"]{flex:0 0 5ch}
+.esc-cell[data-tpl-cols="6"]{flex:0 0 6ch}
+.esc-cell[data-tpl-cols="7"]{flex:0 0 7ch}
+.esc-cell[data-tpl-cols="8"]{flex:0 0 8ch}
+.esc-cell[data-tpl-cols="9"]{flex:0 0 9ch}
+.esc-cell[data-tpl-cols="10"]{flex:0 0 10ch}
+.esc-cell[data-tpl-cols="11"]{flex:0 0 11ch}
+.esc-cell[data-tpl-cols="12"]{flex:0 0 12ch}
+.esc-cell[data-tpl-cols="13"]{flex:0 0 13ch}
+.esc-cell[data-tpl-cols="14"]{flex:0 0 14ch}
+.esc-cell[data-tpl-cols="15"]{flex:0 0 15ch}
+.esc-cell[data-tpl-cols="16"]{flex:0 0 16ch}
+.esc-cell[data-tpl-cols="17"]{flex:0 0 17ch}
+.esc-cell[data-tpl-cols="18"]{flex:0 0 18ch}
+.esc-cell[data-tpl-cols="19"]{flex:0 0 19ch}
+.esc-cell[data-tpl-cols="20"]{flex:0 0 20ch}
+.esc-cell[data-tpl-cols="21"]{flex:0 0 21ch}
+.esc-cell[data-tpl-cols="22"]{flex:0 0 22ch}
+.esc-cell[data-tpl-cols="23"]{flex:0 0 23ch}
+.esc-cell[data-tpl-cols="24"]{flex:0 0 24ch}
+.esc-cell[data-tpl-cols="25"]{flex:0 0 25ch}
+.esc-cell[data-tpl-cols="26"]{flex:0 0 26ch}
+.esc-cell[data-tpl-cols="27"]{flex:0 0 27ch}
+.esc-cell[data-tpl-cols="28"]{flex:0 0 28ch}
+.esc-cell[data-tpl-cols="29"]{flex:0 0 29ch}
+.esc-cell[data-tpl-cols="30"]{flex:0 0 30ch}
+.esc-cell[data-tpl-cols="31"]{flex:0 0 31ch}
+.esc-cell[data-tpl-cols="32"]{flex:0 0 32ch}
+.esc-cell[data-tpl-cols="33"]{flex:0 0 33ch}
+.esc-cell[data-tpl-cols="34"]{flex:0 0 34ch}
+.esc-cell[data-tpl-cols="35"]{flex:0 0 35ch}
+.esc-cell[data-tpl-cols="36"]{flex:0 0 36ch}
+.esc-cell[data-tpl-cols="37"]{flex:0 0 37ch}
+.esc-cell[data-tpl-cols="38"]{flex:0 0 38ch}
+.esc-cell[data-tpl-cols="39"]{flex:0 0 39ch}
+.esc-cell[data-tpl-cols="40"]{flex:0 0 40ch}
+.esc-cell[data-tpl-cols="41"]{flex:0 0 41ch}
+.esc-cell[data-tpl-cols="42"]{flex:0 0 42ch}
+.esc-cell[data-tpl-cols="43"]{flex:0 0 43ch}
+.esc-cell[data-tpl-cols="44"]{flex:0 0 44ch}
+.esc-cell[data-tpl-cols="45"]{flex:0 0 45ch}
+.esc-cell[data-tpl-cols="46"]{flex:0 0 46ch}
+.esc-cell[data-tpl-cols="47"]{flex:0 0 47ch}
+.esc-cell[data-tpl-cols="48"]{flex:0 0 48ch}

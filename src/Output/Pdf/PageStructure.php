@@ -280,6 +280,38 @@ class PageStructure
     }
 
     /**
+     * The text columns of every line table on a roll (CGE-97), for `rollWrapCss`: every
+     * table with an id and a text column, whatever its rows hold.
+     *
+     * @param  list<array<string, mixed>>  $tables
+     * @return array<string, list<int>|null>
+     */
+    private function rollWrapping(array $tables): array
+    {
+        $wrapping = [];
+
+        foreach ($tables as $table) {
+            if (($table['id'] ?? '') === '' || $table['columns'] === []) {
+                continue;
+            }
+
+            if (LineRows::isMultiRow($table['columns'])) {
+                $wrapping[$table['id']] = null;
+
+                continue;
+            }
+
+            $indexes = RowHeights::textColumnIndexes($table['columns']);
+
+            if ($indexes !== []) {
+                $wrapping[$table['id']] = $indexes;
+            }
+        }
+
+        return $wrapping;
+    }
+
+    /**
      * How many rows from `$offset` fit below a cursor when each has its own height —
      * the summed counterpart of `rowsThatFit`, and equal to it when the heights are.
      *
@@ -1208,22 +1240,7 @@ class PageStructure
         // CGE-89: in a table with a row that wraps, its text columns break into lines;
         // `RowHeights` counted those lines with the same breaking and line height. Only
         // emitted when something wraps, so every other document keeps its bytes.
-        // A table whose items span several rows (CGE-97) has no column position to name:
-        // its text cells carry `LineRows::TEXT_CLASS` instead.
-        $wraps = '';
-        $rule  = '{white-space:pre-line;overflow-wrap:anywhere;text-overflow:clip;line-height:'.RowHeights::LINE_HEIGHT.'}';
-
-        foreach ($wrapping as $id => $indexes) {
-            if ($indexes === null) {
-                $wraps .= '#'.$id.' td.'.LineRows::TEXT_CLASS.$rule;
-
-                continue;
-            }
-
-            foreach ($indexes as $index) {
-                $wraps .= '#'.$id.' td:nth-child('.$index.')'.$rule;
-            }
-        }
+        $wraps = $this->wrapRules($wrapping, (string) RowHeights::LINE_HEIGHT);
 
         return implode('', [
             // One sheet per page, and no trailing blank page after the last.
@@ -1242,6 +1259,46 @@ class PageStructure
             // CGE-79: the carried-forward row stands out from the lines it precedes.
             $this->carry($type) !== null ? 'tr.lines__carried td{font-weight:700}' : '',
         ]);
+    }
+
+    /**
+     * On a roll (CGE-97), every line table's text cells break on words: a roll has no
+     * pages to count, so the receipt grows instead of cutting a description. Values stay
+     * on one line. The wrapped lines keep the roll's character grid (line-height 1.25).
+     *
+     * Added by the composer next to `build()`'s CSS rather than inside it, so `build()`
+     * keeps the bytes the pagination golden pins.
+     */
+    public function rollWrapCss(string $bodyHtml, string $css = ''): string
+    {
+        return $this->wrapRules($this->rollWrapping($this->tablesIn($bodyHtml, $css)), '1.25');
+    }
+
+    /**
+     * The wrap rule for each text column of each table: by position, or — a table whose
+     * items span several rows (CGE-97) has no column position to name — by
+     * `LineRows::TEXT_CLASS`, which its text cells carry.
+     *
+     * @param  array<string, list<int>|null>  $wrapping
+     */
+    private function wrapRules(array $wrapping, string $lineHeight): string
+    {
+        $wraps = '';
+        $rule  = '{white-space:pre-line;overflow-wrap:anywhere;text-overflow:clip;line-height:'.$lineHeight.'}';
+
+        foreach ($wrapping as $id => $indexes) {
+            if ($indexes === null) {
+                $wraps .= '#'.$id.' td.'.LineRows::TEXT_CLASS.$rule;
+
+                continue;
+            }
+
+            foreach ($indexes as $index) {
+                $wraps .= '#'.$id.' td:nth-child('.$index.')'.$rule;
+            }
+        }
+
+        return $wraps;
     }
 
     private function mm(float $value): string
