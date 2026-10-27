@@ -201,9 +201,12 @@ final class ReceiptBuilder
             return;
         }
 
+        // The gap's `em` is the element's own: on a double block, each blank line is double.
         if (preg_match('/(?:^|\s)esc-gap-([1-9])(?:\s|$)/', $element->getAttribute('class'), $gap)) {
+            $width = $context['double'] ? intdiv($this->columns, 2) : $this->columns;
+
             for ($i = 0; $i < (int) $gap[1]; $i++) {
-                $this->blocks[] = $this->lineBlock($this->pad([], $this->columns, 'left'), false, []);
+                $this->blocks[] = $this->lineBlock($this->pad([], $width, 'left'), $context['double'], []);
             }
         }
 

@@ -69,6 +69,11 @@ class EscPosEncoderTest extends TestCase
         $this->assertSame(1, preg_match('/\x1D\(k\x03\x001C(.)/s', $bytes, $match));
         $module = ord($match[1]);
         $n      = Encoder::encode($payload, ErrorCorrectionLevel::M())->getMatrix()->getWidth();
+
+        // 104 bytes at level M is version 6 (106 bytes): 41 modules, so a module of 6 dots
+        // (246 dots, 30.75 mm). Pinned, so a broken matrix width cannot agree with itself.
+        $this->assertSame(41, $n);
+        $this->assertSame(6, $module);
         $this->assertGreaterThanOrEqual(240, $module * $n);
         $this->assertLessThanOrEqual(480, $module * $n);
     }

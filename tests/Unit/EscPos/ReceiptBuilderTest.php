@@ -83,6 +83,10 @@ class ReceiptBuilderTest extends TestCase
 
         $this->assertSame(16, strlen($this->build('<div class="flow esc-double">TOTAL</div>', 58)->blocks[0]['text']));
         $this->assertFalse($this->build('<div class="flow">x</div>')->blocks[0]['double']);
+
+        // A gap's `em` is the block's own: on a double block it is a double blank line.
+        $gap = $this->build('<div class="flow esc-double esc-gap-1">TOTAL</div>')->blocks[0];
+        $this->assertSame([str_repeat(' ', 20), true], [$gap['text'], $gap['double']]);
     }
 
     public function test_text_row_cells_take_their_columns(): void
@@ -271,7 +275,7 @@ class ReceiptBuilderTest extends TestCase
 
         $this->assertSame([], $receipt->problems);
         $this->assertSame(implode("\n", [
-            str_repeat(' ', 40),                        // esc-gap-1
+            str_repeat(' ', 20),                        // esc-gap-1 of a double block: a double blank line
             str_repeat(' ', 14).'FATURA',               // double, right: 20 columns
             'Total'.str_repeat(' ', 27).'1.234,56',
             str_repeat('-', 40),
