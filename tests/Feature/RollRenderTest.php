@@ -438,4 +438,30 @@ class RollRenderTest extends TestCase
             $this->assertEqualsWithDelta($words['Corpo']['bottom'], $words['Rodapé']['top'], 1.5);
         });
     }
+
+    /**
+     * A roll whose flow ends in an `<hr>` or a `<p>` is still one page (CGE-97): their
+     * bottom margin collapses out of the in-flow zones and takes room below the last dark
+     * row, so the measuring pass has to see where the flow ends (PdfRenderer's end mark),
+     * or the margin spills onto a blank page 2.
+     */
+    #[Group('render')]
+    public function test_a_roll_ending_in_a_rule_or_a_paragraph_stays_one_page(): void
+    {
+        $this->engineUp();
+
+        $type = $this->carrier(self::ROLL_80);
+
+        foreach ([
+            'hr' => '<hr class="block block--rule" data-tpl-type="rule" id="tpl-end">',
+            'p'  => '<p style="margin:0 0 6mm">Fim</p>',
+        ] as $ending => $last) {
+            $html = '<body><div class="page"><div class="zone zone--header"><div class="flow">Cabeçalho</div></div>'
+                .'<div class="zone zone--body"><div class="flow">Corpo</div>'.$last.'</div></div></body>';
+
+            $out = app(PdfRenderer::class)->render(app(DocumentComposer::class)->compose($html, '', $type, []), $type);
+
+            RenderedPdf::open($out['pdf'], fn (RenderedPdf $pdf) => $this->assertSame(1, $pdf->pageCount(), "a roll ending in <{$ending}>"));
+        }
+    }
 }
