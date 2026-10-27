@@ -255,6 +255,9 @@ return [
         'missing_mandatory' => 'The ":field" field is missing. It is required to activate, in a block of its own or inside a formula.',
 
         'code_incomplete' => 'This fixed code has required fields left blank. Without them the code is valid but points at nothing.',
+
+        // L-ESC (CGE-97): the live mirror of V-21 on a receipt; `:subject` is filled in JS.
+        'roll_vocabulary' => 'The receipt uses ":subject", which the thermal printer cannot print as shown. Use only the receipt options (size, bold, alignment, blank lines, columns).',
     ],
 
     'page_formats' => [
@@ -317,6 +320,14 @@ return [
         'formula_scope'             => '":formula": a column of the lines can only be used inside SUM or COUNT here.',
         'formula_duplicate_key'     => '":formula": two formulas share the same key. Delete this one and create it again.',
         'formula_without_source'    => '":formula": the formula is empty.',
+        // V-21 (CGE-97): a receipt only uses what the thermal printer prints. `:subject` is
+        // the selector or element at fault.
+        'roll_css'          => 'The receipt has a style of its own (":subject") that the thermal printer cannot print. Use only the receipt options: size, bold, alignment, blank lines, columns.',
+        'roll_inline_style' => '":subject" has a style set by hand that the thermal printer cannot print. Use only the receipt options.',
+        'roll_class'        => 'The style ":subject" does not exist on a receipt.',
+        'roll_cols'         => 'The width ":subject" of a column in a row is not valid: set a whole number of characters, from 0 (the rest of the line) up to :columns, the width of the receipt.',
+        'roll_table'        => '":subject" is a table other than the lines table. A receipt can only print the lines table.',
+        'roll_column_width' => 'The lines table column ":subject" has a width that is not in characters. On a receipt, set a number of characters (e.g. 12ch) or leave it empty.',
     ],
 
     // Formula fields and columns (CGE-37).

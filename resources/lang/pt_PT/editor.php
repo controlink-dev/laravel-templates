@@ -265,6 +265,9 @@ return [
         'missing_mandatory' => 'Falta o campo «:field». É obrigatório para ativar, num bloco próprio ou dentro de uma fórmula.',
 
         'code_incomplete' => 'Este código fixo tem campos obrigatórios em branco. Sem eles, o código é válido mas não aponta para nada.',
+
+        // L-ESC (CGE-97): o espelho ao vivo do V-21 num talão; o `:subject` é preenchido no JS.
+        'roll_vocabulary' => 'O talão usa «:subject», que a impressora térmica não consegue imprimir como aparece. Use só as opções do talão (letra, negrito, alinhamento, linhas em branco, colunas).',
     ],
 
     'page_formats' => [
@@ -327,6 +330,14 @@ return [
         'formula_scope'             => '«:formula»: aqui, uma coluna das linhas só pode ser usada dentro de SUM ou COUNT.',
         'formula_duplicate_key'     => '«:formula»: duas fórmulas têm a mesma chave. Apague esta e crie-a de novo.',
         'formula_without_source'    => '«:formula»: a fórmula está vazia.',
+        // V-21 (CGE-97): um talão só usa o que a impressora térmica imprime. `:subject` é o
+        // seletor ou o elemento em causa.
+        'roll_css'          => 'O talão tem um estilo próprio («:subject») que a impressora térmica não consegue imprimir. Use só as opções do talão: letra, negrito, alinhamento, linhas em branco, colunas.',
+        'roll_inline_style' => '«:subject» tem um estilo definido à mão que a impressora térmica não consegue imprimir. Use só as opções do talão.',
+        'roll_class'        => 'O estilo «:subject» não existe no talão.',
+        'roll_cols'         => 'A largura «:subject» de uma coluna da linha não serve: indique um número inteiro de caracteres, de 0 (o resto da linha) até :columns, a largura do talão.',
+        'roll_table'        => '«:subject» é uma tabela que não é a tabela de linhas. Um talão só imprime a tabela de linhas.',
+        'roll_column_width' => 'A coluna «:subject» da tabela de linhas tem uma largura que não é em caracteres. No talão, indique um número de caracteres (por exemplo 12ch) ou deixe vazio.',
     ],
 
     // Campos e colunas de fórmula (CGE-37).
