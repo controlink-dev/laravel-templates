@@ -17,6 +17,7 @@ import { applyFormat, replaceLayout } from './format-switch.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, pdfSelectionOf, plainProjectData, refreshPreview, selectionOf, truncationNotice } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
+import { downloadEscPos, downloadZpl, escPosButtonVisible, missingLabelsNotice } from './zpl-download.js';
 import { createFormulaPreview, formulaFunctionsOf, refreshFormulaTraits, selectionHeading } from './formula.js';
 import { createFormulaLibrary } from './formula-library.js';
 import { rollGridCss } from './roll-grid.js';
@@ -538,29 +539,33 @@ async function mountEditor(el) {
         }
     });
 
+    /*
+     * The preview renders what is stored, not what is on screen, so unsaved work is saved
+     * first. Rendering the browser's copy instead would mean previewing a document that
+     * never passed through the server's sanitisation, and showing the user something the
+     * stored version would not produce. The ZPL download follows the same rule (CGE-98).
+     */
+    const saveBeforeRendering = async () => {
+        if (dirty && config.editable) {
+            await saveVersion(editor, config);
+
+            savedSnapshot = snapshot(editor);
+            dirty = false;
+            announce(false);
+        }
+    };
+
     root.querySelector('[data-tpl-preview]')?.addEventListener('click', async () => {
         renderStatus(config.strings.rendering, root);
 
         try {
-            /*
-             * The preview renders what is stored, not what is on screen, so unsaved
-             * work is saved first. Rendering the browser's copy instead would mean
-             * previewing a document that never passed through the server's
-             * sanitisation, and showing the user something the stored version would
-             * not produce.
-             */
-            if (dirty && config.editable) {
-                await saveVersion(editor, config);
+            await saveBeforeRendering();
 
-                savedSnapshot = snapshot(editor);
-                dirty = false;
-                announce(false);
-            }
-
-            const { url, notice } = await renderPreview(config);
+            const { url, notice, missing } = await renderPreview(config);
 
             window.open(url, '_blank');
-            renderStatus('', root);
+            // Chosen articles that no longer exist were left out of the batch (CGE-98).
+            renderStatus(missing ?? '', root);
             root.dispatchEvent(new CustomEvent('templates:preview-ready', { detail: { url }, bubbles: true }));
 
             // The type's page limit left rows of the Amostra's query out (CGE-84).
@@ -577,6 +582,63 @@ async function mountEditor(el) {
             notify(root, config, { level: 'error', message: error.message });
         }
     });
+
+    /*
+     * "Download ZPL" (CGE-98), on a label type whose host serves it: the labels of the
+     * Amostra's articles (the fixture when none is picked), saved as a file. Added here
+     * rather than in the Blade, like the Amostra tab, so a host that overrides the view
+     * gets it with the bundle; shown only while the version on screen has a ZPL URL.
+     */
+    /*
+     * "Download thermal receipt" (CGE-98), its sibling on a roll format: the receipt's
+     * ESC/POS bytes, from the same endpoint and Amostra. Shown only while the format on
+     * screen is a roll (applyPaper re-checks it on every format switch).
+     */
+    const onDownload = (button, rendering, download) => button?.addEventListener('click', async () => {
+        // Hidden means the version on screen has nothing to download.
+        if (button.hidden) {
+            return;
+        }
+
+        renderStatus(rendering, root);
+        button.disabled = true;
+
+        try {
+            await saveBeforeRendering();
+
+            const { notice } = await download();
+
+            renderStatus(notice ?? '', root);
+        } catch (error) {
+            if (error.cancelled) {
+                renderStatus(config.strings.unsaved, root);
+
+                return;
+            }
+
+            // The status line (or the host's notice), never a dialog of our own.
+            notify(root, config, { level: 'error', message: error.message });
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    onDownload(mountDownloadButton(root, config, DOWNLOAD_BUTTONS.zpl), config.strings.zplRendering, () => downloadZpl({
+        url: config.zplUrl,
+        selection: pdfSelectionOf(config.preview),
+        headers: requestHeaders(config),
+        fallbackName: 'labels.zpl',
+        failedMessage: config.strings.zplFailed,
+        missingMessage: config.strings.labelsMissing,
+    }));
+
+    onDownload(mountDownloadButton(root, config, DOWNLOAD_BUTTONS.escpos), config.strings.escposRendering, () => downloadEscPos({
+        url: config.escposUrl,
+        selection: pdfSelectionOf(config.preview),
+        headers: requestHeaders(config),
+        fallbackName: 'talao.bin',
+        failedMessage: config.strings.escposFailed,
+    }));
 
     root.querySelector('[data-tpl-activate]')?.addEventListener('click', async () => {
         renderStatus(config.strings.activating, root);
@@ -1490,6 +1552,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         // follow the medium.
         root.classList.toggle('tpl-roll-mode', rollMode);
         applyRollMode(editor, config);
+        // "Download thermal receipt" shows only on a roll (CGE-98).
+        showDownloadButtons(root, config);
 
         applyCanvasToFrame();
         syncModeChrome();
@@ -1747,6 +1811,13 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
                 config.loadUrl     = info.urls.load;
                 config.previewUrl  = info.urls.preview;
                 config.activateUrl = info.urls.activate;
+                // A label format's version downloads its labels as ZPL (CGE-98); any other
+                // format has none, and the button hides with it.
+                config.zplUrl      = info.urls.zpl || '';
+                // The receipt URL names this version; its button follows the geometry,
+                // which applyPaper (below) sets.
+                config.escposUrl   = info.urls.escpos || '';
+                showDownloadButtons(root, config);
                 // A version may carry no geometry of its own — a legacy default-format version
                 // (the first A4) predates the geometry column and stores [] (or null). Fall
                 // back to the FORMAT's own geometry from the registry, never to the format left
@@ -2636,6 +2707,15 @@ function readConfig(el) {
         // Optional: the real records a node/collection can be previewed with (CGE-29).
         // Without it the editor has no sample-data panel and behaves as before.
         previewRecordsUrl: el.dataset.previewRecordsUrl || '',
+        // Optional (CGE-98): the context node a label type prints a batch of (`article`).
+        // The Amostra then picks several records for it, one label each, in order.
+        batchNode: el.dataset.batchNode || '',
+        // Optional (CGE-98): downloads the Amostra's labels as ZPL. Without it there is no
+        // "Download ZPL" button; a format switch replaces it with the new version's.
+        zplUrl: el.dataset.zplUrl || '',
+        // Optional (CGE-98): downloads a roll format's thermal receipt (ESC/POS). The
+        // button shows only while the format on screen is a roll.
+        escposUrl: el.dataset.escposUrl || '',
         // Optional: formats sample values for the canvas exactly as the PDF does (CGE-49).
         formatPreviewUrl: el.dataset.formatPreviewUrl || '',
         // Optional: checks and evaluates formula fields for the canvas (CGE-37). Without
@@ -3231,7 +3311,71 @@ async function renderPreview(config) {
     return {
         url: URL.createObjectURL(await response.blob()),
         notice: truncationNotice(response.headers, config.strings),
+        missing: missingLabelsNotice(response.headers, config.strings.labelsMissing),
     };
+}
+
+/*
+ * The download buttons beside "Preview" (CGE-98), in this order: "Download ZPL" while the
+ * version has a ZPL URL (a label type), "Download thermal receipt" while the format on
+ * screen is a roll whose host serves the receipt.
+ */
+const DOWNLOAD_BUTTONS = {
+    zpl: {
+        key: 'tplZpl',
+        selector: '[data-tpl-zpl]',
+        label: (strings) => strings.downloadZpl ?? 'Download ZPL',
+        visible: (config) => Boolean(config.zplUrl),
+    },
+    escpos: {
+        key: 'tplEscpos',
+        selector: '[data-tpl-escpos]',
+        label: (strings) => strings.downloadEscpos ?? 'Download thermal receipt',
+        visible: (config) => escPosButtonVisible(config.escposUrl, config.geometry),
+    },
+};
+
+/**
+ * A download button beside "Preview": the one in the markup when the host drew it, else
+ * one made like it, after the buttons already there. Null when there is no preview button
+ * to sit beside.
+ */
+function mountDownloadButton(root, config, spec) {
+    let button = root.querySelector(spec.selector);
+    const preview = root.querySelector('[data-tpl-preview]');
+
+    if (!button && preview) {
+        const anchor = Object.values(DOWNLOAD_BUTTONS)
+            .map((other) => root.querySelector(other.selector))
+            .filter(Boolean)
+            .pop() ?? preview;
+
+        button = document.createElement('button');
+        button.type = 'button';
+        button.className = preview.className;
+        button.dataset[spec.key] = '1';
+        button.innerHTML = icons.download;
+        button.append(' ' + spec.label(config.strings));
+        anchor.after(button);
+    }
+
+    showDownloadButtons(root, config);
+
+    return button;
+}
+
+function showDownloadButtons(root, config) {
+    for (const spec of Object.values(DOWNLOAD_BUTTONS)) {
+        const button = root.querySelector(spec.selector);
+
+        if (button) {
+            const visible = spec.visible(config);
+
+            button.hidden = !visible;
+            // Inline too: a host's own `.tpl-btn` display rule would otherwise beat `hidden`.
+            button.style.display = visible ? '' : 'none';
+        }
+    }
 }
 
 /**

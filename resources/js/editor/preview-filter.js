@@ -24,6 +24,9 @@ import { formulaReferences } from './formula-names.js';
 /** How many collection rows the canvas draws (the panel lists the same ones). */
 export const PREVIEW_ROW_LIMIT = 5;
 
+/** How many records the batch node takes (CGE-98): the collections' own `max:200`. */
+export const PREVIEW_PICK_LIMIT = 200;
+
 const FILTER_DEBOUNCE_MS = 400;
 
 const states = new WeakMap();
@@ -36,7 +39,8 @@ export function initPreviewState(editor, config) {
     const state = {
         // nodeId -> the chosen record's presented values (`nodeId.column` -> text)
         nodes: {},
-        // nodeId -> the chosen record's id, for the server-side `selection` (CGE-37)
+        // nodeId -> the chosen record's id, for the server-side `selection` (CGE-37); for
+        // the batch node (CGE-98) a list of ids in pick order, repeats allowed
         ids: {},
         // collection binding key -> the filtered presented rows
         rows: {},
@@ -63,6 +67,25 @@ export function initPreviewState(editor, config) {
                 delete this.ids[nodeId];
             }
 
+            this.values = Object.assign({}, ...Object.values(this.nodes));
+        },
+
+        /**
+         * The batch node's picks (CGE-98), `[{ id, values }]` in order: the PDF prints one
+         * label per pick, the canvas shows the first one's values. None goes back to the
+         * example — and leaves no empty list behind, which would still be sent.
+         */
+        setPicks(nodeId, picks) {
+            const list = Array.isArray(picks) ? picks : [];
+
+            if (list.length === 0) {
+                this.setNode(nodeId, null);
+
+                return;
+            }
+
+            this.nodes[nodeId] = list[0].values ?? {};
+            this.ids[nodeId] = list.map((pick) => String(pick.id));
             this.values = Object.assign({}, ...Object.values(this.nodes));
         },
 
@@ -94,11 +117,20 @@ export function initPreviewState(editor, config) {
  * (`VersionController::preview`): the chosen record per node, and the ids of the rows
  * shown per collection. Null when the canvas shows the example — the host then uses the
  * type's fixture. The formula preview sends it, so a live result is the one the chosen
- * records give (CGE-37).
+ * records give (CGE-37). A batch node (CGE-98) sends its first pick only: a formula
+ * previews one record, the one the canvas shows.
  */
 export function selectionOf(state) {
-    const nodes = { ...(state?.ids ?? {}) };
+    const nodes = {};
     const collections = {};
+
+    Object.entries(state?.ids ?? {}).forEach(([nodeId, id]) => {
+        const first = Array.isArray(id) ? id[0] : id;
+
+        if (first !== undefined) {
+            nodes[nodeId] = first;
+        }
+    });
 
     Object.entries(state?.rows ?? {}).forEach(([key, rows]) => {
         const ids = (rows ?? []).slice(0, PREVIEW_ROW_LIMIT)
@@ -119,10 +151,19 @@ export function selectionOf(state) {
  * collection the Amostra's QUERY — its filters, none for "all records" — so the PDF
  * prints every row the query gives, not just the few the canvas draws. The host bounds it
  * by the type's page limit. Null when nothing real is chosen: the host uses the fixture.
+ * A batch node (CGE-98) sends its whole list of picks, one label each, in order.
  */
 export function pdfSelectionOf(state) {
-    const nodes = { ...(state?.ids ?? {}) };
+    const nodes = {};
     const queries = {};
+
+    Object.entries(state?.ids ?? {}).forEach(([nodeId, id]) => {
+        if (!Array.isArray(id)) {
+            nodes[nodeId] = id;
+        } else if (id.length > 0) {
+            nodes[nodeId] = [...id];
+        }
+    });
 
     Object.entries(state?.queries ?? {}).forEach(([key, filters]) => {
         queries[key] = { filters: filters.map((filter) => ({ ...filter })) };
@@ -147,6 +188,23 @@ export function truncationNotice(headers, strings) {
         total: match[2],
         pages: headers.get('X-Preview-Max-Pages') ?? '',
     });
+}
+
+/** The batch node's picks with one more at the end — unchanged once at the cap (CGE-98). */
+export function addPick(picks, item, limit = PREVIEW_PICK_LIMIT) {
+    return picks.length >= limit ? picks : [...picks, item];
+}
+
+/** The batch node's picks without the one at `index`: a repeat is removed one at a time. */
+export function removePick(picks, index) {
+    return picks.filter((_, position) => position !== index);
+}
+
+/** The Amostra badge for a batch of `count` picks: singular for one. */
+export function batchCountLabel(config, count) {
+    return count === 1
+        ? text(config, 'batch_count_one', '1 article')
+        : fill(text(config, 'batch_count', ':count articles'), { count });
 }
 
 /** A collection row as the Amostra lists it: its first three values, not its record id. */
@@ -548,6 +606,9 @@ export function mountPreviewPanel({ editor, config, root, headers }) {
 
 function createTarget({ target, config, state, url, headers, onChange }) {
     const isNode = target.kind === 'node';
+    // The context node a label type prints a batch of (CGE-98, `article`): several
+    // records, in order and with repeats, instead of one chosen record.
+    const isBatch = isNode && Boolean(config.batchNode) && target.id === config.batchNode;
 
     const model = {
         filters: [],          // [{ field, op, value }] — op is one of the field's `ops`
@@ -557,6 +618,7 @@ function createTarget({ target, config, state, url, headers, onChange }) {
         page: 0,
         status: 'idle',       // idle | loading | ready | unavailable | error
         chosen: null,         // node: the picked candidate
+        picks: [],            // batch node: the picked candidates, in order, repeats allowed
         applied: false,       // collection: its rows are on the canvas
         all: false,           // collection: "all records" chosen; filters only refine it
         seq: 0,
@@ -593,7 +655,12 @@ function createTarget({ target, config, state, url, headers, onChange }) {
     allButton.type = 'button';
     modeEl.append(exampleButton, allButton);
 
-    if (isNode) {
+    // Batch node: what is picked so far, above the search that adds to it.
+    const picksEl = el('div', 'tpl-pf-picks');
+
+    if (isBatch) {
+        body.append(picksEl, filtersEl, addButton, resultsEl);
+    } else if (isNode) {
         body.append(filtersEl, addButton, resultsEl);
     } else {
         body.append(modeEl, filtersEl, addButton, resultsEl);
@@ -651,14 +718,16 @@ function createTarget({ target, config, state, url, headers, onChange }) {
     function renderBadge() {
         let label = text(config, 'example', 'Example');
 
-        if (isNode && model.chosen) {
+        if (isBatch && model.picks.length > 0) {
+            label = batchCountLabel(config, model.picks.length);
+        } else if (isNode && model.chosen) {
             label = model.chosen.label;
         } else if (!isNode && model.applied) {
             label = fill(text(config, activeFilters().length > 0 ? 'badge_filtered' : 'badge_all', ':total records'), { total: model.total });
         }
 
         badge.textContent = label;
-        badge.classList.toggle('is-real', (isNode && model.chosen !== null) || (!isNode && model.applied));
+        badge.classList.toggle('is-real', (isNode && (model.chosen !== null || model.picks.length > 0)) || (!isNode && model.applied));
 
         if (!isNode) {
             renderMode();
@@ -787,7 +856,7 @@ function createTarget({ target, config, state, url, headers, onChange }) {
 
             model.items.forEach((item) => {
                 const li = el('li');
-                const button = el('button', 'tpl-pf-item');
+                const button = el('button', isBatch ? 'tpl-pf-item tpl-pf-item--add' : 'tpl-pf-item');
                 button.append(el('span', 'tpl-pf-item-label', item.label || item.id));
 
                 // Display only: the record's other presented values as a secondary line.
@@ -802,6 +871,18 @@ function createTarget({ target, config, state, url, headers, onChange }) {
                 }
 
                 button.type = 'button';
+
+                // Batch node: every row adds one more label, the same record again included.
+                if (isBatch) {
+                    button.title = text(config, 'add_pick', 'Add to the sample');
+                    button.disabled = model.picks.length >= PREVIEW_PICK_LIMIT;
+                    button.addEventListener('click', () => setPicks(addPick(model.picks, item)));
+                    li.append(button);
+                    ul.append(li);
+
+                    return;
+                }
+
                 button.setAttribute('aria-pressed', model.chosen?.id === item.id ? 'true' : 'false');
                 button.classList.toggle('is-chosen', model.chosen?.id === item.id);
                 // Re-clicking the chosen record clears it: the node falls back to the example.
@@ -868,6 +949,49 @@ function createTarget({ target, config, state, url, headers, onChange }) {
         }
 
         resultsEl.append(foot);
+    }
+
+    // The batch node's picks, in order, each removable on its own; a note at the cap.
+    function renderPicks() {
+        picksEl.replaceChildren();
+
+        if (model.picks.length === 0) {
+            return;
+        }
+
+        const ul = el('ul', 'tpl-pf-list');
+
+        model.picks.forEach((item, index) => {
+            const li = el('li', 'tpl-pf-row tpl-pf-pick');
+            const remove = el('button', 'tpl-pf-remove', '✕');
+            remove.type = 'button';
+            remove.title = text(config, 'remove_pick', 'Remove from the sample');
+            remove.addEventListener('click', () => setPicks(removePick(model.picks, index)));
+
+            li.append(el('span', 'tpl-pf-pick-label', item.label || item.id), remove);
+            ul.append(li);
+        });
+
+        picksEl.append(ul);
+
+        if (model.picks.length >= PREVIEW_PICK_LIMIT) {
+            picksEl.append(el('p', 'tpl-pf-note', fill(text(config, 'batch_limit', 'At most :max labels.'), { max: PREVIEW_PICK_LIMIT })));
+        }
+    }
+
+    // Batch node (CGE-98): the PDF prints one label per pick; the canvas shows the first.
+    function setPicks(picks) {
+        if (disposed) {
+            return;
+        }
+
+        model.picks = picks;
+        state.setPicks(target.id, picks.map(({ id, label, ...values }) => ({ id, values })));
+
+        renderBadge();
+        renderPicks();
+        renderResults();
+        onChange();
     }
 
     // A singular record: its presented values (`nodeId.column`), without the picker's own

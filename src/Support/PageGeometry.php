@@ -24,6 +24,10 @@ final class PageGeometry
         // CGE-97: a roll is a grid of this many characters across its printable width;
         // null on every other medium.
         public readonly ?int $columns = null,
+        // CGE-98: the host flags this sheet as a label (`label: true`, the types printed in
+        // batches). Only then are its codes drawn in whole printer dots and its batches
+        // printable: a sheet merely sized in mm (a custom-size invoice) is not a label.
+        public readonly bool $isLabel = false,
     ) {
     }
 
@@ -63,6 +67,7 @@ final class PageGeometry
             columns: $medium === 'roll'
                 ? ((int) ($pdf['columns'] ?? 0) > 0 ? (int) $pdf['columns'] : ($widthMm >= 76 ? 40 : 32))
                 : null,
+            isLabel: $isMmSheet && ($pdf['label'] ?? false) === true,
         );
     }
 

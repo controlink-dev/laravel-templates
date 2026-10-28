@@ -504,6 +504,69 @@ class EditorComponentTest extends TestCase
         $this->assertSame(Editor::FORMAT_PLACEHOLDER, '__FORMAT__');
     }
 
+    /**
+     * CGE-98: a label type previews and prints a batch. The host names the context node
+     * that takes a list (`article`) and the URL that downloads the labels as ZPL; any
+     * other type passes neither, and the editor keeps one record per node and no button.
+     */
+    public function test_the_batch_node_and_the_zpl_url_reach_the_bundle_as_data(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $html = $this->render($template, $version);
+
+        $this->assertStringContainsString('data-batch-node=""', $html);
+        $this->assertStringContainsString('data-zpl-url=""', $html);
+
+        $html = Blade::render(
+            '<x-templates::editor :template="$template" :version="$version" :urls="$urls" batch-node="article" />',
+            ['template' => $template, 'version' => $version, 'urls' => ['zpl' => '/forms/tpl-1/versions/1/zpl']],
+        );
+
+        $this->assertStringContainsString('data-batch-node="article"', $html);
+        $this->assertStringContainsString('data-zpl-url="/forms/tpl-1/versions/1/zpl"', $html);
+    }
+
+    /** CGE-98: the thermal receipt URL reaches the bundle; the editor shows it only on a roll. */
+    public function test_the_escpos_url_reaches_the_bundle_as_data(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $this->assertStringContainsString('data-escpos-url=""', $this->render($template, $version));
+
+        $html = Blade::render(
+            '<x-templates::editor :template="$template" :version="$version" :urls="$urls" />',
+            ['template' => $template, 'version' => $version, 'urls' => ['escpos' => '/forms/tpl-1/versions/1/escpos-preview']],
+        );
+
+        $this->assertStringContainsString('data-escpos-url="/forms/tpl-1/versions/1/escpos-preview"', $html);
+    }
+
+    /** CGE-98: the ZPL button, the batch badge and the barcode hint, translated. */
+    public function test_the_batch_and_zpl_strings_reach_the_bundle_translated(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        app()->setLocale('pt_PT');
+        $strings = (new Editor($template, $version))->strings();
+
+        $this->assertSame('Descarregar ZPL', $strings['downloadZpl']);
+        $this->assertSame('Descarregar talão térmico', $strings['downloadEscpos']);
+        $this->assertSame(':count artigos', $strings['preview.batch_count']);
+        $this->assertSame('Código de barras — cabem até :n caracteres', $strings['code_slot.barcode_hint']);
+
+        foreach (['zplRendering', 'zplFailed', 'escposRendering', 'escposFailed', 'preview.add_pick', 'preview.remove_pick', 'preview.batch_limit'] as $key) {
+            $this->assertArrayHasKey($key, $strings);
+        }
+
+        app()->setLocale('en');
+        $strings = (new Editor($template, $version))->strings();
+
+        $this->assertSame('Download ZPL', $strings['downloadZpl']);
+        $this->assertSame('Download thermal receipt', $strings['downloadEscpos']);
+        $this->assertSame(':count articles', $strings['preview.batch_count']);
+    }
+
     private function render(EditorTemplate $template, GuardedVersion $version): string
     {
         return Blade::render(

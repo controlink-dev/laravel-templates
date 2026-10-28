@@ -45,6 +45,16 @@ class PageGeometryTest extends TestCase
         $this->assertSame(['width' => 50.0, 'height' => 30.0], $g->sheetSizeMm());
     }
 
+    public function test_only_a_flagged_mm_sheet_is_a_label(): void
+    {
+        $mm = ['medium' => 'sheet', 'width_mm' => 50, 'height_mm' => 30];
+
+        $this->assertFalse(PageGeometry::fromType($mm)->isLabel);
+        $this->assertTrue(PageGeometry::fromType($mm + ['label' => true])->isLabel);
+        $this->assertFalse(PageGeometry::fromType(['paper_format' => 'A4', 'label' => true])->isLabel);
+        $this->assertFalse(PageGeometry::fromType(['medium' => 'roll', 'width_mm' => 80, 'label' => true])->isLabel);
+    }
+
     public function test_sheet_with_only_width_stays_a_named_sheet(): void
     {
         // A partial mm size is not a label; it falls back to the named A4 sheet.

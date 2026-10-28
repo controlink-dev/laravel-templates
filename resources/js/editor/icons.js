@@ -94,4 +94,10 @@ export const icons = {
         + 'd="M1.5 1.5h5v5h-5v-5Zm1.3 1.3v2.4h2.4V2.8H2.8ZM9.5 1.5h5v5h-5v-5Zm1.3 1.3v2.4h2.4V2.8h-2.4ZM1.5 9.5h5v5h-5v-5Zm1.3 1.3v2.4h2.4v-2.4H2.8Z"/>'
         + '<path d="M9.5 9.5h1.6v1.6H9.5V9.5Zm2.9 0h1.6v1.6h-1.6V9.5Zm-2.9 2.9h1.6v1.6H9.5v-1.6Zm2.9 0h1.6v1.6h-1.6v-1.6Z"/>'
         + '</svg>',
+
+    /** An arrow into a tray: "Download ZPL" (CGE-98). */
+    download: '<svg viewBox="0 0 16 16" width="1em" height="1em" fill="currentColor" aria-hidden="true">'
+        + '<path d="M7.25 1.5h1.5v6.69l2.22-2.22 1.06 1.06L8 11.06 3.97 7.03l1.06-1.06 2.22 2.22V1.5Z"/>'
+        + '<path d="M2 10.5h1.5v2.5h9v-2.5H14v4H2v-4Z"/>'
+        + '</svg>',
 };

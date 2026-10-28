@@ -9,6 +9,7 @@ use Controlink\Templates\Rendering\TemplateRenderer;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
 use Illuminate\Support\Facades\File;
+use InvalidArgumentException;
 use RuntimeException;
 
 /**
@@ -43,6 +44,34 @@ class DocumentComposer
      */
     public function compose(string $html, string $css, TemplateType $type, array $dataset = []): string
     {
+        return $this->composeMany($html, $css, $type, [$dataset]);
+    }
+
+    /**
+     * One document holding the layout once per dataset, in order (CGE-98: a batch of
+     * labels printed as one PDF, one page per label, in a single engine call).
+     *
+     * The head (fonts, stylesheets, geometry) is built once; everything that reads the
+     * data — formulas, the page structure, Twig, the code slots — runs per dataset, and
+     * the bodies are concatenated. Element ids repeat across the copies, which is fine:
+     * an `#id` rule matches every one of them. With a single dataset this is exactly
+     * `compose()`.
+     *
+     * @param  list<array<string, mixed>>  $datasets
+     * @param  bool  $oneSheetEach  refuse a dataset that would take more than one sheet: a
+     *                              batch of labels must print exactly one page per label
+     *
+     * @throws UnsafeTemplateException when the payload carries script or external URLs
+     * @throws RuntimeException when the template or the code slots cannot be rendered
+     * @throws InvalidArgumentException when there is no dataset at all, or one takes more
+     *                                  than one sheet while `$oneSheetEach` is set
+     */
+    public function composeMany(string $html, string $css, TemplateType $type, array $datasets, bool $oneSheetEach = false): string
+    {
+        if ($datasets === []) {
+            throw new InvalidArgumentException('A document needs at least one dataset.');
+        }
+
         /*
          * Formulas (CGE-37), before anything else reads the markup.
          *
@@ -58,11 +87,57 @@ class DocumentComposer
          */
         $formulas = FormulaSet::fromHtml($html);
         $html     = $formulas->strippedHtml();
-        $whole    = $dataset;
-        $dataset  = $formulas->inject($dataset);
 
         $this->guardHtml($html);
         $this->guardCss($css);
+
+        $geometry = PageGeometry::fromType($type->pdf);
+
+        $body = '';
+
+        // Each dataset's structure CSS, once: the same rules for every copy of a label.
+        $structureCss = [];
+
+        foreach (array_values($datasets) as $index => $dataset) {
+            [$sheets, $structureCss[], $count] = $this->bodyFor($html, $css, $type, $dataset, $formulas, $geometry);
+
+            if ($oneSheetEach && $count > 1) {
+                throw new InvalidArgumentException("Label #{$index} takes {$count} sheets; a label is one sheet.");
+            }
+
+            $body .= $sheets;
+        }
+
+        $structureCss = implode('', array_unique($structureCss));
+
+        // A roll's line table text breaks on words (CGE-97); a sheet gets no new bytes.
+        if ($geometry->medium === 'roll') {
+            $structureCss .= app(PageStructure::class)->rollWrapCss($this->bodyOf($html), $css);
+        }
+
+        $lang = e(str_replace('_', '-', app()->getLocale()));
+
+        return '<!doctype html><html lang="'.$lang.'"><head><meta charset="utf-8">'
+            .'<style>'.$this->fontFaces().'</style>'
+            .'<style>'.$this->printStylesheet().'</style>'
+            .'<style>'.$this->pageVariables($type).'</style>'
+            .'<style>'.$this->geometryStyles($geometry).'</style>'
+            .'<style>'.$css.'</style>'
+            .'<style>'.$structureCss.'</style>'
+            .'</head><body>'.$body.'</body></html>';
+    }
+
+    /**
+     * One dataset's sheets, with their code slots filled, and the structure CSS they need.
+     *
+     * @param  string  $html  the editor HTML with the formula sources already taken out
+     * @param  array<string, mixed>  $dataset
+     * @return array{string, string, int} the sheets' HTML, their structure CSS and how many sheets
+     */
+    private function bodyFor(string $html, string $css, TemplateType $type, array $dataset, FormulaSet $formulas, PageGeometry $geometry): array
+    {
+        $whole   = $dataset;
+        $dataset = $formulas->inject($dataset);
 
         /*
          * Step 3: the compositor decides the sheets.
@@ -79,12 +154,6 @@ class DocumentComposer
          * (spec 3.1). Without it every editor-placed table would resolve to top 0.
          */
         $structure = app(PageStructure::class)->build($this->bodyOf($html), $type, $dataset, $css, $formulas->pageFields());
-        $geometry  = PageGeometry::fromType($type->pdf);
-
-        // A roll's line table text breaks on words (CGE-97); a sheet gets no new bytes.
-        if ($geometry->medium === 'roll') {
-            $structure['css'] .= app(PageStructure::class)->rollWrapCss($this->bodyOf($html), $css);
-        }
 
         $renderer = app(TemplateRenderer::class);
         $codes    = app(CodeImageGenerator::class);
@@ -109,20 +178,12 @@ class DocumentComposer
 
             $sheet = $renderer->render($page['template'], $page['dataset']);
 
-            // Step 5: the code slots, generated on the server and embedded.
-            $body .= $codes->inject($sheet, $page['dataset'], $bindings);
+            // Step 5: the code slots, generated on the server and embedded. The geometry
+            // only matters on a label, whose codes are drawn in whole printer dots.
+            $body .= $codes->inject($sheet, $page['dataset'], $bindings, $geometry, $css);
         }
 
-        $lang = e(str_replace('_', '-', app()->getLocale()));
-
-        return '<!doctype html><html lang="'.$lang.'"><head><meta charset="utf-8">'
-            .'<style>'.$this->fontFaces().'</style>'
-            .'<style>'.$this->printStylesheet().'</style>'
-            .'<style>'.$this->pageVariables($type).'</style>'
-            .'<style>'.$this->geometryStyles($geometry).'</style>'
-            .'<style>'.$css.'</style>'
-            .'<style>'.$structure['css'].'</style>'
-            .'</head><body>'.$body.'</body></html>';
+        return [$body, $structure['css'], count($structure['pages'])];
     }
 
     /**

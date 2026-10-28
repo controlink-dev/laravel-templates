@@ -39,6 +39,8 @@ return [
         'rule'                => 'Line / Rectangle',
         'line_table'          => 'Line table',
         'code_slot'           => 'QR / barcode',
+        // CGE-98: at the narrowest bar a label printer prints reliably.
+        'code_slot_barcode_hint' => 'Barcode — fits up to :n characters',
         'page_number'         => 'Page number',
         // Receipt (CGE-97): a label and a value side by side, each N characters wide.
         'text_row'            => 'Two columns: label + value',
@@ -103,6 +105,11 @@ return [
         'activating'      => 'Validating and activating…',
         'saving'          => 'Saving…',
         'rendering'       => 'Generating the preview…',
+        'download_zpl'    => 'Download ZPL',
+        'zpl_rendering'   => 'Generating the ZPL…',
+        'download_escpos' => 'Download thermal receipt',
+        'escpos_rendering' => 'Generating the thermal receipt…',
+        'labels_missing'  => ':n chosen article(s) no longer exist and were left out.',
         'unsaved'         => 'Unsaved changes',
         'unsaved_warning' => 'You have unsaved changes in this template. Leaving now discards them.',
         'format_switch_confirm' => 'Switching format replaces the current layout. Continue?',
@@ -524,6 +531,8 @@ return [
         'nothing_to_preview' => 'This version has no saved layout to preview yet.',
         'unsafe_template'    => 'The layout received carries content a template must not carry. It was neither saved nor rendered.',
         'render_failed'      => 'The PDF could not be generated. The rendering engine did not respond as expected.',
+        'zpl_failed'         => 'The ZPL could not be generated.',
+        'escpos_failed'      => 'The thermal receipt could not be generated.',
         'preview_truncated'  => 'The PDF shows :shown of :total lines: this print form has at most :pages pages. Use filters in the Sample to choose the lines.',
         'type_not_creatable' => 'This document type cannot be created from scratch: it is obtained by duplicating an existing template.',
         'image_too_large'    => 'The image is too large. Choose a smaller file.',
@@ -609,6 +618,11 @@ return [
         'operator' => 'Operator',
         'showing' => 'Showing :shown of :total',
         'error' => 'The records could not be loaded.',
+        'batch_count' => ':count articles',
+        'batch_count_one' => '1 article',
+        'batch_limit' => 'At most :max labels.',
+        'add_pick' => 'Add a label for this article',
+        'remove_pick' => 'Remove this label',
     ],
 
 ];

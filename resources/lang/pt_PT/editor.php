@@ -39,6 +39,8 @@ return [
         'rule'                => 'Linha / Retângulo',
         'line_table'          => 'Tabela de linhas',
         'code_slot'           => 'Código QR / barras',
+        // CGE-98: com a barra mais fina que uma impressora de etiquetas imprime bem.
+        'code_slot_barcode_hint' => 'Código de barras — cabem até :n caracteres',
         'page_number'         => 'Número de página',
         // Talão (CGE-97): um rótulo e um valor lado a lado, cada um com N caracteres.
         'text_row'            => 'Linha com colunas',
@@ -103,6 +105,11 @@ return [
         'activating'      => 'A validar e ativar…',
         'saving'          => 'A gravar…',
         'rendering'       => 'A gerar a pré-visualização…',
+        'download_zpl'    => 'Descarregar ZPL',
+        'zpl_rendering'   => 'A gerar o ZPL…',
+        'download_escpos' => 'Descarregar talão térmico',
+        'escpos_rendering' => 'A gerar o talão térmico…',
+        'labels_missing'  => ':n artigo(s) escolhido(s) já não existe(m) e ficaram de fora.',
         'unsaved'         => 'Alterações não gravadas',
         'unsaved_warning' => 'Tem alterações não gravadas neste modelo. Se sair agora, perde-as.',
         'format_switch_confirm' => 'Trocar de formato substitui o layout atual. Continuar?',
@@ -535,6 +542,8 @@ return [
         'nothing_to_preview' => 'Esta versão ainda não tem layout gravado para pré-visualizar.',
         'unsafe_template'    => 'O layout recebido contém conteúdo que um modelo não pode conter. Não foi gravado nem renderizado.',
         'render_failed'      => 'Não foi possível gerar o PDF. O motor de renderização não respondeu como esperado.',
+        'zpl_failed'         => 'Não foi possível gerar o ZPL.',
+        'escpos_failed'      => 'Não foi possível gerar o talão térmico.',
         'preview_truncated'  => 'O PDF mostra :shown de :total linhas: este impresso tem no máximo :pages páginas. Use filtros na Amostra para escolher as linhas.',
         'type_not_creatable' => 'Este tipo de documento não pode ser criado de zero: obtém-se duplicando um modelo existente.',
         'image_too_large'    => 'A imagem é demasiado grande. Escolha um ficheiro menor.',
@@ -620,6 +629,11 @@ return [
         'operator' => 'Operador',
         'showing' => 'A mostrar :shown de :total',
         'error' => 'Não foi possível carregar os registos.',
+        'batch_count' => ':count artigos',
+        'batch_count_one' => '1 artigo',
+        'batch_limit' => 'No máximo :max etiquetas.',
+        'add_pick' => 'Adicionar uma etiqueta deste artigo',
+        'remove_pick' => 'Remover esta etiqueta',
     ],
 
 ];

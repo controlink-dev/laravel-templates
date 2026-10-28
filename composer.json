@@ -8,6 +8,7 @@
         "ext-json": "*",
         "ext-intl": "*",
         "ext-dom": "*",
+        "ext-gd": "*",
         "laravel/framework": "^10.48 || ^11.0 || ^12.0 || ^13.0",
         "twig/twig": "^3.28",
         "bacon/bacon-qr-code": "^3.0",
@@ -19,7 +20,6 @@
         "phpunit/phpunit": "^10.0"
     },
     "suggest": {
-        "ext-gd": "Needed by the visual regression comparison and the render validator raster checks",
         "poppler-utils": "pdftotext/pdftoppm/pdfinfo on PATH for output=pdf activation",
         "gotenberg": "Gotenberg 8 reachable over HTTP for output=pdf"
     },

@@ -412,17 +412,14 @@ class PdfRenderTest extends TestCase
     }
 
     /**
-     * Barcodes are declared unsupported out loud.
-     *
-     * No template binds one, so there is nothing to generate and no reason to carry a
-     * dependency that renders nothing — but a silent blank image would be far worse
-     * than a refusal.
+     * A barcode slot produces a Code 128 image (CGE-98). It used to be refused out loud
+     * because nothing could draw one; it is still never a silent blank image.
      */
-    public function test_a_barcode_slot_says_it_is_not_implemented(): void
+    public function test_a_barcode_slot_generates_an_svg_image(): void
     {
-        $this->expectExceptionMessage('Barcode slots are not implemented');
+        $uri = app(CodeImageGenerator::class)->generate('barcode', 'x', 30.0);
 
-        app(CodeImageGenerator::class)->generate('barcode', 'x', 30.0);
+        $this->assertStringStartsWith('data:image/svg+xml;base64,', $uri);
     }
 
     /* -----------------------------------------------------------------------
