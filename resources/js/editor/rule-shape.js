@@ -17,3 +17,27 @@ export function looksFilled(style = {}) {
     return (Number.isFinite(millimetres) && millimetres > LINE_MAX_MM)
         || (background !== '' && !BLACK.includes(background));
 }
+
+/**
+ * The style a line/rectangle block writes (CGE-97). On a sheet, as ever: a filled shape
+ * keeps its own height and fill (black if none); an unfilled one is a rule, its thickness
+ * its height. On a roll, nothing: the printer draws a rule as a line of dashes across the
+ * grid, and a size or a colour on it is a style it cannot print (V-21).
+ */
+export function ruleStyle({ roll, thickness, filled, style = {} }) {
+    if (roll) {
+        return {};
+    }
+
+    return filled
+        ? { 'background-color': style['background-color'] || '#000000' }
+        : { height: thickness + 'mm', 'background-color': '#000000' };
+}
+
+/**
+ * The element a line/rectangle block is: an `hr` on a roll — a void element, so nothing
+ * that follows it can be read as inside it — and a `div` on a sheet, as ever.
+ */
+export function ruleTagName(roll) {
+    return roll ? 'hr' : 'div';
+}

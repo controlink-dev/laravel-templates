@@ -257,11 +257,12 @@ class PageStructure
     }
 
     /**
-     * The text columns of each wrapping table, by the table's `id`, for `css`.
+     * The text columns of each wrapping table, by the table's `id`, for `css`. A table
+     * whose items span several rows (CGE-97) gets `null`: its text cells carry a class.
      *
      * @param  list<array<string, mixed>>  $tables
      * @param  array<string, list<float>>  $heights
-     * @return array<string, list<int>>
+     * @return array<string, list<int>|null>
      */
     private function wrapping(array $tables, array $heights): array
     {
@@ -269,7 +270,41 @@ class PageStructure
 
         foreach ($tables as $table) {
             if (isset($heights[$table['collection']])) {
-                $wrapping[$table['id']] = RowHeights::textColumnIndexes($table['columns']);
+                $wrapping[$table['id']] = LineRows::isMultiRow($table['columns'])
+                    ? null
+                    : RowHeights::textColumnIndexes($table['columns']);
+            }
+        }
+
+        return $wrapping;
+    }
+
+    /**
+     * The text columns of every line table on a roll (CGE-97), for `rollWrapCss`: every
+     * table with an id and a text column, whatever its rows hold.
+     *
+     * @param  list<array<string, mixed>>  $tables
+     * @return array<string, list<int>|null>
+     */
+    private function rollWrapping(array $tables): array
+    {
+        $wrapping = [];
+
+        foreach ($tables as $table) {
+            if (($table['id'] ?? '') === '' || $table['columns'] === []) {
+                continue;
+            }
+
+            if (LineRows::isMultiRow($table['columns'])) {
+                $wrapping[$table['id']] = null;
+
+                continue;
+            }
+
+            $indexes = RowHeights::textColumnIndexes($table['columns']);
+
+            if ($indexes !== []) {
+                $wrapping[$table['id']] = $indexes;
             }
         }
 
@@ -280,15 +315,17 @@ class PageStructure
      * How many rows from `$offset` fit below a cursor when each has its own height —
      * the summed counterpart of `rowsThatFit`, and equal to it when the heights are.
      *
+     * `$headerMm` is the table's header: one row, or one per row of a multi-row item
+     * (CGE-97).
+     *
      * @param  list<float>  $heights
      */
-    private function rowsThatFitHeights(array $heights, int $offset, TemplateType $type, float $cursorMm): int
+    private function rowsThatFitHeights(array $heights, int $offset, TemplateType $type, float $cursorMm, float $headerMm): int
     {
-        $rowHeight = max(1.0, (float) ($type->pdf['line_row_height_mm'] ?? 4.5));
         $available = $this->bodyHeight($type)
             - $cursorMm
             - (float) ($type->pdf['body_reserve_mm'] ?? 0)
-            - $rowHeight;
+            - $headerMm;
 
         $count = 0;
         $used  = 0.0;
@@ -340,9 +377,10 @@ class PageStructure
         };
 
         foreach ($bound as $table) {
-            $rows = $dataset[$table['collection']] ?? [];
-            $rows = is_array($rows) ? array_values($rows) : [];
-            $n    = count($rows);
+            $rows   = $dataset[$table['collection']] ?? [];
+            $rows   = is_array($rows) ? array_values($rows) : [];
+            $n      = count($rows);
+            $header = $this->headerHeight($table, $rowHeight);
 
             // A bound collection with no rows renders header-only, once, where the flow
             // reaches it (ruling T2-C). It takes the header row's worth of cursor.
@@ -352,7 +390,7 @@ class PageStructure
                 }
 
                 $current[] = ['collection' => $table['collection'], 'chunk' => [], 'top' => $cursor];
-                $cursor += $rowHeight;
+                $cursor += $header;
 
                 continue;
             }
@@ -374,7 +412,7 @@ class PageStructure
 
                 if ($tall !== null) {
                     // Wrapping rows (CGE-89): as many as their summed heights allow.
-                    $fit      = $this->rowsThatFitHeights($tall, $offset, $type, $cursor);
+                    $fit      = $this->rowsThatFitHeights($tall, $offset, $type, $cursor, $header);
                     $capacity = $atPageStart ? max(1, $fit) : $fit;
                 } else {
                     $capacity = $atPageStart
@@ -400,7 +438,7 @@ class PageStructure
                 ];
 
                 $cursor += $tall !== null
-                    ? $rowHeight + array_sum(array_slice($tall, $offset, $take))
+                    ? $header + array_sum(array_slice($tall, $offset, $take))
                     : (1 + $take) * $rowHeight;
                 $offset += $take;
 
@@ -499,6 +537,17 @@ class PageStructure
         return (int) floor($available / $rowHeight);
     }
 
+    /**
+     * How tall a table's header prints: one row, or one per row of a multi-row item
+     * (CGE-97), whose `<thead>` has a `<tr>` per segment.
+     *
+     * @param  array<string, mixed>  $table
+     */
+    private function headerHeight(array $table, float $rowHeight): float
+    {
+        return count(LineRows::segments($table['columns'] ?? [])) * $rowHeight;
+    }
+
     /** The body band's height on a sheet: the page minus its margins and both bands. */
     private function bodyHeight(TemplateType $type): float
     {
@@ -552,7 +601,7 @@ class PageStructure
             $fits = ($table['anchored'] ?? false)
                 && $table['collection'] !== ''
                 && $table['top'] >= $reserveTop - $tolerance
-                && $table['top'] + $rowHeight + $rowsHeight <= $bodyHeight + $tolerance;
+                && $table['top'] + $this->headerHeight($table, $rowHeight) + $rowsHeight <= $bodyHeight + $tolerance;
 
             if ($fits) {
                 $fixed[] = $table['collection'];
@@ -785,25 +834,34 @@ class PageStructure
      * before it merge into one that holds the label, and the ones after it stay empty.
      * Done on the string, like `repositionTop`, so nothing else in the body moves. A
      * table that does not show the carried column gets no row.
+     *
+     * An item spanning several rows (CGE-97) has a `<tr>` per row: the carried row is
+     * built from the one that shows the column, and the label spans as many grid columns
+     * as the cells before it do.
      */
     private function withCarriedRow(string $bodyHtml, string $collection, string $column): string
     {
-        $loop = '/\{%\s*for\s+(\w+)\s+in\s+'.preg_quote($collection, '/').'\s*%\}\s*<tr\b[^>]*>(.*?)<\/tr>/s';
+        $loop = '/\{%\s*for\s+(\w+)\s+in\s+'.preg_quote($collection, '/').'\s*%\}(.*?)\{%\s*endfor\s*%\}/s';
 
         if (! preg_match($loop, $bodyHtml, $match, PREG_OFFSET_CAPTURE)) {
             return $bodyHtml;
         }
 
-        preg_match_all('/<td\b([^>]*)>(.*?)<\/td>/s', $match[2][0], $cells, PREG_SET_ORDER);
+        preg_match_all('/<tr\b[^>]*>(.*?)<\/tr>/s', $match[2][0], $rows, PREG_SET_ORDER);
 
         $value = '/\b'.preg_quote($match[1][0].'.'.$column, '/').'(?![\w.])/';
+        $cells = [];
         $at    = null;
 
-        foreach ($cells as $index => $cell) {
-            if (preg_match($value, $cell[2])) {
-                $at = $index;
+        foreach ($rows as $tr) {
+            preg_match_all('/<td\b([^>]*)>(.*?)<\/td>/s', $tr[1], $cells, PREG_SET_ORDER);
 
-                break;
+            foreach ($cells as $index => $cell) {
+                if (preg_match($value, $cell[2])) {
+                    $at = $index;
+
+                    break 2;
+                }
             }
         }
 
@@ -811,8 +869,14 @@ class PageStructure
             return $bodyHtml;
         }
 
+        $span = 0;
+
+        foreach (array_slice($cells, 0, $at) as $cell) {
+            $span += preg_match('/\bcolspan\s*=\s*["\']?(\d+)/i', $cell[1], $m) === 1 ? max(1, (int) $m[1]) : 1;
+        }
+
         $row = $at > 0
-            ? '<td colspan="'.$at.'">'.htmlspecialchars((string) __('templates::editor.render.carried_in'), ENT_QUOTES).'</td>'
+            ? '<td colspan="'.$span.'">'.htmlspecialchars((string) __('templates::editor.render.carried_in'), ENT_QUOTES).'</td>'
             : '';
 
         $row .= '<td'.$cells[$at][1].'>'.preg_replace($value, self::CARRIED_IN, $cells[$at][2]).'</td>';
@@ -1176,14 +1240,7 @@ class PageStructure
         // CGE-89: in a table with a row that wraps, its text columns break into lines;
         // `RowHeights` counted those lines with the same breaking and line height. Only
         // emitted when something wraps, so every other document keeps its bytes.
-        $wraps = '';
-
-        foreach ($wrapping as $id => $indexes) {
-            foreach ($indexes as $index) {
-                $wraps .= '#'.$id.' td:nth-child('.$index.'){white-space:pre-line;overflow-wrap:anywhere;'
-                    .'text-overflow:clip;line-height:'.RowHeights::LINE_HEIGHT.'}';
-            }
-        }
+        $wraps = $this->wrapRules($wrapping, (string) RowHeights::LINE_HEIGHT);
 
         return implode('', [
             // One sheet per page, and no trailing blank page after the last.
@@ -1202,6 +1259,78 @@ class PageStructure
             // CGE-79: the carried-forward row stands out from the lines it precedes.
             $this->carry($type) !== null ? 'tr.lines__carried td{font-weight:700}' : '',
         ]);
+    }
+
+    /**
+     * On a roll (CGE-97), every line table's text cells break on words: a roll has no
+     * pages to count, so the receipt grows instead of cutting a description. Values stay
+     * on one line. The wrapped lines keep the roll's character grid (line-height 1.25).
+     *
+     * And a cell has no padding on a roll: a column `Nch` wide holds N characters, as on
+     * the ESC/POS printer (ReceiptBuilder). Separating columns is the layout's job.
+     *
+     * And a block is in flow on a roll (`ROLL_FLOW`): print.css places `.block` absolutely,
+     * which on a roll would let what follows a line table draw over it; the printer prints
+     * everything in document order. So are its zones (`ROLL_ZONES`), with no band height.
+     *
+     * And a code slot or an image is centred on a roll (`ROLL_CENTRED`), as the printer
+     * centres them (`ESC a 1`, EscPosEncoder).
+     *
+     * Added by the composer next to `build()`'s CSS rather than inside it, so `build()`
+     * keeps the bytes the pagination golden pins, and a sheet keeps every byte it had.
+     */
+    public function rollWrapCss(string $bodyHtml, string $css = ''): string
+    {
+        return self::ROLL_FLOW.self::ROLL_ZONES.self::ROLL_CELLS.self::ROLL_CENTRED.$this->wrapRules($this->rollWrapping($this->tablesIn($bodyHtml, $css)), '1.25');
+    }
+
+    /** A roll's blocks in document order, as ESC/POS prints them (CGE-97); beats print.css `.block`. */
+    public const ROLL_FLOW = '.page .block{position:static}';
+
+    /**
+     * A roll's zones in document order with no reserved height (CGE-97): header, body and
+     * footer one after the other from the top margin, as the printer prints them. print.css
+     * draws them as the sheet's bands (absolute, a 35 mm header by default), which left
+     * the receipt's PDF starting far below its top margin. Beats print.css `.zone` and
+     * `.zone--header` (0,1,0) by specificity; the page padding already holds the margins.
+     */
+    public const ROLL_ZONES = '.page .zone{position:static;height:auto}';
+
+    /** A roll's line table cells: no padding (the column is the grid) and on the first line of the row, as ESC/POS prints them (CGE-97). */
+    public const ROLL_CELLS = 'table.lines th,table.lines td{padding:0;vertical-align:top}';
+
+    /**
+     * A roll's code slots and images centred, as ESC/POS prints them (`ESC a 1`, CGE-97).
+     * Beats print.css `.block--image{display:block}` (0,1,0) by specificity; V-21 lets the
+     * layout's `#id` rule set only their size, so nothing there sets a margin.
+     */
+    public const ROLL_CENTRED = '.page [data-tpl-type="code-slot"],.page [data-tpl-type="image"]{display:block;margin-left:auto;margin-right:auto}';
+
+    /**
+     * The wrap rule for each text column of each table: by position, or — a table whose
+     * items span several rows (CGE-97) has no column position to name — by
+     * `LineRows::TEXT_CLASS`, which its text cells carry.
+     *
+     * @param  array<string, list<int>|null>  $wrapping
+     */
+    private function wrapRules(array $wrapping, string $lineHeight): string
+    {
+        $wraps = '';
+        $rule  = '{white-space:pre-line;overflow-wrap:anywhere;text-overflow:clip;line-height:'.$lineHeight.'}';
+
+        foreach ($wrapping as $id => $indexes) {
+            if ($indexes === null) {
+                $wraps .= '#'.$id.' td.'.LineRows::TEXT_CLASS.$rule;
+
+                continue;
+            }
+
+            foreach ($indexes as $index) {
+                $wraps .= '#'.$id.' td:nth-child('.$index.')'.$rule;
+            }
+        }
+
+        return $wraps;
     }
 
     private function mm(float $value): string

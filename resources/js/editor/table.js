@@ -17,6 +17,7 @@ import {
 import { columnPicker } from './column-picker.js';
 import { formulaAssist, newFormulaId, paintFormulaStatus } from './formula.js';
 import { columnQuickExamples, scopedCatalogue, toDisplay, toSource } from './formula-names.js';
+import { TEXT_CLASS, colgroupHTML, isMultiRow, rowsHTML } from './line-rows.js';
 
 /**
  * @param {object} editor  GrapesJS instance
@@ -372,6 +373,21 @@ function registerLineTable(editor, config) {
                         : config.formatPreview.text(value, specFromColumn(column)));
                 };
 
+                // Items over several rows (CGE-97): the structure `toHTML` saves, so the
+                // canvas matches the PDF. Read from every column: a hidden one's break moves
+                // to the next visible column.
+                const all = this.columns();
+
+                if (isMultiRow(all)) {
+                    return '<table class="lines">' + colgroupHTML(all, (column) => normalizeWidth(column.width))
+                        + `<thead>${rowsHTML(all, 'th', (column) => escapeText(column.label))}</thead><tbody>`
+                        + (rows.length > 0 ? rows : [{}])
+                            .map((row, index) => rowsHTML(all, 'td', (column) => cell(row, column, index),
+                                (column) => (isTextColumn(column) ? `${TEXT_CLASS} tpl-wrap` : '')))
+                            .join('')
+                        + '</tbody></table>';
+                }
+
                 const body = (rows.length > 0 ? rows : [{}])
                     .map((row, index) => '<tr>' + columns
                         // A text column wraps like in the PDF (CGE-89); `tpl-wrap` is canvas-only.
@@ -395,6 +411,25 @@ function registerLineTable(editor, config) {
                 const columns = this.columns().filter((column) => !column.hidden);
                 const collection = this.collectionKey();
                 const item = 'linha';
+                const all = this.columns();
+
+                /*
+                 * Items over several rows (CGE-97): the grid's widths in a <colgroup>, a
+                 * header row and a body row per segment (the server counts the header the
+                 * same way), and `lines__text` on the text cells it lets wrap. A column in
+                 * Formula prints its result, as below. A table with no break goes on below,
+                 * written as it always was.
+                 */
+                if (isMultiRow(all)) {
+                    const value = (column) => expression(`${item}.${printedKeyOf(column)}`, specFromColumn(column));
+
+                    return `<div${attributesToHTML(this)}><table class="lines">`
+                        + colgroupHTML(all, (column) => normalizeWidth(column.width))
+                        + `<thead>${rowsHTML(all, 'th', (column) => escapeText(column.label))}</thead><tbody>`
+                        + `{% for ${item} in ${collection} %}`
+                        + rowsHTML(all, 'td', value, (column) => (isTextColumn(column) ? TEXT_CLASS : ''))
+                        + '{% endfor %}</tbody></table></div>';
+                }
 
                 const head = columns
                     .map((column) => `<th style="${thStyle(column)}">`
@@ -673,7 +708,32 @@ function columnCard(component, column, index, config, redraw, reorder) {
         redraw();
     });
 
-    head.append(grip, key, isRemovable ? remove : toggle);
+    /*
+     * «Starts a new row» (CGE-97): the item goes on over a second row from this column on
+     * (`line-rows.js`). Off, the key goes away rather than staying `false`, so a table the
+     * user tried it on and turned it back off saves as it did before. Not offered on the
+     * first visible column, where a break opens no row, unless one is set there (after a
+     * reorder) and needs turning off.
+     */
+    const isBreak = column.break === true;
+    const lineBreak = document.createElement('button');
+    lineBreak.type = 'button';
+    lineBreak.className = 'tpl-col__toggle tpl-col__break';
+    lineBreak.title = config.strings['trait.column_break'];
+    lineBreak.setAttribute('aria-label', lineBreak.title);
+    lineBreak.setAttribute('aria-pressed', String(isBreak));
+    lineBreak.innerHTML = breakIcon();
+    lineBreak.addEventListener('click', () => {
+        const columns = component.columns();
+        const { break: _off, ...rest } = columns[index];
+        columns[index] = isBreak ? rest : { ...rest, break: true };
+        component.setColumns(columns);
+        redraw();
+    });
+
+    const firstVisible = component.columns().findIndex((other) => !other?.hidden);
+
+    head.append(grip, key, ...(index === firstVisible && !isBreak ? [] : [lineBreak]), isRemovable ? remove : toggle);
 
     const labelField = columnField(config.strings['trait.column_label']);
     const label = document.createElement('input');
@@ -695,12 +755,13 @@ function columnCard(component, column, index, config, redraw, reorder) {
     width.step = '1';
     width.inputMode = 'decimal';
     width.className = 'gjs-field';
-    width.value = column.width ?? '';
+    const widthOf = columnWidthField(column.width, config.geometry?.medium === 'roll');
+    width.value = widthOf.value;
     width.placeholder = 'auto';
-    width.addEventListener('change', () => update({ width: width.value.trim() }));
+    width.addEventListener('change', () => update({ width: widthOf.write(width.value) }));
     const unit = document.createElement('span');
     unit.className = 'tpl-col__unit';
-    unit.textContent = 'mm';
+    unit.textContent = widthOf.unit;
     widthWrap.append(width, unit);
     widthField.append(widthWrap);
 
@@ -1076,6 +1137,13 @@ function gripIcon() {
         + '<circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>'
         + '<circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>'
         + '<circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>';
+}
+
+/** A return arrow: the item goes on in a new row (CGE-97). */
+function breakIcon() {
+    return '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"'
+        + ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+        + '<path d="M20 5v7a3 3 0 0 1-3 3H5"/><path d="m9 11-4 4 4 4"/></svg>';
 }
 
 function eyeIcon() {
@@ -1610,19 +1678,48 @@ function thStyle(column) {
 }
 
 /**
+ * The column card's width field (CGE-97): the number shown, the unit beside it and what a
+ * typed number is saved as. A width saved with its unit (`12ch`) shows its number and keeps
+ * the unit when changed. Otherwise a roll's unit is the character — a bare number there
+ * would become millimetres, which V-21 forbids on a roll — and a sheet's is the millimetre,
+ * saved as the bare number it always was.
+ *
+ * @param {unknown} stored the column's saved width
+ * @param {boolean} roll
+ * @returns {{value: string, unit: string, write: (typed: string) => string}}
+ */
+export function columnWidthField(stored, roll) {
+    const match = String(stored ?? '').trim().toLowerCase().match(/^(\d*\.?\d+)([a-z%]+)$/);
+    const storedUnit = match ? match[2] : '';
+    const unit = storedUnit || (roll ? 'ch' : 'mm');
+    const suffix = storedUnit || (roll ? 'ch' : '');
+
+    return {
+        value: match ? match[1] : String(stored ?? ''),
+        unit,
+        write: (typed) => {
+            const value = String(typed ?? '').trim();
+
+            return value !== '' && suffix ? value + suffix : value;
+        },
+    };
+}
+
+/**
  * A width the user typed, as a safe CSS length. The layout's unit is the millimetre, so a
  * bare number is read as `mm`; a value that already carries a unit keeps it. Anything that
  * is not a length is dropped rather than written into the style, which also keeps the
- * value from breaking out of the attribute.
+ * value from breaking out of the attribute. A roll's columns are measured in characters
+ * (`ch`, CGE-97).
  */
-function normalizeWidth(value) {
+export function normalizeWidth(value) {
     const raw = String(value ?? '').trim().toLowerCase();
 
     if (raw === '') {
         return '';
     }
 
-    const match = raw.match(/^(\d*\.?\d+)(mm|cm|in|px|pt|%)?$/);
+    const match = raw.match(/^(\d*\.?\d+)(mm|cm|in|px|pt|%|ch)?$/);
 
     return match ? match[1] + (match[2] || 'mm') : '';
 }

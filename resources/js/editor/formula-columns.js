@@ -18,6 +18,7 @@
 
 import { newFormulaId } from './formula.js';
 import { defaultSpecFor, specToColumnArgs } from './formats.js';
+import { grid } from './line-rows.js';
 
 const COLUMN_PREFIX = 'formula_';
 
@@ -130,7 +131,8 @@ function millimetres(value) {
 /**
  * Whether the visible columns' widths add up to more than the table's: the last ones are
  * then squeezed out of a fixed-layout table. Columns with no readable width count as
- * nothing, and a table whose width is not a length in mm is never reported.
+ * nothing, and a table whose width is not a length in mm is never reported. Items over
+ * several rows (CGE-97) share the width: only the grid's columns add up.
  */
 export function columnsOverflow(columns, tableWidth) {
     const table = millimetres(tableWidth);
@@ -139,8 +141,7 @@ export function columnsOverflow(columns, tableWidth) {
         return false;
     }
 
-    const total = columns
-        .filter((column) => !column.hidden)
+    const total = grid(columns)
         .reduce((sum, column) => sum + (millimetres(column.width) ?? 0), 0);
 
     return total > table + 0.01;

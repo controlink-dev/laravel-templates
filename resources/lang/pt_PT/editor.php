@@ -40,6 +40,8 @@ return [
         'line_table'          => 'Tabela de linhas',
         'code_slot'           => 'Código QR / barras',
         'page_number'         => 'Número de página',
+        // Talão (CGE-97): um rótulo e um valor lado a lado, cada um com N caracteres.
+        'text_row'            => 'Linha com colunas',
     ],
 
     'traits' => [
@@ -62,6 +64,7 @@ return [
         'column_reorder' => 'Arrastar para reordenar',
         'column_hide'   => 'Ocultar coluna',
         'column_show'   => 'Mostrar coluna',
+        'column_break'  => 'Começa nova linha',
         // "Acrescentar coluna" da tabela de linhas (CGE-85): campos próprios, das tabelas ligadas, coluna calculada.
         'add_column'          => '+ Acrescentar coluna',
         'column_search'       => 'Procurar campos…',
@@ -74,6 +77,14 @@ return [
         'code_source'   => 'Origem',
         'code_type'     => 'Tipo',
         'page_format'   => 'Formato',
+        // Talão (CGE-97): o estilo que a impressora térmica sabe imprimir, no lugar do painel de estilo.
+        'esc_size'        => 'Letra',
+        'esc_size_normal' => 'Normal',
+        'esc_size_double' => 'Dupla',
+        'esc_bold'        => 'Negrito',
+        'esc_align'       => 'Alinhamento',
+        'esc_gap'         => 'Linhas em branco antes',
+        'esc_cols'        => 'Largura (caracteres)',
     ],
 
     'states' => [
@@ -264,6 +275,9 @@ return [
         'missing_mandatory' => 'Falta o campo «:field». É obrigatório para ativar, num bloco próprio ou dentro de uma fórmula.',
 
         'code_incomplete' => 'Este código fixo tem campos obrigatórios em branco. Sem eles, o código é válido mas não aponta para nada.',
+
+        // L-ESC (CGE-97): o espelho ao vivo do V-21 num talão; o `:subject` é preenchido no JS.
+        'roll_vocabulary' => 'O talão usa «:subject», que a impressora térmica não consegue imprimir como aparece. Use só as opções do talão (letra, negrito, alinhamento, linhas em branco, colunas).',
     ],
 
     'page_formats' => [
@@ -326,6 +340,31 @@ return [
         'formula_scope'             => '«:formula»: aqui, uma coluna das linhas só pode ser usada dentro de SUM ou COUNT.',
         'formula_duplicate_key'     => '«:formula»: duas fórmulas têm a mesma chave. Apague esta e crie-a de novo.',
         'formula_without_source'    => '«:formula»: a fórmula está vazia.',
+        // V-21 (CGE-97): um talão só usa o que a impressora térmica imprime. `:subject` é o
+        // seletor ou o elemento em causa.
+        'roll_css'          => 'O talão tem um estilo próprio («:subject») que a impressora térmica não consegue imprimir. Use só as opções do talão: letra, negrito, alinhamento, linhas em branco, colunas.',
+        'roll_inline_style' => '«:subject» tem um estilo definido à mão que a impressora térmica não consegue imprimir. Use só as opções do talão.',
+        'roll_class'        => 'O estilo «:subject» não existe no talão.',
+        'roll_cols'         => 'A largura «:subject» de uma coluna da linha não serve: indique um número inteiro de caracteres, de 0 (o resto da linha) até :columns, a largura do talão.',
+        'roll_table'        => '«:subject» é uma tabela que não é a tabela de linhas. Um talão só imprime a tabela de linhas.',
+        'roll_column_width' => 'A coluna «:subject» da tabela de linhas tem uma largura que não é em caracteres. No talão, indique um número de caracteres (por exemplo 12ch) ou deixe vazio.',
+    ],
+
+    // A tradução do talão para a impressora térmica (ESC/POS, CGE-97). `:subject` é o campo
+    // (ou o elemento) em causa; `:columns` a largura do talão em caracteres.
+    'escpos' => [
+        'unencodable_field' => 'O campo «:subject» tem o carácter «:char», que a impressora térmica não consegue imprimir. Corrija o valor do campo.',
+        'unencodable'       => 'O texto de «:subject» tem o carácter «:char», que a impressora térmica não consegue imprimir.',
+        'value_too_wide'    => 'O valor «:subject» não cabe numa linha do talão (:width caracteres) e não pode ser partido. Dê-lhe mais colunas ou uma linha só para ele.',
+        'word_too_wide'     => 'A palavra «:subject» tem mais caracteres do que a linha do talão (:width) e não pode ser partida.',
+        'row_too_wide'      => 'As colunas de «:subject» somam :width caracteres, mais do que os :columns do talão.',
+        'mixed_size'        => 'Em «:subject», só uma parte da linha está em letra dupla. Na impressora térmica, a letra dupla é para a linha inteira.',
+        'image_type'        => 'A imagem «:subject» não é PNG nem JPEG. A impressora térmica só imprime imagens destes dois tipos.',
+        'no_room'           => '«:subject» não tem espaço na linha: as outras células ocupam todas as colunas. Dê-lhe colunas ou estreite as outras.',
+        'qr_empty'          => 'O código QR «:subject» está vazio.',
+        'untranslatable'    => '«:subject» não tem equivalente na impressora térmica.',
+        'value_missing'     => 'O valor de «:subject» não está no talão, inteiro numa linha. Ponha o campo no talão, ou dê-lhe uma linha com largura suficiente.',
+        'qr_mismatch'       => 'O talão não imprime o «:subject» com o conteúdo do documento. Ligue um código QR ao campo «:subject».',
     ],
 
     // Campos e colunas de fórmula (CGE-37).

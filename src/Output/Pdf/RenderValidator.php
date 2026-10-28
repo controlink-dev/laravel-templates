@@ -3,11 +3,11 @@
 namespace Controlink\Templates\Output\Pdf;
 
 use Controlink\Templates\Codes\CodePayload;
+use Controlink\Templates\Output\LegalValueText;
 use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Rendering\TemplateRenderer;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
-use Throwable;
 
 /**
  * Layer 2 of the validation: over the rendered PDF, at activation (spec 8.2).
@@ -26,9 +26,6 @@ use Throwable;
  */
 class RenderValidator
 {
-    /** Stands for "the binding's `default_format`" where no placed field is known. */
-    private const DEFAULT_FORMAT = 'binding-default';
-
     /**
      * Resolutions R-05 rasterises a code at, in order, retrying the next when one fails: a
      * module grid can alias against one dpi and read cleanly at another, so a single pass is
@@ -195,25 +192,9 @@ class RenderValidator
                 : [];
         }
 
-        // CGE-49: the text to look for is what the placed fields print, each with its own
-        // format and arguments. Any one of them on the page will do: the same binding
-        // placed twice in two formats is one value shown twice. With no placement known
-        // (a caller that did not pass the layout), the binding's default format.
-        $specs = array_key_exists($binding['key'], $placedFormats)
-            ? $placedFormats[$binding['key']]
-            : [self::DEFAULT_FORMAT];
-
-        // CGE-69: an empty list is a field named only inside a formula, which prints it
-        // its own way — nothing to look for. Never for a legal field: a formula does not
-        // place one, so its value is still looked for as the binding prints it.
-        if ($specs === [] && ($binding['legal'] ?? false)) {
-            $specs = [self::DEFAULT_FORMAT];
-        }
-
-        $candidates = array_values(array_unique(array_filter(array_map(
-            fn (FormatSpec|string|null $spec): string => $this->expectedText($binding, $dataset, $spec),
-            $specs,
-        ), fn (string $text): bool => $text !== '')));
+        // The texts the value can take, the placed fields' formats first (CGE-49, CGE-69):
+        // shared with the receipt's E-01 (CGE-97), so both look for the same thing.
+        $candidates = (new LegalValueText($this->renderer))->candidates($binding, $dataset, $placedFormats);
 
         if ($candidates === []) {
             return [];
@@ -474,49 +455,64 @@ class RenderValidator
     }
 
     /**
-     * The exact string the value takes in the document.
+     * Whether a page's text carries the value, whitespace normalised: its words joined by
+     * a space, or else with a line that ends in a hyphen joined to the next by nothing.
      *
-     * Rendered through the same filters the template uses, because the fixture holds raw
-     * values: comparing the page against `1229999.98` would fail on a document correctly
-     * showing `1 229 999,98 €`.
+     * The second reading is a line the browser broke after a hyphen (CGE-97: on a roll,
+     * `… Esquerdo, 4200-` / `072 Porto`). `pdftotext -bbox` keeps the hyphen and gives the
+     * two halves as two words on two lines, which the space reading turns into «4200- 072»
+     * and R-02 then misses. Only a hyphen at the end of a line joins: within a line the
+     * space between words is real.
      *
-     * @param  array<string, mixed>  $binding
-     * @param  array<string, mixed>  $dataset
+     * Only for a value with a space in it, a text that may wrap (`ReceiptBuilder::lockKind`
+     * `words`). A token (no space: an ATCUD, a NIF) prints whole on the receipt, so a PDF
+     * that split it at its hyphen differs from the receipt and stays an R-02.
      */
-    private function expectedText(array $binding, array $dataset, FormatSpec|string|null $spec = self::DEFAULT_FORMAT): string
-    {
-        if ($spec === self::DEFAULT_FORMAT) {
-            $format = $binding['default_format'] ?? '';
-
-            $template = $format !== ''
-                ? '{{ '.$binding['key'].'|'.$format.' }}'
-                : '{{ '.$binding['key'].' }}';
-        } else {
-            $template = $spec instanceof FormatSpec
-                ? $spec->expression($binding['key'])
-                : '{{ '.$binding['key'].' }}';
-        }
-
-        try {
-            return html_entity_decode(
-                $this->renderer->render($template, $dataset),
-                ENT_QUOTES | ENT_HTML5,
-                'UTF-8',
-            );
-        } catch (Throwable) {
-            // A value the dataset does not carry is a dataset problem, not a layout
-            // one, and it is not this rule's business to report it.
-            return '';
-        }
-    }
-
-    /** Whether a page's text carries the value, whitespace normalised. */
     private function pageContains(RenderedPdf $rendered, int $page, string $expected): bool
     {
-        return str_contains(
-            $this->normalise($rendered->textOn($page)),
-            $this->normalise($expected),
-        );
+        $target = $this->normalise($expected);
+
+        if (str_contains($this->normalise($rendered->textOn($page)), $target)) {
+            return true;
+        }
+
+        if (! self::mayWrap($target)) {
+            return false;
+        }
+
+        $words = $rendered->wordsOn($page);
+        $text  = '';
+
+        foreach ($words as $index => $word) {
+            $text .= ($index === 0 ? '' : $this->joint($words[$index - 1], $word, true)).$word['text'];
+        }
+
+        return str_contains($this->normalise($text), $target);
+    }
+
+    /** A value with a space in it: a text that wraps, not a token that stays whole. */
+    private static function mayWrap(string $normalised): bool
+    {
+        return str_contains($normalised, ' ');
+    }
+
+    /**
+     * What goes between two consecutive words of the extracted text: a space, or — with
+     * `$hyphens`, when the first ends a line on a hyphen and the second starts the line
+     * right below it — nothing, the line broken after the hyphen.
+     *
+     * @param  array{text: string, top: float, bottom: float}  $before
+     * @param  array{text: string, top: float, bottom: float}  $after
+     */
+    private function joint(array $before, array $after, bool $hyphens): string
+    {
+        // The very next line: below this one, and starting within a line's height of its
+        // bottom. A block further down is another text, never the rest of this word.
+        $height   = $before['bottom'] - $before['top'];
+        $nextLine = $after['top'] > $before['top'] + $height / 2
+            && $after['top'] <= $before['bottom'] + $height;
+
+        return $hyphens && $nextLine && str_ends_with($before['text'], '-') ? '' : ' ';
     }
 
     /**
@@ -524,21 +520,32 @@ class RenderValidator
      *
      * The extractor breaks a value into words, so the run of consecutive words whose
      * text matches is what has to be found — and its union box is the box of the value
-     * as printed.
+     * as printed. Read the two ways `pageContains` reads the page: a value it found
+     * across a line broken after a hyphen is located there too, so R-04 still checks it.
      *
      * @return array{left: float, top: float, right: float, bottom: float}|null
      */
     private function locate(RenderedPdf $rendered, int $page, string $expected): ?array
     {
-        $words  = $rendered->wordsOn($page);
         $target = $this->normalise($expected);
-        $count  = count($words);
+
+        return $this->locateRun($rendered->wordsOn($page), $target, false)
+            ?? (self::mayWrap($target) ? $this->locateRun($rendered->wordsOn($page), $target, true) : null);
+    }
+
+    /**
+     * @param  array<int, array{text: string, left: float, top: float, right: float, bottom: float}>  $words
+     * @return array{left: float, top: float, right: float, bottom: float}|null
+     */
+    private function locateRun(array $words, string $target, bool $hyphens): ?array
+    {
+        $count = count($words);
 
         for ($start = 0; $start < $count; $start++) {
             $text = '';
 
             for ($end = $start; $end < $count; $end++) {
-                $text   = trim($text.' '.$words[$end]['text']);
+                $text   = trim($end === $start ? $words[$end]['text'] : $text.$this->joint($words[$end - 1], $words[$end], $hyphens).$words[$end]['text']);
                 $joined = $this->normalise($text);
 
                 if ($joined === $target) {

@@ -31,7 +31,7 @@ const config = { strings, formats: [], ruleWidths: {}, bindings: [], nodes: [], 
 registerComponents(editor, config);
 registerTableAndSlot(editor, config);
 
-const blocks = ['static-text', 'data-field', 'print-image', 'print-rule', 'page-number', 'line-table', 'code-slot'];
+const blocks = ['static-text', 'data-field', 'print-image', 'print-rule', 'page-number', 'line-table', 'code-slot', 'text-row'];
 
 for (const name of blocks) {
     assert.ok(types[name], `type ${name} is registered`);

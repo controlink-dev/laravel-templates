@@ -40,6 +40,8 @@ return [
         'line_table'          => 'Line table',
         'code_slot'           => 'QR / barcode',
         'page_number'         => 'Page number',
+        // Receipt (CGE-97): a label and a value side by side, each N characters wide.
+        'text_row'            => 'Two columns: label + value',
     ],
 
     'traits' => [
@@ -62,6 +64,7 @@ return [
         'column_reorder' => 'Drag to reorder',
         'column_hide'   => 'Hide column',
         'column_show'   => 'Show column',
+        'column_break'  => 'Starts a new row',
         // "Add column" of the line table (CGE-85): own fields, linked tables' fields, a calculated column.
         'add_column'          => '+ Add column',
         'column_search'       => 'Search fields…',
@@ -74,6 +77,14 @@ return [
         'code_source'   => 'Source',
         'code_type'     => 'Type',
         'page_format'   => 'Format',
+        // Receipt (CGE-97): the styling the thermal printer can print, in place of the style panel.
+        'esc_size'        => 'Letter',
+        'esc_size_normal' => 'Normal',
+        'esc_size_double' => 'Double',
+        'esc_bold'        => 'Bold',
+        'esc_align'       => 'Alignment',
+        'esc_gap'         => 'Blank lines before',
+        'esc_cols'        => 'Width (characters)',
     ],
 
     'states' => [
@@ -254,6 +265,9 @@ return [
         'missing_mandatory' => 'The ":field" field is missing. It is required to activate, in a block of its own or inside a formula.',
 
         'code_incomplete' => 'This fixed code has required fields left blank. Without them the code is valid but points at nothing.',
+
+        // L-ESC (CGE-97): the live mirror of V-21 on a receipt; `:subject` is filled in JS.
+        'roll_vocabulary' => 'The receipt uses ":subject", which the thermal printer cannot print as shown. Use only the receipt options (size, bold, alignment, blank lines, columns).',
     ],
 
     'page_formats' => [
@@ -316,6 +330,31 @@ return [
         'formula_scope'             => '":formula": a column of the lines can only be used inside SUM or COUNT here.',
         'formula_duplicate_key'     => '":formula": two formulas share the same key. Delete this one and create it again.',
         'formula_without_source'    => '":formula": the formula is empty.',
+        // V-21 (CGE-97): a receipt only uses what the thermal printer prints. `:subject` is
+        // the selector or element at fault.
+        'roll_css'          => 'The receipt has a style of its own (":subject") that the thermal printer cannot print. Use only the receipt options: size, bold, alignment, blank lines, columns.',
+        'roll_inline_style' => '":subject" has a style set by hand that the thermal printer cannot print. Use only the receipt options.',
+        'roll_class'        => 'The style ":subject" does not exist on a receipt.',
+        'roll_cols'         => 'The width ":subject" of a column in a row is not valid: set a whole number of characters, from 0 (the rest of the line) up to :columns, the width of the receipt.',
+        'roll_table'        => '":subject" is a table other than the lines table. A receipt can only print the lines table.',
+        'roll_column_width' => 'The lines table column ":subject" has a width that is not in characters. On a receipt, set a number of characters (e.g. 12ch) or leave it empty.',
+    ],
+
+    // The receipt's translation for the thermal printer (ESC/POS, CGE-97). `:subject` is
+    // the field (or element) concerned; `:columns` the receipt's width in characters.
+    'escpos' => [
+        'unencodable_field' => 'The field ":subject" has the character ":char", which the thermal printer cannot print. Correct the field\'s value.',
+        'unencodable'       => 'The text of ":subject" has the character ":char", which the thermal printer cannot print.',
+        'value_too_wide'    => 'The value ":subject" does not fit on a receipt line (:width characters) and cannot be split. Give it more columns or a line of its own.',
+        'word_too_wide'     => 'The word ":subject" is longer than the receipt line (:width characters) and cannot be split.',
+        'row_too_wide'      => 'The columns of ":subject" add up to :width characters, more than the receipt\'s :columns.',
+        'mixed_size'        => 'In ":subject", only part of the line is double size. On the thermal printer, double size is for the whole line.',
+        'image_type'        => 'The image ":subject" is neither PNG nor JPEG. The thermal printer only prints images of these two types.',
+        'no_room'           => '":subject" has no room left on its line: the other cells take every column. Give it columns or make the others narrower.',
+        'qr_empty'          => 'The QR code ":subject" is empty.',
+        'untranslatable'    => '":subject" has no equivalent on the thermal printer.',
+        'value_missing'     => 'The value of ":subject" is not on the receipt, whole on one line. Place the field on the receipt, or give it a line wide enough.',
+        'qr_mismatch'       => 'The receipt does not print ":subject" with the document\'s content. Bind a QR code to the field ":subject".',
     ],
 
     // Formula fields and columns (CGE-37).

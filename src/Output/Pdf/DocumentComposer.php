@@ -79,6 +79,12 @@ class DocumentComposer
          * (spec 3.1). Without it every editor-placed table would resolve to top 0.
          */
         $structure = app(PageStructure::class)->build($this->bodyOf($html), $type, $dataset, $css, $formulas->pageFields());
+        $geometry  = PageGeometry::fromType($type->pdf);
+
+        // A roll's line table text breaks on words (CGE-97); a sheet gets no new bytes.
+        if ($geometry->medium === 'roll') {
+            $structure['css'] .= app(PageStructure::class)->rollWrapCss($this->bodyOf($html), $css);
+        }
 
         $renderer = app(TemplateRenderer::class);
         $codes    = app(CodeImageGenerator::class);
@@ -113,7 +119,7 @@ class DocumentComposer
             .'<style>'.$this->fontFaces().'</style>'
             .'<style>'.$this->printStylesheet().'</style>'
             .'<style>'.$this->pageVariables($type).'</style>'
-            .'<style>'.$this->geometryStyles(PageGeometry::fromType($type->pdf)).'</style>'
+            .'<style>'.$this->geometryStyles($geometry).'</style>'
             .'<style>'.$css.'</style>'
             .'<style>'.$structure['css'].'</style>'
             .'</head><body>'.$body.'</body></html>';
@@ -144,7 +150,8 @@ class DocumentComposer
 
             return '@page{size: '.$g->widthMm.'mm '.$height.'mm;margin:0}'
                 .'.page{width: '.$g->widthMm.'mm;height: auto;overflow: visible;'
-                .'box-sizing: border-box;padding: '.$padding.'}';
+                .'box-sizing: border-box;padding: '.$padding.'}'
+                .self::rollGrid($g);
         }
 
         // A label: a sheet sized in mm, so the @page is explicit millimetres (no CSS
@@ -166,6 +173,27 @@ class DocumentComposer
 
         return '@page{size: '.$g->paperFormat.';margin:0}'
             .'html .page{width: '.$size['width'].'mm;height: '.$size['height'].'mm}';
+    }
+
+    /**
+     * A roll is a monospace character grid (CGE-97): `columns` characters fill its
+     * printable width, as they do on the ESC/POS printer. The editor's canvas emits the
+     * same rule (`rollGridCss` in `roll-grid.js`).
+     *
+     * `html .page`, not `.page`: `pageVariables()` sets the family on `html .page` first,
+     * and a `.page` rule would lose to it. The dashed rule is the roll's only: on a sheet a
+     * rule block is a filled box, and these declarations would move and redraw it.
+     */
+    private static function rollGrid(PageGeometry $g): string
+    {
+        // A roll with no width has no grid to draw (the editor's rollGridCss agrees).
+        if ($g->charWidthMm() <= 0) {
+            return '';
+        }
+
+        return 'html .page{font-family:"Liberation Mono","Courier New",monospace;'
+            .'font-size:'.round($g->fontSizeMm(), 3).'mm;line-height:1.25}'
+            .'.page hr,.page [data-tpl-type="rule"]{border:0;border-top:1px dashed #000;background:none;margin:0.5em 0}';
     }
 
     /**

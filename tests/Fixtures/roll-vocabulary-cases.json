@@ -1,0 +1,113 @@
+{
+    "_comment": "CGE-97: the receipt vocabulary rule, V-21 (RollVocabulary.php) and L-ESC (roll-vocabulary.js). Both tests read these cases: the same input must give the same problems, in the same order (CSS first, then the HTML in document order). Each expected problem is its lang key under validation.*, the component id and the subject the message names.",
+    "text_row": "<div class=\"flow esc-row\" data-tpl-type=\"text-row\" id=\"tpl-total-row\"><div class=\"flow esc-cell\" data-tpl-type=\"static-text\" data-tpl-cols=\"10\" id=\"tpl-total-label\">Total</div><div class=\"flow esc-cell esc-right esc-nowrap\" data-tpl-type=\"data-field\" data-tpl-binding=\"totals.total_due\" data-tpl-cols=\"0\" id=\"tpl-total\">{{ totals.total_due }}</div></div>",
+    "cases": [
+        {
+            "name": "1. the vocabulary: a row of 2 cells, double bold right, a rule, a 12ch table and the QR size",
+            "html": "<div class=\"page\"><div class=\"zone zone--body\" data-tpl-zone=\"body\"><div class=\"flow esc-double esc-bold esc-right esc-gap-1\" data-tpl-type=\"static-text\" id=\"tpl-title\">FATURA</div><div class=\"flow esc-row\" data-tpl-type=\"text-row\" id=\"tpl-total-row\"><div class=\"flow esc-cell\" data-tpl-type=\"static-text\" data-tpl-cols=\"10\" id=\"tpl-total-label\">Total</div><div class=\"flow esc-cell esc-right esc-nowrap\" data-tpl-type=\"data-field\" data-tpl-binding=\"totals.total_due\" data-tpl-cols=\"0\" id=\"tpl-total\">{{ totals.total_due }}</div></div><hr><div class=\"block block--lines\" data-tpl-type=\"line-table\" data-tpl-binding=\"lines\" data-tpl-columns=\"[{&quot;key&quot;:&quot;designation&quot;,&quot;label&quot;:&quot;Artigo&quot;,&quot;width&quot;:&quot;&quot;},{&quot;key&quot;:&quot;total&quot;,&quot;label&quot;:&quot;Total&quot;,&quot;width&quot;:&quot;12ch&quot;,&quot;align&quot;:&quot;right&quot;}]\" id=\"tpl-lines\"><table class=\"lines\"><thead><tr><th style=\"text-align:left\">Artigo</th><th style=\"text-align:right;width:12ch\">Total</th></tr></thead><tbody>{% for linha in lines %}<tr><td style=\"text-align:left\">{{ linha.designation }}</td><td style=\"text-align:right\">{{ linha.total }}</td></tr>{% endfor %}</tbody></table></div><img class=\"block block--code\" data-tpl-type=\"code-slot\" data-tpl-binding=\"document.qr\" id=\"tpl-qr\" alt=\"\"></div></div>",
+            "css": "#tpl-qr{width:30mm;height:30mm}",
+            "columns": 40,
+            "expected": []
+        },
+        {
+            "name": "2. a class rule of its own (the old flex/mm receipt)",
+            "html": "<div class=\"page\"><div class=\"r-inline\" id=\"tpl-a\">NIF</div></div>",
+            "css": ".r-inline{display:flex;gap:2mm}",
+            "columns": 40,
+            "expected": [
+                { "key": "roll_css", "component_id": null, "subject": ".r-inline" }
+            ]
+        },
+        {
+            "name": "3. a style written on a block",
+            "html": "<div class=\"page\"><div class=\"flow\" data-tpl-type=\"static-text\" style=\"margin-top:3mm\" id=\"tpl-note\">Obrigado</div></div>",
+            "css": "",
+            "columns": 40,
+            "expected": [
+                { "key": "roll_inline_style", "component_id": "tpl-note", "subject": "div#tpl-note" }
+            ]
+        },
+        {
+            "name": "4. an esc- class that is not in the vocabulary",
+            "html": "<div class=\"page\"><div class=\"flow esc-bold esc-huge\" data-tpl-type=\"static-text\" id=\"tpl-big\">Total</div></div>",
+            "css": "",
+            "columns": 40,
+            "expected": [
+                { "key": "roll_class", "component_id": "tpl-big", "subject": "esc-huge" }
+            ]
+        },
+        {
+            "name": "5. a line table column in millimetres (the header cell the editor writes carries it too: reported by both)",
+            "html": "<div class=\"page\"><div class=\"block block--lines\" data-tpl-type=\"line-table\" data-tpl-columns=\"[{&quot;key&quot;:&quot;designation&quot;,&quot;label&quot;:&quot;Artigo&quot;},{&quot;key&quot;:&quot;unit_price&quot;,&quot;label&quot;:&quot;Preço&quot;,&quot;width&quot;:&quot;44mm&quot;,&quot;align&quot;:&quot;right&quot;}]\" id=\"tpl-lines\"><table class=\"lines\"><thead><tr><th style=\"text-align:left\">Artigo</th><th style=\"text-align:right;width:44mm\">Preço</th></tr></thead><tbody>{% for linha in lines %}<tr><td style=\"text-align:left\">{{ linha.designation }}</td><td style=\"text-align:right\">{{ linha.unit_price }}</td></tr>{% endfor %}</tbody></table></div></div>",
+            "css": "",
+            "columns": 40,
+            "expected": [
+                { "key": "roll_column_width", "component_id": "tpl-lines", "subject": "Preço (44mm)" },
+                { "key": "roll_inline_style", "component_id": "tpl-lines", "subject": "th" }
+            ]
+        },
+        {
+            "name": "11. a hand-written mm width on line table cells whose data-tpl-columns has none",
+            "html": "<div class=\"page\"><div class=\"block block--lines\" data-tpl-type=\"line-table\" data-tpl-columns=\"[]\" id=\"tpl-lines\"><table class=\"lines\"><colgroup><col style=\"width:44mm\"></colgroup><tr><td style=\"width:44mm\">x</td><td style=\"text-align:right;width:12ch\">y</td></tr></table></div></div>",
+            "css": "",
+            "columns": 40,
+            "expected": [
+                { "key": "roll_inline_style", "component_id": "tpl-lines", "subject": "col" },
+                { "key": "roll_inline_style", "component_id": "tpl-lines", "subject": "td" }
+            ]
+        },
+        {
+            "name": "6. a cell wider than the grid",
+            "html": "<div class=\"page\"><div class=\"flow esc-row\" data-tpl-type=\"text-row\" id=\"tpl-row\"><div class=\"flow esc-cell\" data-tpl-cols=\"50\" id=\"tpl-wide\">Total</div><div class=\"flow esc-cell\" data-tpl-cols=\"1.5\">x</div></div></div>",
+            "css": "",
+            "columns": 40,
+            "expected": [
+                { "key": "roll_cols", "component_id": "tpl-wide", "subject": "50" },
+                { "key": "roll_cols", "component_id": "tpl-row", "subject": "1.5" }
+            ]
+        },
+        {
+            "name": "7. what the editor writes on every save: GrapesJS's protected CSS, the page variables, sizes as #id rules, a multi-row line table, and an inline-sized image",
+            "html": "<body><div class=\"page\"><div id=\"iw2zj\" data-tpl-zone=\"body\" class=\"zone zone--body\"><div data-tpl-type=\"line-table\" data-tpl-node=\"document\" data-tpl-binding=\"lines\" data-tpl-columns=\"[{&quot;key&quot;:&quot;designation&quot;,&quot;label&quot;:&quot;Artigo&quot;,&quot;width&quot;:&quot;&quot;,&quot;align&quot;:&quot;left&quot;},{&quot;key&quot;:&quot;quantity&quot;,&quot;label&quot;:&quot;Qtd&quot;,&quot;width&quot;:&quot;6ch&quot;,&quot;align&quot;:&quot;right&quot;},{&quot;key&quot;:&quot;unit_price&quot;,&quot;label&quot;:&quot;Preço&quot;,&quot;width&quot;:&quot;12ch&quot;,&quot;align&quot;:&quot;right&quot;,&quot;break&quot;:true},{&quot;key&quot;:&quot;total&quot;,&quot;label&quot;:&quot;Total&quot;,&quot;width&quot;:&quot;12ch&quot;,&quot;align&quot;:&quot;right&quot;},{&quot;key&quot;:&quot;tax&quot;,&quot;label&quot;:&quot;IVA&quot;,&quot;width&quot;:&quot;44mm&quot;,&quot;hidden&quot;:true}]\" id=\"tpl-lines\" class=\"block block--lines\"><table class=\"lines\"><colgroup><col><col style=\"width:6ch\"></colgroup><thead><tr><th style=\"text-align:left\">Artigo</th><th style=\"text-align:right\">Qtd</th></tr><tr><th style=\"text-align:right\">Preço</th><th style=\"text-align:right\">Total</th></tr></thead><tbody>{% for linha in lines %}<tr><td class=\"lines__text\" style=\"text-align:left\">{{ linha.designation }}</td><td style=\"text-align:right\">{{ linha.quantity }}</td></tr><tr><td style=\"text-align:right\">{{ linha.unit_price }}</td><td style=\"text-align:right\">{{ linha.total }}</td></tr>{% endfor %}</tbody></table></div><div class=\"block block--lines\" data-tpl-type=\"line-table\" data-tpl-columns=\"[{&quot;key&quot;:&quot;designation&quot;,&quot;label&quot;:&quot;Artigo&quot;,&quot;align&quot;:&quot;left&quot;},{&quot;key&quot;:&quot;total&quot;,&quot;label&quot;:&quot;Total&quot;,&quot;width&quot;:&quot;12ch&quot;,&quot;align&quot;:&quot;center&quot;}]\" id=\"i69e7c\"><table class=\"lines\"><thead><tr><th style=\"text-align:left\">Artigo</th><th style=\"text-align:center;width:12ch\">Total</th></tr></thead><tbody>{% for linha in lines %}<tr><td style=\"text-align:left\">{{ linha.designation }}</td><td style=\"text-align:center\">{{ linha.total }}</td></tr>{% endfor %}</tbody></table></div><img class=\"block block--code\" data-tpl-type=\"code-slot\" data-tpl-code-source=\"dynamic\" id=\"tpl-qr\" alt=\"\" data-tpl-node=\"document\" data-tpl-legal=\"1\" data-tpl-binding=\"document.qr\" alt=\"\"><img data-tpl-type=\"image\" src=\"data:image/png;base64,iVBORw0KGgo=\" id=\"i4pd7\" data-tpl-fit=\"contain\" class=\"block block--image\"><img data-tpl-type=\"image\" src=\"data:image/png;base64,iVBORw0KGgo=\" style=\"width:25mm; height:12.5mm\" id=\"tpl-logo\"></div></div></body>",
+            "css": "* { box-sizing: border-box; } body {margin: 0;}.page{--margin-top:3mm;--margin-right:3mm;--margin-bottom:0mm;--margin-left:3mm;--header-height:35mm;--footer-height:20mm;}#tpl-qr{width:30mm;height:30mm;}#i4pd7{width:25mm;height:25mm;}",
+            "columns": 40,
+            "expected": []
+        },
+        {
+            "name": "8. an at-rule, a rule on a block that is not an image, a rule reaching inside the line table, and a selector list",
+            "html": "<div class=\"page\"><div class=\"flow\" id=\"tpl-title\">FATURA</div><div class=\"block block--lines\" data-tpl-type=\"line-table\" id=\"tpl-lines\"><table class=\"lines\"></table></div><img data-tpl-type=\"code-slot\" id=\"tpl-qr\" alt=\"\"></div>",
+            "css": "/* old */ @media print{.page{color:#000}} #tpl-title{font-size:12pt} #tpl-lines  thead th{border-bottom-width:0.3mm} #tpl-qr,#tpl-title{width:30mm} #tpl-qr{width:30px;height:30mm} #tpl-missing{width:30mm} .page{--margin-top:3mm;color:red}",
+            "columns": 40,
+            "expected": [
+                { "key": "roll_css", "component_id": null, "subject": "@media print" },
+                { "key": "roll_css", "component_id": "tpl-title", "subject": "#tpl-title" },
+                { "key": "roll_css", "component_id": "tpl-lines", "subject": "#tpl-lines thead th" },
+                { "key": "roll_css", "component_id": "tpl-qr", "subject": "#tpl-qr,#tpl-title" },
+                { "key": "roll_css", "component_id": "tpl-qr", "subject": "#tpl-qr" },
+                { "key": "roll_css", "component_id": "tpl-missing", "subject": "#tpl-missing" },
+                { "key": "roll_css", "component_id": null, "subject": ".page" }
+            ]
+        },
+        {
+            "name": "9. a table of its own, a cell style beyond alignment, and an unknown alignment",
+            "html": "<div class=\"page\"><div class=\"flow\" id=\"tpl-box\"><table><tr><td>x</td></tr></table></div><div class=\"block block--lines\" data-tpl-type=\"line-table\" id=\"tpl-lines\"><table class=\"lines\"><thead><tr><th style=\"text-align:left;font-weight:700\">Artigo</th><th style=\"text-align:justify\">Total</th></tr></thead></table></div></div>",
+            "css": "",
+            "columns": 32,
+            "expected": [
+                { "key": "roll_table", "component_id": "tpl-box", "subject": "table" },
+                { "key": "roll_inline_style", "component_id": "tpl-lines", "subject": "th" },
+                { "key": "roll_inline_style", "component_id": "tpl-lines", "subject": "th" }
+            ]
+        },
+        {
+            "name": "10. an image sized in pixels, a cell count that is not a number, and an empty style left behind",
+            "html": "<div class=\"page\"><img data-tpl-type=\"image\" src=\"data:image/png;base64,iVBORw0KGgo=\" style=\"width:120px\" id=\"tpl-logo\"><div class=\"flow esc-cell\" data-tpl-cols=\"abc\" style=\"\" id=\"tpl-c\">x</div></div>",
+            "css": "",
+            "columns": 32,
+            "expected": [
+                { "key": "roll_inline_style", "component_id": "tpl-logo", "subject": "img#tpl-logo" },
+                { "key": "roll_cols", "component_id": "tpl-c", "subject": "abc" }
+            ]
+        }
+    ]
+}

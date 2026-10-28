@@ -21,6 +21,9 @@ final class PageGeometry
         public readonly array $margins,
         public readonly string $fit,
         public readonly float $maxHeightMm,
+        // CGE-97: a roll is a grid of this many characters across its printable width;
+        // null on every other medium.
+        public readonly ?int $columns = null,
     ) {
     }
 
@@ -57,7 +60,29 @@ final class PageGeometry
             ],
             fit: ($pdf['fit'] ?? 'fixed') === 'measure' ? 'measure' : 'fixed',
             maxHeightMm: (float) ($pdf['max_height_mm'] ?? 0),
+            columns: $medium === 'roll'
+                ? ((int) ($pdf['columns'] ?? 0) > 0 ? (int) $pdf['columns'] : ($widthMm >= 76 ? 40 : 32))
+                : null,
         );
+    }
+
+    /**
+     * One character of a roll's grid (CGE-97): its printable width shared by its columns.
+     * The ESC/POS printer prints exactly `columns` characters across that width.
+     */
+    public function charWidthMm(): float
+    {
+        if ($this->columns === null) {
+            throw new \LogicException('Only a roll has a character grid.');
+        }
+
+        return ($this->widthMm - $this->margins['left'] - $this->margins['right']) / $this->columns;
+    }
+
+    /** The monospace size whose advance (0.6 em) is one grid character. */
+    public function fontSizeMm(): float
+    {
+        return $this->charWidthMm() / 0.6;
     }
 
     /**

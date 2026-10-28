@@ -12,7 +12,12 @@
 import { icons } from './icons.js';
 import { staticTextName } from './layer-names.js';
 import { pageNumberText } from './page-number.js';
-import { looksFilled } from './rule-shape.js';
+import { looksFilled, ruleStyle, ruleTagName } from './rule-shape.js';
+import { rollColumns } from './roll-grid.js';
+import {
+    COLS_TRAIT, ROLL_STYLED_TYPES, ROLL_TRAIT_NAMES, ROW_CELL_TYPES, cellClasses, normalizeCols, setRollState, stateOf,
+    syncRollTraits, textRowBlockHtml, textRowHtml,
+} from './roll-style.js';
 import { measuredBox } from './position-panel.js';
 import { PX_PER_MM, roundTo } from './anchors.js';
 import { alertDialog } from './dialog.js';
@@ -90,6 +95,16 @@ export function registerComponents(editor, config) {
     registerImage(editor, config);
     registerRule(editor, config);
     registerPageNumber(editor, config);
+    registerTextRow(editor, config);
+
+    // A block dropped or moved on a roll: a cell of a «Linha com colunas» in or out of it.
+    // A sorter move fires this too (`action: 'move-component'`). Not while GrapesJS
+    // replays an undo/redo: it restores the recorded state and must not be added to (CGE-65).
+    editor.on('component:add', (component) => {
+        if (isRoll(config) && !isReplaying(editor)) {
+            applyRollMode(editor, config, component);
+        }
+    });
 }
 
 /* ---------------------------------------------------------------------------
@@ -135,6 +150,7 @@ function registerPageNumber(editor, config) {
             },
 
             init() {
+                watchRollStyle(this, config, editor);
                 this.on('change:attributes:data-tpl-format', this.renderPreviewText);
                 this.renderPreviewText();
             },
@@ -289,6 +305,7 @@ function registerStaticText(editor, config) {
             },
 
             init() {
+                watchRollStyle(this, config, editor);
                 this.on('change:attributes:data-tpl-wrap', () => sizeForWrap(this, config));
 
                 // Seed the trait from the block's current text so the Field panel shows it,
@@ -571,6 +588,7 @@ function registerDataField(editor, config) {
             },
 
             init() {
+                watchRollStyle(this, config, editor);
                 this.on('change:attributes:data-tpl-wrap', () => sizeForWrap(this, config));
 
                 /*
@@ -1311,6 +1329,22 @@ function registerRule(editor, config) {
         name: config.strings['rule_width.' + name],
     }));
 
+    const shapeTraits = [
+        {
+            type: 'select',
+            name: 'tpl-width',
+            label: config.strings['trait.thickness'],
+            options: widthOptions,
+            changeProp: true,
+        },
+        {
+            type: 'checkbox',
+            name: 'tpl-filled',
+            label: config.strings['trait.filled'],
+            changeProp: true,
+        },
+    ];
+
     editor.DomComponents.addType('print-rule', {
         isComponent: (el) => el?.dataset?.tplType === 'rule',
         model: {
@@ -1321,21 +1355,7 @@ function registerRule(editor, config) {
                 // A block holds no other block; see the data field (CGE-48).
                 droppable: false,
                 attributes: { class: 'block block--rule', 'data-tpl-type': 'rule' },
-                traits: [
-                    {
-                        type: 'select',
-                        name: 'tpl-width',
-                        label: config.strings['trait.thickness'],
-                        options: widthOptions,
-                        changeProp: true,
-                    },
-                    {
-                        type: 'checkbox',
-                        name: 'tpl-filled',
-                        label: config.strings['trait.filled'],
-                        changeProp: true,
-                    },
-                ],
+                traits: shapeTraits,
                 'tpl-width': widthOptions[0]?.id,
                 'tpl-filled': false,
                 // A default width so the rule is a visible line the moment it is dropped:
@@ -1377,19 +1397,214 @@ function registerRule(editor, config) {
              * anything the compositor has to interpret.
              */
             applyGeometry() {
-                const thickness = this.get('tpl-width');
-                const filled = Boolean(this.get('tpl-filled'));
+                const roll = isRoll(config);
 
-                this.addStyle(
-                    filled
-                        ? { 'background-color': this.getStyle()['background-color'] || '#000000' }
-                        : { height: thickness + 'mm', 'background-color': '#000000' },
-                );
+                /*
+                 * On a roll (CGE-97) the rule is a plain `hr` with no style of its own: the
+                 * printer draws a line of dashes across the grid, and the canvas the same
+                 * (roll-grid.js). A size or a colour would be a style it cannot print (V-21),
+                 * and a void `div` saves as `<div/>`, which an HTML parser reads as open.
+                 */
+                if (roll) {
+                    if (this.get('tagName') !== ruleTagName(true)) {
+                        this.set('tagName', ruleTagName(true));
+                    }
+
+                    if (Object.keys(this.getStyle()).length > 0) {
+                        this.setStyle({});
+                    }
+
+                    shapeTraits.forEach((trait) => this.getTrait(trait.name) && this.removeTrait(trait.name));
+
+                    return;
+                }
+
+                if (this.get('tagName') !== ruleTagName(false)) {
+                    this.set('tagName', ruleTagName(false));
+                    shapeTraits.forEach((trait) => this.getTrait(trait.name) || this.addTrait(trait));
+
+                    // Back from a roll, where it had no size: the width a dropped rule starts with.
+                    if (!this.getStyle().width) {
+                        this.addStyle({ width: '40mm' });
+                    }
+                }
+
+                this.addStyle(ruleStyle({
+                    roll: false,
+                    thickness: this.get('tpl-width'),
+                    filled: Boolean(this.get('tpl-filled')),
+                    style: this.getStyle(),
+                }));
+            },
+
+            /** The format changed medium: a rule on a roll is an `hr`, on a sheet the line it was. */
+            syncRollMode() {
+                if (this.get('tagName') !== ruleTagName(isRoll(config))) {
+                    this.applyGeometry();
+                }
             },
         },
     });
 
     addBlock(editor, 'print-rule', config.strings['block.rule'], icons.minus);
+}
+
+/* ---------------------------------------------------------------------------
+ * The receipt (CGE-97): fixed styling and «Linha com colunas»
+ *
+ * On a roll the style panel is hidden (editor.js) and a text block is styled only through
+ * four traits that write the receipt's `esc-*` classes (roll-style.js). A row puts a label
+ * and a value side by side, each cell N characters wide, as the printer lays them out. On
+ * a sheet none of this is offered and nothing changes.
+ * ------------------------------------------------------------------------ */
+
+const TEXT_ROW_BLOCK = 'text-row';
+
+function isRoll(config) {
+    return config.geometry?.medium === 'roll';
+}
+
+function registerTextRow(editor, config) {
+    // «Negrito»: a checkbox drawn from the classes. The built-in checkbox takes its first
+    // state from an attribute, and this trait writes none (roll-style.js).
+    editor.TraitManager.addType('tpl-esc-check', {
+        createInput() {
+            const wrap = document.createElement('label');
+            const input = document.createElement('input');
+
+            wrap.className = 'tpl-esc-check';
+            input.type = 'checkbox';
+            wrap.append(input);
+
+            // A label has no `value`, so GrapesJS's own change handler writes nothing: the
+            // class is written by `onEvent` alone.
+            return wrap;
+        },
+        onEvent({ elInput, component }) {
+            setRollState(component, { bold: Boolean(elInput.querySelector('input')?.checked) });
+        },
+        onUpdate({ elInput, component }) {
+            const input = elInput.querySelector('input');
+
+            if (input) {
+                input.checked = stateOf(component.getClasses()).bold;
+            }
+        },
+    });
+
+    editor.DomComponents.addType('text-row', {
+        isComponent: (el) => el?.dataset?.tplType === 'text-row',
+        model: {
+            defaults: {
+                name: config.strings['block.text_row'],
+                tagName: 'div',
+                attributes: { class: 'flow esc-row', 'data-tpl-type': 'text-row' },
+                // Its cells only: a label and a value, never a table, an image or another row.
+                droppable: ROW_CELL_TYPES.map((type) => `[data-tpl-type="${type}"]`).join(', '),
+                // Set through its cells; nothing to set on the row itself.
+                traits: [],
+            },
+
+            /** Its cells' own HTML, in the row's markup (roll-style.js `textRowHtml`). */
+            toHTML(options) {
+                return textRowHtml(
+                    this.components().map((cell) => cell.toHTML(options)),
+                    this.getAttrToHTML(),
+                );
+            },
+        },
+    });
+
+    syncRollBlocks(editor, config);
+}
+
+/** «Linha com colunas» is offered on a roll only. */
+function syncRollBlocks(editor, config) {
+    const blocks = editor.BlockManager;
+    const present = Boolean(blocks.get?.(TEXT_ROW_BLOCK));
+
+    if (isRoll(config) && !present) {
+        blocks.add(TEXT_ROW_BLOCK, {
+            media: icons.rowColumns,
+            label: escapeText(config.strings['block.text_row']),
+            category: BLOCK_CATEGORY,
+            content: textRowBlockHtml(),
+        });
+    } else if (!isRoll(config) && present) {
+        blocks.remove(TEXT_ROW_BLOCK);
+    }
+}
+
+/**
+ * A styled block follows the medium: the four traits on a roll, and its classes are what
+ * they show — an undo of a class change redraws them. A row cell's width stays a whole
+ * number of characters within the grid.
+ */
+function watchRollStyle(component, config, editor) {
+    syncRollTraits(component, isRoll(config), config.strings, rollColumns(config.geometry));
+
+    component.on('component:update:classes', () => {
+        ROLL_TRAIT_NAMES.forEach((name) => component.getTrait(name)?.targetUpdated?.());
+    });
+
+    component.on('change:attributes:' + COLS_TRAIT, () => {
+        const current = component.getAttributes()[COLS_TRAIT];
+
+        if (current === undefined || isReplaying(editor)) {
+            return;
+        }
+
+        const next = normalizeCols(current, rollColumns(config.geometry));
+
+        if (next !== String(current)) {
+            component.addAttributes({ [COLS_TRAIT]: next });
+        }
+    });
+}
+
+/**
+ * Put the editor in step with the medium (CGE-97), for `root` and everything under it (the
+ * whole page by default): on a roll a text block is a flow block, never an absolute
+ * `block` (it wraps on words, as the printer breaks it); a cell of a «Linha com colunas»
+ * is also an `esc-cell` with a width, and one moved out of a row is no longer a cell; every block has the traits
+ * of its medium; a rule is an `hr` on a roll; the row block is offered on a roll only.
+ *
+ * Called when the format changes medium and for each block added on a roll.
+ */
+export function applyRollMode(editor, config, root = editor.getWrapper?.()) {
+    const roll = isRoll(config);
+    const columns = rollColumns(config.geometry);
+
+    syncRollBlocks(editor, config);
+
+    if (!root) {
+        return;
+    }
+
+    [root, ...(root.find?.('*') ?? [])].forEach((component) => {
+        const type = component.getAttributes?.()['data-tpl-type'];
+
+        if (roll && ROLL_STYLED_TYPES.includes(type)) {
+            const inRow = ROW_CELL_TYPES.includes(type)
+                && component.parent?.()?.getAttributes?.()['data-tpl-type'] === 'text-row';
+            const classes = component.getClasses();
+            const next = cellClasses(classes, inRow);
+
+            // The same set in another order is the same block: written only when it differs.
+            if ([...next].sort().join(' ') !== [...classes].sort().join(' ')) {
+                component.setClass(next);
+            }
+
+            if (inRow && component.getAttributes()[COLS_TRAIT] === undefined) {
+                component.addAttributes({ [COLS_TRAIT]: '0' });
+            } else if (!inRow && component.getAttributes()[COLS_TRAIT] !== undefined) {
+                component.removeAttributes(COLS_TRAIT);
+            }
+        }
+
+        component.syncRollMode?.();
+        syncRollTraits(component, roll, config.strings, columns);
+    });
 }
 
 /* ---------------------------------------------------------------------------

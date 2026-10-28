@@ -642,4 +642,67 @@ const cells = (html) => [...html.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map((match) 
     assert.doesNotMatch(table.toHTML(), /tpl-wrap/, 'canvas only: the saved template is unchanged');
 }
 
+// CGE-97. A table with no `break` (`false` and `'yes'` are not one) is
+// written byte for byte as before multi-row items existed: the saved template and the canvas.
+{
+    const table = make({ id: 'tpl-x' });
+    table.setColumns([
+        { key: 'code', label: 'Código', width: '20', format: '' },
+        { key: 'name', label: 'Name <b>', width: '', format: '', align: 'left', break: false },
+        { key: 'h', label: 'H', hidden: true },
+        { key: 'quantity', label: 'Qty', width: '12', format: 'number', align: 'right', break: 'yes' },
+        { key: 'unit_price', label: 'Price', width: '2cm', format: 'money', align: 'right' },
+    ]);
+
+    assert.equal(table.toHTML(), "<div class=\"block block--lines\" data-tpl-type=\"line-table\" data-tpl-collection=\"lines\" id=\"tpl-x\" data-tpl-columns=\"[{&quot;key&quot;:&quot;code&quot;,&quot;label&quot;:&quot;Código&quot;,&quot;width&quot;:&quot;20&quot;,&quot;format&quot;:&quot;&quot;},{&quot;key&quot;:&quot;name&quot;,&quot;label&quot;:&quot;Name &lt;b>&quot;,&quot;width&quot;:&quot;&quot;,&quot;format&quot;:&quot;&quot;,&quot;align&quot;:&quot;left&quot;,&quot;break&quot;:false},{&quot;key&quot;:&quot;h&quot;,&quot;label&quot;:&quot;H&quot;,&quot;hidden&quot;:true},{&quot;key&quot;:&quot;quantity&quot;,&quot;label&quot;:&quot;Qty&quot;,&quot;width&quot;:&quot;12&quot;,&quot;format&quot;:&quot;number&quot;,&quot;align&quot;:&quot;right&quot;,&quot;break&quot;:&quot;yes&quot;},{&quot;key&quot;:&quot;unit_price&quot;,&quot;label&quot;:&quot;Price&quot;,&quot;width&quot;:&quot;2cm&quot;,&quot;format&quot;:&quot;money&quot;,&quot;align&quot;:&quot;right&quot;}]\"><table class=\"lines\"><thead><tr><th style=\"text-align:left;width:20mm\">Código</th><th style=\"text-align:left\">Name &lt;b&gt;</th><th style=\"text-align:right;width:12mm\">Qty</th><th style=\"text-align:right;width:2cm\">Price</th></tr></thead><tbody>{% for linha in lines %}<tr><td style=\"text-align:left\">{{ linha.code }}</td><td style=\"text-align:left\">{{ linha.name }}</td><td style=\"text-align:right\">{{ linha.quantity|number }}</td><td style=\"text-align:right\">{{ linha.unit_price|money }}</td></tr>{% endfor %}</tbody></table></div>");
+    assert.equal(table.get('content'), "<table class=\"lines\"><thead><tr><th style=\"text-align:left;width:20mm\">Código</th><th style=\"text-align:left\">Name &lt;b&gt;</th><th style=\"text-align:right;width:12mm\">Qty</th><th style=\"text-align:right;width:2cm\">Price</th></tr></thead><tbody><tr><td class=\"tpl-wrap\" style=\"text-align:left\">Código</td><td class=\"tpl-wrap\" style=\"text-align:left\">Name &lt;b&gt;</td><td style=\"text-align:right\">number(2)</td><td style=\"text-align:right\">money(5)</td></tr></tbody></table>");
+}
+
+// CGE-97. A column with `break` starts a second row of the item: a <colgroup> of the grid,
+// a header row and a body row per segment, colspan on a short segment's last cell, and
+// `lines__text` on the text cells; the <th> carry only the alignment.
+{
+    const table = make({ id: 'tpl-x' });
+    table.setColumns([
+        { key: 'code', label: 'Código', width: '6ch', format: '' },
+        { key: 'name', label: 'Designação', width: '', format: '' },
+        { key: 'h', label: 'H', hidden: true, break: true },
+        { key: 'unit_price', label: 'Preço', width: '10ch', format: 'money', align: 'right' },
+        { key: 'quantity', label: 'Qtd.', width: '', format: 'number', align: 'right' },
+        { key: 'amount', label: 'Valor', width: '20', format: 'money', align: 'right' },
+    ]);
+
+    const html = table.toHTML();
+    const markup = html.slice(html.indexOf('<table'));
+
+    assert.equal(markup, '<table class="lines">'
+        + '<colgroup><col style="width:10ch"><col><col style="width:20mm"></colgroup>'
+        + '<thead><tr><th style="text-align:left">Código</th><th colspan="2" style="text-align:left">Designação</th></tr>'
+        + '<tr><th style="text-align:right">Preço</th><th style="text-align:right">Qtd.</th><th style="text-align:right">Valor</th></tr></thead>'
+        + '<tbody>{% for linha in lines %}'
+        + '<tr><td class="lines__text" style="text-align:left">{{ linha.code }}</td><td colspan="2" class="lines__text" style="text-align:left">{{ linha.name }}</td></tr>'
+        + '<tr><td style="text-align:right">{{ linha.unit_price|money }}</td><td style="text-align:right">{{ linha.quantity|number }}</td><td style="text-align:right">{{ linha.amount|money }}</td></tr>'
+        + '{% endfor %}</tbody></table></div>');
+
+    // The canvas draws the same structure, so what the user sees is what the PDF prints.
+    const content = table.get('content');
+
+    assert.match(content, /^<table class="lines"><colgroup><col style="width:10ch"><col><col style="width:20mm"><\/colgroup><thead><tr><th style="text-align:left">Código<\/th><th colspan="2" style="text-align:left">Designação<\/th><\/tr><tr>/);
+    assert.equal((content.match(/<tr>/g) ?? []).length, 4, 'two header rows and two rows for the one preview line');
+    assert.match(content, /<td colspan="2" class="lines__text tpl-wrap" style="text-align:left">Designação<\/td>/);
+    assert.match(content, /<td style="text-align:right">money\(5\)<\/td>/);
+}
+
+// CGE-97. The overflow notice adds up the grid, not every visible column: the rows of a
+// multi-row item share the table's width.
+{
+    const columns = [
+        { key: 'a', width: '30' }, { key: 'b', width: '30' },
+        { key: 'c', width: '20', break: true }, { key: 'd', width: '20' }, { key: 'e', width: '20' },
+    ];
+
+    assert.equal(columnsOverflow(columns, '60mm'), false);
+    assert.equal(columnsOverflow(columns, '59mm'), true);
+}
+
 console.log('formula-columns: ok');

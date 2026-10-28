@@ -134,6 +134,80 @@ class RowHeightsTest extends TestCase
         $this->assertNotNull(RowHeights::of($this->table(weight: 700), $this->type, ['lines' => [['description' => $text]]]));
     }
 
+    public function test_multi_row_item_height_sums_its_segments(): void
+    {
+        // Grid = the 2nd segment, four 20 mm columns; `description` spans grid columns 2-4.
+        $table = $this->table(columns: [
+            ['key' => 'code', 'width' => '20', 'format' => ''],
+            ['key' => 'description', 'width' => '', 'format' => ''],
+            ['key' => 'unit_price', 'width' => '20', 'format' => 'money', 'break' => true],
+            ['key' => 'quantity', 'width' => '20', 'format' => 'number'],
+            ['key' => 'vat_rate', 'width' => '20', 'format' => 'percent'],
+            ['key' => 'amount', 'width' => '20', 'format' => 'money'],
+        ]);
+
+        // Two segments, nothing wraps: still a list, each item 2 rows tall.
+        $short = [['code' => 'A1', 'description' => 'Parafuso'], ['code' => 'A2', 'description' => 'Porca']];
+        $this->assertEqualsWithDelta([9.0, 9.0], RowHeights::of($table, $this->type, ['lines' => $short]), 0.0001);
+
+        // A description that breaks into 3 lines across the 60 mm it spans.
+        $font = FontMetrics::fromConfig(400);
+        $long = 'Chapa';
+        while (TextLines::count($font, $long, 8, (60 - 2) * 0.97) < 3) {
+            $long .= ' galvanizada';
+        }
+        $this->assertSame(3, TextLines::count($font, $long, 8, (60 - 2) * 0.97));
+
+        $this->assertEqualsWithDelta(
+            [9.0, 9.0 + 2 * self::LINE_MM],
+            RowHeights::of($table, $this->type, ['lines' => [['description' => 'Curta'], ['description' => $long]]]),
+            0.0001,
+        );
+    }
+
+    public function test_a_width_in_characters_is_the_rolls_grid_and_auto_elsewhere(): void
+    {
+        // CGE-97: a roll 80 with 3 mm margins is 40 columns of 1.85 mm, so `10ch` is 18.5 mm
+        // and a 30 mm text wraps in it. Read as auto (a sheet), the column is half of 74 mm.
+        $table = $this->table(width: 74.0, columns: [
+            ['key' => 'a', 'width' => '10ch', 'format' => ''],
+            ['key' => 'b', 'width' => '', 'format' => ''],
+        ]);
+        $rows = ['lines' => [['a' => $this->textOfWidth(FontMetrics::fromConfig(400), 30.0)]]];
+
+        $this->assertNotNull(RowHeights::of($table, $this->rollType(), $rows));
+        $this->assertNull(RowHeights::of($table, $this->type, $rows));
+    }
+
+    public function test_a_roll_cell_has_no_padding_to_take_off(): void
+    {
+        // CGE-97: a roll's cells have `padding:0` (PageStructure::ROLL_CELLS), so `10ch` keeps
+        // its 18.5 mm: 17 mm of text fits (18.5 × 0.97 = 17.9), where taking 2 mm of padding
+        // off (16.5 × 0.97 = 16.0) would wrap it.
+        $table = $this->table(width: 74.0, columns: [
+            ['key' => 'a', 'width' => '10ch', 'format' => ''],
+            ['key' => 'b', 'width' => '', 'format' => ''],
+        ]);
+        $font = FontMetrics::fromConfig(400);
+
+        $this->assertNull(RowHeights::of($table, $this->rollType(), ['lines' => [['a' => $this->textOfWidth($font, 17.0)]]]));
+        $this->assertNotNull(RowHeights::of($table, $this->rollType(), ['lines' => [['a' => $this->textOfWidth($font, 20.0)]]]));
+    }
+
+    private function rollType(): TemplateType
+    {
+        $base = $this->type;
+
+        return new TemplateType(
+            $base->code, $base->label, $base->output, $base->seeded, $base->layoutRevision,
+            $base->bindings, $base->nodes, $base->fixture, $base->fixtureRepeats,
+            $base->initialLayout,
+            ['medium' => 'roll', 'width_mm' => 80, 'fit' => 'measure', 'max_height_mm' => 4000,
+                'margins' => ['top' => 3, 'right' => 3, 'bottom' => 3, 'left' => 3]],
+            [],
+        );
+    }
+
     /**
      * The table record `PageStructure::tablesIn` produces.
      *

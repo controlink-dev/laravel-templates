@@ -12,12 +12,14 @@ import '../../css/editor.css';
 
 import grapesjs from 'grapesjs';
 import grapesjsMjml from 'grapesjs-mjml';
-import { registerComponents } from './components.js';
+import { applyRollMode, registerComponents } from './components.js';
+import { applyFormat, replaceLayout } from './format-switch.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, pdfSelectionOf, plainProjectData, refreshPreview, selectionOf, truncationNotice } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
 import { createFormulaPreview, formulaFunctionsOf, refreshFormulaTraits, selectionHeading } from './formula.js';
 import { createFormulaLibrary } from './formula-library.js';
+import { rollGridCss } from './roll-grid.js';
 import { measuredBox, wirePositionPanel } from './position-panel.js';
 import { dragResultToMm } from './anchors.js';
 import { freeSpotForCopy } from './copy-offset.js';
@@ -31,6 +33,7 @@ import {
     checkMandatoryTablesLocally,
     checkMandatoryFieldsLocally,
     checkOverlapLocally,
+    checkRollVocabularyLocally,
     restoreMissingLegalFields,
     snapIntoSheet,
     styleManagerSectors,
@@ -424,6 +427,8 @@ async function mountEditor(el) {
                     ...checkMandatoryTablesLocally(editor, config),
                     ...checkMandatoryFieldsLocally(editor, config),
                     ...checkOverlapLocally(editor, config),
+                    // CGE-97: on a roll, anything the thermal printer cannot print (L-ESC).
+                    ...checkRollVocabularyLocally(editor, config),
                 ]
                 : [];
             const problems = mergeProblems(serverProblems, local);
@@ -1417,7 +1422,11 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
             + (roll
                 ? 'height:auto;min-height:0;overflow:visible;padding:'
                     + mm(m.top) + ' ' + mm(m.right) + ' ' + mm(m.bottom) + ' ' + mm(m.left) + ';}'
-                : 'height:' + paper.height + 'mm;overflow:hidden;padding:0;}');
+                : 'height:' + paper.height + 'mm;overflow:hidden;padding:0;}')
+            // CGE-97: a roll is a monospace character grid, the PDF's letter exactly. Here
+            // and not in `canvasDecorations()`: that is baked once at mount, so a roll opened
+            // first and switched to A4 would keep the receipt's letter on the sheet.
+            + (roll ? rollGridCss({ ...geometry, margins: m }) : '');
     };
 
     /*
@@ -1476,6 +1485,12 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         rollMode  = geometry?.medium === 'roll';
         labelMode = isLabelGeometry(geometry);
 
+        // CGE-97: a roll is styled only through the receipt's traits, so the style panel's
+        // sections are hidden there (editor.css); the traits, the row block and the rules
+        // follow the medium.
+        root.classList.toggle('tpl-roll-mode', rollMode);
+        applyRollMode(editor, config);
+
         applyCanvasToFrame();
         syncModeChrome();
 
@@ -1497,13 +1512,9 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
      * identity and locking a freshly parsed document gets.
      */
     const loadLayout = (layout) => {
-        editor.setComponents(layout.html);
-
-        // setStyle replaces the whole sheet and re-renders the canvas in one step. The
-        // Css.clear()+addRules path updates the model but leaves the already-mounted canvas
-        // iframe showing the old rules, so a format switch kept the previous positions and
-        // the new layout's fields stacked at 0,0.
-        editor.setStyle(pageVariables(config) + (layout.css || ''));
+        // The order matters (format-switch.js `replaceLayout`): a seeded layout carries
+        // its rules', images' and slots' positions as inline styles.
+        replaceLayout(editor, layout.html, pageVariables(config) + (layout.css || ''));
 
         applyZoneIdentity(editor, config);
         lockLegalFields(editor);
@@ -1583,18 +1594,20 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
 
                     if (!confirmed) {
                         // Declined: keep the layout, change only the geometry.
-                        config.geometry = geometryOf(chosen);
-                        applyPaper(config.geometry);
+                        applyFormat(config, geometryOf(chosen), { loadLayout, applyPaper });
 
                         return;
                     }
                 }
-
-                loadLayout(layout);
             }
 
-            config.geometry = geometryOf(chosen);
-            applyPaper(config.geometry);
+            // The geometry before the layout (CGE-97): the layout's blocks are built in the
+            // medium they are loaded into, so a sheet loaded over a roll keeps its rules.
+            applyFormat(config, geometryOf(chosen), {
+                layout: hasLayout && config.editable && !config.locked ? layout : null,
+                loadLayout,
+                applyPaper,
+            });
             // The rules depend on the geometry (V-16 is skipped for a roll): re-check.
             layoutState.refresh();
         });
