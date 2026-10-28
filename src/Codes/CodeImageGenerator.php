@@ -39,6 +39,9 @@ class CodeImageGenerator
     /** Barcode height when the slot declares none, in millimetres. */
     private const DEFAULT_BARCODE_HEIGHT_MM = 10.0;
 
+    /** Slot width when neither its style nor the version CSS gives one, in millimetres. */
+    public const FALLBACK_WIDTH_MM = 30.0;
+
     /**
      * @param  'qr'|'barcode'  $type
      * @param  float|null  $heightMm  the slot height; only a barcode uses it
@@ -75,9 +78,15 @@ class CodeImageGenerator
      * @param  array<string, array<string, mixed>>  $bindings  keyed by binding key
      * @param  PageGeometry|null  $geometry  a label sheet makes QR modules whole dots; null
      *                                       leaves every output as it was before labels
+     * @param  string  $css  the version CSS: on a label, a slot's size is read from its
+     *                       `#id` rule when not inline (`SlotSize`); ignored elsewhere
      */
-    public function inject(string $html, array $dataset, array $bindings, ?PageGeometry $geometry = null): string
+    public function inject(string $html, array $dataset, array $bindings, ?PageGeometry $geometry = null, string $css = ''): string
     {
+        // Only a label reads the version CSS: every other output stays byte for byte
+        // what it was, sized from the inline style alone.
+        $css = $this->isLabel($geometry) ? $css : '';
+
         if (! str_contains($html, 'data-tpl-type="code-slot"')) {
             return $html;
         }
@@ -117,7 +126,7 @@ class CodeImageGenerator
             $fixed = CodePayload::fromAttributes($attributes);
 
             if ($fixed !== null) {
-                $this->fill($slot, 'qr', $fixed, $geometry);
+                $this->fill($slot, 'qr', $fixed, $geometry, $css);
 
                 continue;
             }
@@ -129,7 +138,7 @@ class CodeImageGenerator
                 throw new RuntimeException("A code slot is bound to an unknown field: {$key}");
             }
 
-            $this->fill($slot, $type, (string) ($dataset[$key] ?? ''), $geometry);
+            $this->fill($slot, $type, (string) ($dataset[$key] ?? ''), $geometry, $css);
         }
 
         $root = $document->getElementById('tpl-codes');
@@ -150,21 +159,36 @@ class CodeImageGenerator
      * it cannot overlap its neighbour), and the element must be told to match or the
      * browser stretches it back to fractional dots. It stays at the slot's own
      * position, i.e. top-left of the area the user drew.
+     *
+     * A barcode on a label likewise gets its bars' real size written inline: the slot's
+     * own box (often only a `#id` rule) is wider than the bars, and an image stretched to
+     * it would no longer have whole-dot modules.
      */
-    private function fill(DOMElement $slot, string $type, string $content, ?PageGeometry $geometry): void
+    private function fill(DOMElement $slot, string $type, string $content, ?PageGeometry $geometry, string $css): void
     {
-        $sizeMm = $this->slotSizeMm($slot);
+        // A slot with no width anywhere falls back to the legal QR minimum rather than
+        // failing: off a label it only sets the image's nominal resolution.
+        $size     = SlotSize::of($slot->getAttribute('style'), $slot->getAttribute('id'), $css);
+        $sizeMm   = $size['width'] ?? self::FALLBACK_WIDTH_MM;
+        $heightMm = $size['height'];
 
         if ($type === 'qr' && $this->isLabel($geometry) && $content !== '') {
             [$src, $imageMm] = $this->qrWholeDots($content, $sizeMm);
 
             $slot->setAttribute('src', $src);
-            $slot->setAttribute('style', $this->withSize($slot->getAttribute('style'), $imageMm));
+            $slot->setAttribute('style', $this->withSize($slot->getAttribute('style'), $imageMm, $imageMm));
 
             return;
         }
 
-        $slot->setAttribute('src', $this->generate($type, $content, $sizeMm, $this->slotHeightMm($slot)));
+        $slot->setAttribute('src', $this->generate($type, $content, $sizeMm, $heightMm));
+
+        if ($type === 'barcode' && $this->isLabel($geometry)) {
+            // generate() has already refused a value that does not fit, so this is safe.
+            $barsMm = Code128Fit::modules($content) * Code128Fit::moduleDots($content, $sizeMm) / Code128Fit::DOTS_PER_MM;
+
+            $slot->setAttribute('style', $this->withSize($slot->getAttribute('style'), $barsMm, $heightMm ?? self::DEFAULT_BARCODE_HEIGHT_MM));
+        }
     }
 
     /** A label is a sheet sized in millimetres, which `PageGeometry` marks with no paper format. */
@@ -173,45 +197,21 @@ class CodeImageGenerator
         return $geometry !== null && $geometry->medium === 'sheet' && $geometry->paperFormat === null;
     }
 
-    /** The inline style with its width and height replaced by a square of the given side. */
-    private function withSize(string $style, float $sideMm): string
+    /** The inline style with its width and height replaced by the given ones. */
+    private function withSize(string $style, float $widthMm, float $heightMm): string
     {
-        $style = preg_replace('/(^|;)\s*(width|height)\s*:[^;]*/i', '$1', $style) ?? $style;
-        $style = trim($style, "; \t\n\r");
-        $side  = self::mm($sideMm);
+        $style  = preg_replace('/(^|;)\s*(width|height)\s*:[^;]*/i', '$1', $style) ?? $style;
+        $style  = trim($style, "; \t\n\r");
+        $width  = self::mm($widthMm);
+        $height = self::mm($heightMm);
 
-        return ($style === '' ? '' : $style.';')."width:{$side}mm;height:{$side}mm";
+        return ($style === '' ? '' : $style.';')."width:{$width}mm;height:{$height}mm";
     }
 
     /** Millimetres as a short decimal: exact for whole-dot sizes, which are multiples of 1/8. */
     private static function mm(float $value): string
     {
         return rtrim(rtrim(number_format($value, 4, '.', ''), '0'), '.');
-    }
-
-    /**
-     * The slot's printed side in millimetres, read from its inline style when it has
-     * one. It only decides the nominal resolution of the generated image — the printed
-     * size comes from the stylesheet either way — so a slot with no inline size falls
-     * back to the legal minimum rather than failing.
-     */
-    private function slotSizeMm(DOMElement $slot): float
-    {
-        if (preg_match('/width\s*:\s*([\d.]+)mm/i', $slot->getAttribute('style'), $matches) === 1) {
-            return (float) $matches[1];
-        }
-
-        return 30.0;
-    }
-
-    /** The slot's printed height in millimetres, or null when its inline style has none. */
-    private function slotHeightMm(DOMElement $slot): ?float
-    {
-        if (preg_match('/height\s*:\s*([\d.]+)mm/i', $slot->getAttribute('style'), $matches) === 1) {
-            return (float) $matches[1];
-        }
-
-        return null;
     }
 
     /**

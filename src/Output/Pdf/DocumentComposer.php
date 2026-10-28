@@ -58,12 +58,15 @@ class DocumentComposer
      * `compose()`.
      *
      * @param  list<array<string, mixed>>  $datasets
+     * @param  bool  $oneSheetEach  refuse a dataset that would take more than one sheet: a
+     *                              batch of labels must print exactly one page per label
      *
      * @throws UnsafeTemplateException when the payload carries script or external URLs
      * @throws RuntimeException when the template or the code slots cannot be rendered
-     * @throws InvalidArgumentException when there is no dataset at all
+     * @throws InvalidArgumentException when there is no dataset at all, or one takes more
+     *                                  than one sheet while `$oneSheetEach` is set
      */
-    public function composeMany(string $html, string $css, TemplateType $type, array $datasets): string
+    public function composeMany(string $html, string $css, TemplateType $type, array $datasets, bool $oneSheetEach = false): string
     {
         if ($datasets === []) {
             throw new InvalidArgumentException('A document needs at least one dataset.');
@@ -95,8 +98,12 @@ class DocumentComposer
         // Each dataset's structure CSS, once: the same rules for every copy of a label.
         $structureCss = [];
 
-        foreach ($datasets as $dataset) {
-            [$sheets, $structureCss[]] = $this->bodyFor($html, $css, $type, $dataset, $formulas, $geometry);
+        foreach (array_values($datasets) as $index => $dataset) {
+            [$sheets, $structureCss[], $count] = $this->bodyFor($html, $css, $type, $dataset, $formulas, $geometry);
+
+            if ($oneSheetEach && $count > 1) {
+                throw new InvalidArgumentException("Label #{$index} takes {$count} sheets; a label is one sheet.");
+            }
 
             $body .= $sheets;
         }
@@ -125,7 +132,7 @@ class DocumentComposer
      *
      * @param  string  $html  the editor HTML with the formula sources already taken out
      * @param  array<string, mixed>  $dataset
-     * @return array{string, string} the sheets' HTML and their structure CSS
+     * @return array{string, string, int} the sheets' HTML, their structure CSS and how many sheets
      */
     private function bodyFor(string $html, string $css, TemplateType $type, array $dataset, FormulaSet $formulas, PageGeometry $geometry): array
     {
@@ -173,10 +180,10 @@ class DocumentComposer
 
             // Step 5: the code slots, generated on the server and embedded. The geometry
             // only matters on a label, whose codes are drawn in whole printer dots.
-            $body .= $codes->inject($sheet, $page['dataset'], $bindings, $geometry);
+            $body .= $codes->inject($sheet, $page['dataset'], $bindings, $geometry, $css);
         }
 
-        return [$body, $structure['css']];
+        return [$body, $structure['css'], count($structure['pages'])];
     }
 
     /**

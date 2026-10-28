@@ -5,6 +5,7 @@ namespace Controlink\Templates\Tests\Unit;
 use BaconQrCode\Common\ErrorCorrectionLevel;
 use BaconQrCode\Encoder\Encoder;
 use Controlink\Templates\Codes\BarcodeFailure;
+use Controlink\Templates\Codes\Code128Fit;
 use Controlink\Templates\Codes\CodeImageGenerator;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Tests\TestCase;
@@ -126,6 +127,44 @@ class CodeImageGeneratorBarcodeTest extends TestCase
             $generator->inject($html, ['code' => 'X1'], $bindings),
             $generator->inject($html, ['code' => 'X1'], $bindings, null),
         );
+    }
+
+    public function test_label_barcode_sized_only_by_the_version_css_is_drawn_at_its_whole_dot_size(): void
+    {
+        // The editor writes sizes into `#id{…}` rules, not inline. 'ART-00003' fits 90 mm
+        // (4 dots) but not the 30 mm the inline-only reading used to assume.
+        $content = 'ART-00003';
+        $dots    = Code128Fit::moduleDots($content, 90);
+        $widthMm = Code128Fit::modules($content) * $dots / 8;
+
+        $html = (new CodeImageGenerator)->inject(
+            '<img data-tpl-type="code-slot" data-tpl-binding="code" id="tpl-bc" style="">',
+            ['code' => $content],
+            ['code' => ['type' => 'barcode']],
+            $this->label(),
+            '#tpl-bc{position:absolute;top:2mm;max-width:99mm;width:90mm;height:15mm}',
+        );
+
+        $this->assertSame(4, $dots);
+
+        $svg = $this->decode($html);
+        $this->assertSame($widthMm.'mm', $this->attribute($svg, 'width'));
+        $this->assertSame('15mm', $this->attribute($svg, 'height'));
+
+        // The bars' size is written inline, so the `#id` rule cannot stretch them.
+        $this->assertSame(1, preg_match('/<img[^>]*\sstyle="([^"]*)"/', $html, $style));
+        $this->assertSame("width:{$widthMm}mm;height:15mm", $style[1]);
+    }
+
+    public function test_non_label_barcode_ignores_the_version_css(): void
+    {
+        $slot = '<img data-tpl-type="code-slot" data-tpl-binding="code" id="tpl-bc" style="width:80mm;height:15mm">';
+        $args = [['code' => 'A1'], ['code' => ['type' => 'barcode']]];
+
+        $plain = (new CodeImageGenerator)->inject($slot, ...$args);
+        $a4    = (new CodeImageGenerator)->inject($slot, ...[...$args, PageGeometry::fromType(['paper_format' => 'A4']), '#tpl-bc{width:20mm;height:5mm}']);
+
+        $this->assertSame($plain, $a4);
     }
 
     private function attribute(string $tag, string $name): string

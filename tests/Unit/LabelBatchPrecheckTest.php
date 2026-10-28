@@ -2,9 +2,12 @@
 
 namespace Controlink\Templates\Tests\Unit;
 
+use Controlink\Templates\Codes\Code128Fit;
 use Controlink\Templates\Output\Labels\LabelBatchFailed;
+use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Tests\TestCase;
 use Controlink\Templates\Toolkit\Documents;
+use Controlink\Templates\Types\TemplateType;
 use InvalidArgumentException;
 
 /**
@@ -98,6 +101,80 @@ class LabelBatchPrecheckTest extends TestCase
         } catch (LabelBatchFailed $failed) {
             $this->assertSame(self::EXPECTED, $failed->failures);
         }
+    }
+
+    public function test_an_empty_or_missing_barcode_fails_the_batch(): void
+    {
+        try {
+            app(Documents::class)->labels($this->layout(), [
+                ['article.barcode' => 'A1'],
+                ['article.barcode' => ''],
+                ['article.name' => 'No barcode at all'],
+            ], self::LABEL, '', $this->fields());
+            $this->fail('A batch with an empty barcode was rendered.');
+        } catch (LabelBatchFailed $failed) {
+            $this->assertSame([
+                ['index' => 1, 'content' => '', 'reason' => 'unencodable'],
+                ['index' => 2, 'content' => '', 'reason' => 'unencodable'],
+            ], $failed->failures);
+        }
+    }
+
+    /**
+     * A slot sized only by the version CSS: the pre-check and the composer read the same
+     * box, so what passes the one composes in the other, at that box's whole-dot size.
+     */
+    public function test_precheck_and_compose_agree_on_a_slot_sized_by_the_version_css(): void
+    {
+        $layout = $this->layout('', '#tpl-bc{position:absolute;top:20mm;left:0;width:90mm;height:15mm}');
+
+        // Fits 90 mm (4 dots per module) but not 30 mm: it must pass and compose.
+        $fits = [['article.name' => 'Fits', 'article.barcode' => 'ART-00003', 'article.qr' => 'x']];
+
+        $this->assertSame([], app(Documents::class)->labelProblems($layout, $fits, $this->fields(), self::LABEL));
+
+        $html    = app(DocumentComposer::class)->composeMany($layout['html'], $layout['css'], $this->type(), $fits);
+        $widthMm = Code128Fit::modules('ART-00003') * Code128Fit::moduleDots('ART-00003', 90) / 8;
+
+        $this->assertStringContainsString('style="width:'.$widthMm.'mm;height:15mm"', $html);
+
+        // Fits neither: the batch fails as a whole, before any BarcodeFailure can escape.
+        $long = str_repeat('X', 40);
+
+        try {
+            app(Documents::class)->labels($layout, [...$fits, ['article.name' => 'Long', 'article.barcode' => $long, 'article.qr' => 'x']], self::LABEL, '', $this->fields());
+            $this->fail('A barcode wider than its slot was rendered.');
+        } catch (LabelBatchFailed $failed) {
+            $this->assertSame([['index' => 1, 'content' => $long, 'reason' => 'does_not_fit']], $failed->failures);
+        }
+    }
+
+    public function test_labels_refuses_a_label_that_spans_more_than_one_sheet(): void
+    {
+        // A line table too long for one 50 mm label would paginate: a label is one sheet,
+        // and an extra page would misalign every label after it on the roll.
+        $layout = ['html' => '<div class="page"><div class="zone zone--body" data-tpl-zone="body">'
+            .'<div class="block block--lines" data-tpl-type="line-table" data-tpl-collection="lines" id="tpl-lines" style="top:2mm">'
+            .'<table class="lines"><thead><tr><th>C</th></tr></thead><tbody>'
+            .'{% for linha in lines %}<tr><td>{{ linha.c }}</td></tr>{% endfor %}'
+            .'</tbody></table></div></div></div>', 'css' => ''];
+
+        $fields = [['key' => 'lines', 'label' => 'Lines', 'type' => 'collection', 'columns' => [['key' => 'c', 'label' => 'C', 'type' => 'number']]]];
+        $rows   = array_map(fn (int $i): array => ['c' => $i], range(1, 60));
+
+        $this->expectException(InvalidArgumentException::class);
+
+        app(Documents::class)->labels($layout, [['lines' => [['c' => 1]]], ['lines' => $rows]], self::LABEL, '', $fields);
+    }
+
+    private function type(): TemplateType
+    {
+        return TemplateType::fromConfig('x', [
+            'output'         => 'pdf',
+            'bindings'       => $this->fields(),
+            'pdf'            => array_diff_key(self::LABEL, ['zones' => true]),
+            'initial_layout' => ['zones' => self::LABEL['zones']],
+        ]);
     }
 
     public function test_labels_refuses_a_non_label_geometry(): void

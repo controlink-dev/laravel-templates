@@ -90,6 +90,22 @@ class LabelBatchRenderTest extends TestCase
         });
     }
 
+    public function test_a_barcode_sized_by_the_version_css_renders_one_page_per_label(): void
+    {
+        // 'ART-00003' fits the 90 mm `#id` box but not the old 30 mm inline-only fallback.
+        $layout          = $this->layout();
+        $layout['html']  = str_replace('</div></div></div>', '</div><img data-tpl-type="code-slot" data-tpl-binding="article.barcode" id="tpl-bc" class="block" alt=""></div></div>', $layout['html']);
+        $layout['css']  .= '#tpl-bc{position:absolute;left:0;top:28mm;width:90mm;height:15mm}';
+        $fields          = [...$this->fields(), ['key' => 'article.barcode', 'label' => 'Barcode', 'type' => 'barcode']];
+
+        $pdf = app(Documents::class)->labels($layout, [
+            ['article.name' => 'A', 'article.code' => '1001', 'article.barcode' => 'ART-00003'],
+            ['article.name' => 'B', 'article.code' => '1002', 'article.barcode' => 'A1'],
+        ], $this->geometry(), '', $fields);
+
+        RenderedPdf::open($pdf, fn (RenderedPdf $pdf) => $this->assertSame(2, $pdf->pageCount()));
+    }
+
     public function test_an_overflowing_name_stays_one_page(): void
     {
         // No height on the name: the block grows past the label's bottom edge, so only

@@ -4,14 +4,16 @@ namespace Controlink\Templates\Toolkit;
 
 use Controlink\Templates\Codes\BarcodeFailure;
 use Controlink\Templates\Codes\Code128Fit;
+use Controlink\Templates\Codes\CodeImageGenerator;
 use Controlink\Templates\Codes\CodePayload;
+use Controlink\Templates\Codes\SlotSize;
 use Controlink\Templates\Formulas\Formula;
-use Controlink\Templates\Output\Labels\LabelBatchFailed;
 use Controlink\Templates\Output\EscPos\EscPosEncoder;
 use Controlink\Templates\Output\EscPos\EscPosValidator;
 use Controlink\Templates\Output\EscPos\ReceiptBuilder;
 use Controlink\Templates\Output\EscPos\ReceiptPreview;
 use Controlink\Templates\Output\EscPos\RollVocabulary;
+use Controlink\Templates\Output\Labels\LabelBatchFailed;
 use Controlink\Templates\Output\Pdf\DocumentComposer;
 use Controlink\Templates\Output\Pdf\LayoutDocument;
 use Controlink\Templates\Output\Pdf\LayoutValidator;
@@ -99,7 +101,8 @@ final class Documents
      * @param  string  $css  overrides the layout's own stylesheet when not empty
      * @param  list<array<string, mixed>>  $fields  needed to bind the code slots (qr, barcode)
      *
-     * @throws InvalidArgumentException when the geometry is not a label, or there is no dataset
+     * @throws InvalidArgumentException when the geometry is not a label, there is no dataset,
+     *                                  or a dataset's label takes more than one sheet
      * @throws LabelBatchFailed when any dataset's barcode cannot be printed
      */
     public function labels(array $layout, array $datasets, array $geometry = [], string $css = '', array $fields = []): string
@@ -117,7 +120,8 @@ final class Documents
             throw new LabelBatchFailed($failures);
         }
 
-        $html = $this->composer->composeMany($layout['html'], $css, $type, array_values($datasets));
+        // One sheet per label, or the page count would no longer be the label count.
+        $html = $this->composer->composeMany($layout['html'], $css, $type, array_values($datasets), oneSheetEach: true);
 
         return $this->renderer->render($html, $type)['pdf'];
     }
@@ -221,8 +225,7 @@ final class Documents
         libxml_clear_errors();
         libxml_use_internal_errors($previous);
 
-        $widths = $this->cssWidthsById($css);
-        $slots  = [];
+        $slots = [];
 
         foreach ((new \DOMXPath($document))->query('//*[@data-tpl-type="code-slot"]') ?: [] as $node) {
             if (! $node instanceof \DOMElement) {
@@ -239,47 +242,16 @@ final class Documents
                 continue;
             }
 
-            $width = self::widthMm($node->getAttribute('style')) ?? $widths[$node->getAttribute('id')] ?? 30.0;
+            // The same reader the image generator uses on a label, so both see one box.
+            $width = SlotSize::of($node->getAttribute('style'), $node->getAttribute('id'), $css)['width'];
 
-            $slots[] = ['binding' => $node->getAttribute('data-tpl-binding'), 'width' => $width];
+            $slots[] = [
+                'binding' => $node->getAttribute('data-tpl-binding'),
+                'width'   => $width ?? CodeImageGenerator::FALLBACK_WIDTH_MM,
+            ];
         }
 
         return $slots;
-    }
-
-    /**
-     * Each `#id` rule's width in millimetres; a later rule wins, as in the cascade.
-     *
-     * @return array<string, float>
-     */
-    private function cssWidthsById(string $css): array
-    {
-        $css    = (string) preg_replace('#/\*.*?\*/#s', '', $css);
-        $widths = [];
-
-        preg_match_all('/([^{}]+)\{([^{}]*)\}/s', $css, $blocks, PREG_SET_ORDER);
-
-        foreach ($blocks as $block) {
-            $width = self::widthMm($block[2]);
-
-            if ($width === null) {
-                continue;
-            }
-
-            foreach (explode(',', $block[1]) as $selector) {
-                if (preg_match('/^#([\w-]+)$/', trim($selector), $m) === 1) {
-                    $widths[$m[1]] = $width;
-                }
-            }
-        }
-
-        return $widths;
-    }
-
-    /** `width:…mm` in a declaration list (not `max-width` nor `min-width`), or null. */
-    private static function widthMm(string $declarations): ?float
-    {
-        return preg_match('/(?<![-\w])width\s*:\s*([\d.]+)mm/i', $declarations, $m) === 1 ? (float) $m[1] : null;
     }
 
     /**
