@@ -1296,8 +1296,11 @@ class PageStructure
      */
     public const ROLL_ZONES = '.page .zone{position:static;height:auto}';
 
-    /** A roll's line table cells: no padding (the column is the grid) and on the first line of the row, as ESC/POS prints them (CGE-97). */
-    public const ROLL_CELLS = 'table.lines th,table.lines td{padding:0;vertical-align:top}';
+    /**
+     * A roll's line table cells: no padding (the column is the grid) and on the first line of the row, as ESC/POS prints them (CGE-97).
+     * Scoped to `.page` so it outranks the editor canvas's own `table.lines td{padding:0 1mm}` whatever the load order.
+     */
+    public const ROLL_CELLS = '.page table.lines th,.page table.lines td{padding:0;vertical-align:top}';
 
     /**
      * A roll's code slots and images centred, as ESC/POS prints them (`ESC a 1`, CGE-97).

@@ -59,7 +59,7 @@ export function rollGridCss(geometry) {
 export const ROLL_FLOW = '.page .block{position:static}';
 
 /** PageStructure::ROLL_CELLS: a roll's line table cells, no padding, on the row's first line. */
-export const ROLL_CELLS = 'table.lines th,table.lines td{padding:0;vertical-align:top}';
+export const ROLL_CELLS = '.page table.lines th,.page table.lines td{padding:0;vertical-align:top}';
 
 /** PageStructure::ROLL_CENTRED: a roll's code slots and images centred. */
 export const ROLL_CENTRED = '.page [data-tpl-type="code-slot"],.page [data-tpl-type="image"]{display:block;margin-left:auto;margin-right:auto}';
