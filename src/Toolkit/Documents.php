@@ -2,7 +2,11 @@
 
 namespace Controlink\Templates\Toolkit;
 
+use Controlink\Templates\Codes\BarcodeFailure;
+use Controlink\Templates\Codes\Code128Fit;
+use Controlink\Templates\Codes\CodePayload;
 use Controlink\Templates\Formulas\Formula;
+use Controlink\Templates\Output\Labels\LabelBatchFailed;
 use Controlink\Templates\Output\EscPos\EscPosEncoder;
 use Controlink\Templates\Output\EscPos\EscPosValidator;
 use Controlink\Templates\Output\EscPos\ReceiptBuilder;
@@ -78,6 +82,204 @@ final class Documents
         $pdf   = $this->renderer->render($html, $type)['pdf'];
 
         return ['pdf' => $pdf, 'hash' => PdfHash::of($pdf), 'seconds' => microtime(true) - $start];
+    }
+
+    /**
+     * A batch of labels as one PDF, one page per dataset, in the order given (CGE-98).
+     *
+     * One engine call for the whole batch. The batch is all or nothing: every dataset's
+     * barcode is checked first (`labelProblems()`), and when any fails nothing is
+     * rendered — a roll with a label missing misaligns every label after it. A label
+     * whose content overflows is cut at its edges, never spilled onto a new page, so
+     * the page count is always the number of datasets.
+     *
+     * @param  array{project_data?: array<string, mixed>, html: string, css?: string}  $layout
+     * @param  list<array<string, mixed>>  $datasets  one per label, repeats allowed
+     * @param  array<string, mixed>  $geometry  a label: a sheet with `width_mm` and `height_mm`
+     * @param  string  $css  overrides the layout's own stylesheet when not empty
+     * @param  list<array<string, mixed>>  $fields  needed to bind the code slots (qr, barcode)
+     *
+     * @throws InvalidArgumentException when the geometry is not a label, or there is no dataset
+     * @throws LabelBatchFailed when any dataset's barcode cannot be printed
+     */
+    public function labels(array $layout, array $datasets, array $geometry = [], string $css = '', array $fields = []): string
+    {
+        $type = $this->labelCarrier($fields, $geometry);
+
+        if ($datasets === []) {
+            throw new InvalidArgumentException('A batch of labels needs at least one dataset.');
+        }
+
+        $css      = $css !== '' ? $css : (string) ($layout['css'] ?? '');
+        $failures = $this->barcodeFailures($layout['html'], $css, array_values($datasets), $fields);
+
+        if ($failures !== []) {
+            throw new LabelBatchFailed($failures);
+        }
+
+        $html = $this->composer->composeMany($layout['html'], $css, $type, array_values($datasets));
+
+        return $this->renderer->render($html, $type)['pdf'];
+    }
+
+    /**
+     * The batch pre-check alone, without rendering: each barcode slot's value, per
+     * dataset, against Code 128 (printable ASCII) and against the slot's width at whole
+     * printer dots (`Code128Fit`). The width is the slot's inline `width:…mm`, else the
+     * version CSS `#id{width:…mm}` the editor writes.
+     *
+     * @param  array{project_data?: array<string, mixed>, html: string, css?: string}  $layout
+     * @param  list<array<string, mixed>>  $datasets
+     * @param  list<array<string, mixed>>  $fields
+     * @param  array<string, mixed>  $geometry  a label
+     * @return list<array{index: int, content: string, reason: 'does_not_fit'|'unencodable'}>  `index` is the dataset's position
+     *
+     * @throws InvalidArgumentException when the geometry is not a label
+     */
+    public function labelProblems(array $layout, array $datasets, array $fields, array $geometry): array
+    {
+        $this->labelCarrier($fields, $geometry);
+
+        return $this->barcodeFailures($layout['html'], (string) ($layout['css'] ?? ''), array_values($datasets), $fields);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $fields
+     * @param  array<string, mixed>  $geometry
+     *
+     * @throws InvalidArgumentException unless the geometry is a label
+     */
+    private function labelCarrier(array $fields, array $geometry): TemplateType
+    {
+        $type  = $this->carrier($fields, $geometry);
+        $paper = PageGeometry::fromType($type->pdf);
+
+        if ($paper->medium !== 'sheet' || $paper->paperFormat !== null || $paper->widthMm <= 0 || $paper->heightMm <= 0) {
+            throw new InvalidArgumentException('Only a label (a sheet sized in millimetres) prints as a batch of labels.');
+        }
+
+        return $type;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $datasets
+     * @param  list<array<string, mixed>>  $fields
+     * @return list<array{index: int, content: string, reason: 'does_not_fit'|'unencodable'}>
+     */
+    private function barcodeFailures(string $html, string $css, array $datasets, array $fields): array
+    {
+        $types = [];
+        foreach ($fields as $field) {
+            $types[(string) ($field['key'] ?? '')] = $field['type'] ?? null;
+        }
+
+        $slots = array_filter(
+            $this->codeSlots($html, $css),
+            fn (array $slot): bool => ($types[$slot['binding']] ?? null) === 'barcode',
+        );
+
+        $failures = [];
+
+        foreach ($datasets as $index => $dataset) {
+            foreach ($slots as $slot) {
+                $content = (string) ($dataset[$slot['binding']] ?? '');
+
+                try {
+                    Code128Fit::assertEncodable($content);
+                } catch (BarcodeFailure) {
+                    $failures[] = ['index' => $index, 'content' => $content, 'reason' => 'unencodable'];
+
+                    continue;
+                }
+
+                try {
+                    Code128Fit::moduleDots($content, $slot['width']);
+                } catch (BarcodeFailure) {
+                    $failures[] = ['index' => $index, 'content' => $content, 'reason' => 'does_not_fit'];
+                }
+            }
+        }
+
+        return $failures;
+    }
+
+    /**
+     * The layout's dynamic code slots, with their binding and width in millimetres. A
+     * slot with no width anywhere gets the 30 mm the image generator assumes.
+     *
+     * @return list<array{binding: string, width: float}>
+     */
+    private function codeSlots(string $html, string $css): array
+    {
+        if (! str_contains($html, 'data-tpl-type="code-slot"')) {
+            return [];
+        }
+
+        $document = new \DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $document->loadHTML('<?xml encoding="UTF-8"><body>'.$html.'</body>', LIBXML_NOERROR | LIBXML_NOWARNING);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        $widths = $this->cssWidthsById($css);
+        $slots  = [];
+
+        foreach ((new \DOMXPath($document))->query('//*[@data-tpl-type="code-slot"]') ?: [] as $node) {
+            if (! $node instanceof \DOMElement) {
+                continue;
+            }
+
+            $attributes = [];
+            foreach ($node->attributes as $attribute) {
+                $attributes[$attribute->name] = $attribute->value;
+            }
+
+            // A fixed-text code is a QR composed from its own attributes, never a barcode.
+            if (CodePayload::fromAttributes($attributes) !== null) {
+                continue;
+            }
+
+            $width = self::widthMm($node->getAttribute('style')) ?? $widths[$node->getAttribute('id')] ?? 30.0;
+
+            $slots[] = ['binding' => $node->getAttribute('data-tpl-binding'), 'width' => $width];
+        }
+
+        return $slots;
+    }
+
+    /**
+     * Each `#id` rule's width in millimetres; a later rule wins, as in the cascade.
+     *
+     * @return array<string, float>
+     */
+    private function cssWidthsById(string $css): array
+    {
+        $css    = (string) preg_replace('#/\*.*?\*/#s', '', $css);
+        $widths = [];
+
+        preg_match_all('/([^{}]+)\{([^{}]*)\}/s', $css, $blocks, PREG_SET_ORDER);
+
+        foreach ($blocks as $block) {
+            $width = self::widthMm($block[2]);
+
+            if ($width === null) {
+                continue;
+            }
+
+            foreach (explode(',', $block[1]) as $selector) {
+                if (preg_match('/^#([\w-]+)$/', trim($selector), $m) === 1) {
+                    $widths[$m[1]] = $width;
+                }
+            }
+        }
+
+        return $widths;
+    }
+
+    /** `width:…mm` in a declaration list (not `max-width` nor `min-width`), or null. */
+    private static function widthMm(string $declarations): ?float
+    {
+        return preg_match('/(?<![-\w])width\s*:\s*([\d.]+)mm/i', $declarations, $m) === 1 ? (float) $m[1] : null;
     }
 
     /**
