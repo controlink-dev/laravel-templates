@@ -591,6 +591,10 @@ async function mountEditor(el) {
     const zplButton = mountZplButton(root, config);
 
     zplButton?.addEventListener('click', async () => {
+        if (!config.zplUrl) {
+            return;
+        }
+
         renderStatus(config.strings.zplRendering, root);
         zplButton.disabled = true;
 
@@ -3314,6 +3318,8 @@ function showZplButton(root, config) {
 
     if (button) {
         button.hidden = !config.zplUrl;
+        // Inline too: a host's own `.tpl-btn` display rule would otherwise beat `hidden`.
+        button.style.display = config.zplUrl ? '' : 'none';
     }
 }
 

@@ -34,6 +34,11 @@
 }
 
 /* The editor's own buttons: no host button component (RF-E03), so these are ours. */
+/* `hidden` must win over the button's own display (CGE-98: "Download ZPL" off a label). */
+.tpl-btn[hidden] {
+    display: none;
+}
+
 .tpl-btn {
     display: inline-flex;
     align-items: center;

@@ -1469,16 +1469,26 @@ function registerCodeSlot(editor, config) {
                     this.listenTo(this.model, 'change:attributes:data-tpl-binding change:attributes:data-tpl-code-source', () => this.paintBarcodeHint());
                 }
 
-                const Observer = this.el?.ownerDocument?.defaultView?.ResizeObserver;
+                this.paintBarcodeHint();
+                // Usually not in the canvas yet at render time: once more when it is.
+                setTimeout(() => this.paintBarcodeHint(), 0);
+            },
 
-                if (Observer && this.observedEl !== this.el) {
+            /*
+             * The observer is made once the box is in the canvas, by the canvas's own
+             * window: the view may be built in the editor's document and only then moved
+             * into the iframe.
+             */
+            observeBarcodeHint() {
+                const el = this.el;
+                const Observer = el?.ownerDocument?.defaultView?.ResizeObserver;
+
+                if (Observer && this.observedEl !== el) {
                     this.hintObserver?.disconnect();
                     this.hintObserver = new Observer(() => this.paintBarcodeHint());
-                    this.hintObserver.observe(this.el);
-                    this.observedEl = this.el;
+                    this.hintObserver.observe(el);
+                    this.observedEl = el;
                 }
-
-                this.paintBarcodeHint();
             },
 
             paintBarcodeHint() {
@@ -1495,6 +1505,8 @@ function registerCodeSlot(editor, config) {
                     return;
                 }
 
+                this.observeBarcodeHint();
+
                 const text = this.model.isBarcode()
                     ? barcodeHint(el.offsetWidth / PX_PER_MM, config.strings)
                     : config.strings['block.code_slot'];
@@ -1504,6 +1516,17 @@ function registerCodeSlot(editor, config) {
                 }
             },
         },
+    });
+
+    // Belt and braces for the barcode hint's observer: the editor's own resize and style
+    // events, and a slot entering the canvas, repaint it too (CGE-98).
+    // `component:resize` hands an object (`{ component, type }`), the others the component.
+    editor.on('component:mount component:resize component:styleUpdate', (payload) => {
+        const component = payload?.component ?? payload;
+
+        if (component?.get?.('type') === 'code-slot') {
+            component.view?.paintBarcodeHint?.();
+        }
     });
 
     editor.BlockManager.add('code-slot', {
