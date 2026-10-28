@@ -4,22 +4,23 @@
     "type": "library",
     "license": "proprietary",
     "require": {
-        "php": "^8.1",
+        "php": "^8.2",
         "ext-json": "*",
         "ext-intl": "*",
         "ext-dom": "*",
+        "ext-gd": "*",
         "laravel/framework": "^10.48 || ^11.0 || ^12.0 || ^13.0",
         "twig/twig": "^3.28",
         "bacon/bacon-qr-code": "^3.0",
         "guzzlehttp/guzzle": "^7.0",
-        "khanamiryan/qrcode-detector-decoder": "^2.0"
+        "khanamiryan/qrcode-detector-decoder": "^2.0",
+        "picqer/php-barcode-generator": "^3.2"
     },
     "require-dev": {
         "orchestra/testbench": "^8.0",
         "phpunit/phpunit": "^10.0"
     },
     "suggest": {
-        "ext-gd": "Needed by the visual regression comparison and the render validator raster checks",
         "poppler-utils": "pdftotext/pdftoppm/pdfinfo on PATH for output=pdf activation",
         "gotenberg": "Gotenberg 8 reachable over HTTP for output=pdf"
     },
@@ -36,7 +37,7 @@
         }
     },
     "config": {
-        "platform": { "php": "8.1.0" },
+        "platform": { "php": "8.2.0" },
         "sort-packages": true,
         "policy": {
             "advisories": {
