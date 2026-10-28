@@ -26,7 +26,8 @@ final class ReceiptPreview
 
     private const PAPER = 'background:#fff;color:#000;display:inline-block;box-sizing:content-box;'
         .'width:calc(var(--cols) * 1ch);padding:1.5ch 2ch;'
-        .'font-family:"Liberation Mono","Courier New",monospace;font-size:13px;line-height:1.25;'
+        // Single quotes: the style sits in a double-quoted attribute.
+        .'font-family:\'Liberation Mono\',\'Courier New\',monospace;font-size:13px;line-height:1.25;'
         .'box-shadow:0 1px 4px rgba(0,0,0,.25)';
 
     private const LINE = 'margin:0;padding:0;font:inherit;line-height:inherit;white-space:pre;overflow:hidden';

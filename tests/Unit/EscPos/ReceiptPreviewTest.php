@@ -38,6 +38,19 @@ class ReceiptPreviewTest extends TestCase
         $this->assertSame($expected, $lines);
     }
 
+    public function test_the_paper_style_survives_html_parsing_with_its_monospace_font(): void
+    {
+        $document = new \DOMDocument;
+        @$document->loadHTML('<?xml encoding="UTF-8">'.(new ReceiptPreview)->html($this->receipt()));
+
+        $paper = (new \DOMXPath($document))->query('//div[@class="tpl-receipt"]')->item(0);
+
+        // A quote inside the style attribute would cut it short and the browser would fall
+        // back to a proportional font, misaligning every column of the receipt.
+        $this->assertStringContainsString('monospace', $paper->getAttribute('style'));
+        $this->assertStringContainsString('box-shadow', $paper->getAttribute('style'));
+    }
+
     public function test_preview_is_a_self_contained_grid_with_bold_double_and_the_qr(): void
     {
         $html = (new ReceiptPreview)->html($this->receipt());
