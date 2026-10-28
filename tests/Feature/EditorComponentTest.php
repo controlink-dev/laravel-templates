@@ -527,6 +527,21 @@ class EditorComponentTest extends TestCase
         $this->assertStringContainsString('data-zpl-url="/forms/tpl-1/versions/1/zpl"', $html);
     }
 
+    /** CGE-98: the thermal receipt URL reaches the bundle; the editor shows it only on a roll. */
+    public function test_the_escpos_url_reaches_the_bundle_as_data(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $this->assertStringContainsString('data-escpos-url=""', $this->render($template, $version));
+
+        $html = Blade::render(
+            '<x-templates::editor :template="$template" :version="$version" :urls="$urls" />',
+            ['template' => $template, 'version' => $version, 'urls' => ['escpos' => '/forms/tpl-1/versions/1/escpos-preview']],
+        );
+
+        $this->assertStringContainsString('data-escpos-url="/forms/tpl-1/versions/1/escpos-preview"', $html);
+    }
+
     /** CGE-98: the ZPL button, the batch badge and the barcode hint, translated. */
     public function test_the_batch_and_zpl_strings_reach_the_bundle_translated(): void
     {
@@ -536,10 +551,11 @@ class EditorComponentTest extends TestCase
         $strings = (new Editor($template, $version))->strings();
 
         $this->assertSame('Descarregar ZPL', $strings['downloadZpl']);
+        $this->assertSame('Descarregar talão térmico', $strings['downloadEscpos']);
         $this->assertSame(':count artigos', $strings['preview.batch_count']);
         $this->assertSame('Código de barras — cabem até :n caracteres', $strings['code_slot.barcode_hint']);
 
-        foreach (['zplRendering', 'zplFailed', 'preview.add_pick', 'preview.remove_pick', 'preview.batch_limit'] as $key) {
+        foreach (['zplRendering', 'zplFailed', 'escposRendering', 'escposFailed', 'preview.add_pick', 'preview.remove_pick', 'preview.batch_limit'] as $key) {
             $this->assertArrayHasKey($key, $strings);
         }
 
@@ -547,6 +563,7 @@ class EditorComponentTest extends TestCase
         $strings = (new Editor($template, $version))->strings();
 
         $this->assertSame('Download ZPL', $strings['downloadZpl']);
+        $this->assertSame('Download thermal receipt', $strings['downloadEscpos']);
         $this->assertSame(':count articles', $strings['preview.batch_count']);
     }
 

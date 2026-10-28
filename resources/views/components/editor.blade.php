@@ -205,6 +205,9 @@
              other type; the editor then keeps one record per node and no ZPL button. --}}
         data-batch-node="{{ $batchNode ?? '' }}"
         data-zpl-url="{{ $urls['zpl'] ?? '' }}"
+        {{-- The thermal receipt (CGE-98), downloaded as a .bin. The editor shows its
+             button only while the format on screen is a roll. --}}
+        data-escpos-url="{{ $urls['escpos'] ?? '' }}"
 
         {{-- Served raw, not through the bundle, so the canvas and the PDF engine read
              the same bytes of the same stylesheet. --}}

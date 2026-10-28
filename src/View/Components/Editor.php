@@ -49,7 +49,7 @@ class Editor extends Component
      * @param  string  $height  any CSS length; the component fills its container's width
      * @param  bool  $actions  render the save/preview/activate bar, or leave it to the host page
      * @param  string  $mode  phase 1 supports only `print`
-     * @param  array<string, string>  $urls  the host's own endpoints (the package registers no routes): load, save, preview, activate, catalogue, stylesheet, font (with {family}/{weight}), format_switch (with the literal {@see self::FORMAT_PLACEHOLDER}), zpl (CGE-98: POST, answers the labels as a `.zpl` attachment; the "Download ZPL" button shows only with it)
+     * @param  array<string, string>  $urls  the host's own endpoints (the package registers no routes): load, save, preview, activate, catalogue, stylesheet, font (with {family}/{weight}), format_switch (with the literal {@see self::FORMAT_PLACEHOLDER}), zpl (CGE-98: POST, answers the labels as a `.zpl` attachment; the "Download ZPL" button shows only with it), escpos (CGE-98: POST, answers `{filename, bytes_base64}`; the "Download thermal receipt" button shows only with it, on a roll format)
      * @param  bool  $formatSelector  render the in-toolbar page-format `<select>`. A host that drives format switching from its own page chrome (format tabs that hit `urls['format_switch']`) turns this off so the two controls do not both show.
      * @param  string|null  $batchNode  CGE-98: the context node a label type prints a batch of (`article`). The Amostra then picks several records for it, one label each in order, and the preview sends them as a list; null for every other type.
      * @param  bool  $hostNotices  hand outcome messages (saved, refused, render failed) to the host instead of the editor's own status line. The editor still announces each as a bubbling `templates:message` DOM event ({@see resources/js/editor/editor.js}); turn this on only where the host page actually listens for it, or the message is lost.
@@ -394,6 +394,10 @@ class Editor extends Component
             'downloadZpl'  => __('templates::editor.editor.download_zpl'),
             'zplRendering' => __('templates::editor.editor.zpl_rendering'),
             'zplFailed'    => __('templates::editor.errors.zpl_failed'),
+            // The thermal receipt of a roll format (CGE-98): downloaded, never previewed.
+            'downloadEscpos'  => __('templates::editor.editor.download_escpos'),
+            'escposRendering' => __('templates::editor.editor.escpos_rendering'),
+            'escposFailed'    => __('templates::editor.errors.escpos_failed'),
             // Chosen articles the host no longer has (`X-Labels-Missing`), left out of the batch.
             'labelsMissing' => __('templates::editor.editor.labels_missing'),
 
