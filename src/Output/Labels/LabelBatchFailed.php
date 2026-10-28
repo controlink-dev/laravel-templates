@@ -15,7 +15,7 @@ use RuntimeException;
 final class LabelBatchFailed extends RuntimeException
 {
     /**
-     * @param  list<array{index: int, content: string, reason: 'does_not_fit'|'unencodable'}>  $failures  `index` is the label's position in the batch
+     * @param  list<array{index: int, content: string, reason: 'does_not_fit'|'unencodable'|'marker_not_found'}>  $failures  `index` is the label's position in the batch; `marker_not_found` is a ZPL code slot whose box did not come back from the screenshot whole
      */
     public function __construct(public readonly array $failures)
     {

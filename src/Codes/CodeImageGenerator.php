@@ -3,6 +3,7 @@
 namespace Controlink\Templates\Codes;
 
 use BaconQrCode\Common\ErrorCorrectionLevel;
+use BaconQrCode\Encoder\ByteMatrix;
 use BaconQrCode\Encoder\Encoder;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
@@ -34,7 +35,12 @@ use RuntimeException;
 class CodeImageGenerator
 {
     /** Quiet zone in modules, as the QR specification requires. */
-    private const QUIET_ZONE = 4;
+    public const QR_QUIET_ZONE = 4;
+
+    private const QUIET_ZONE = self::QR_QUIET_ZONE;
+
+    /** Byte-mode encoding of a QR's content. */
+    private const QR_ENCODING = 'utf-8';
 
     /** Barcode height when the slot declares none, in millimetres. */
     private const DEFAULT_BARCODE_HEIGHT_MM = 10.0;
@@ -252,20 +258,41 @@ class CodeImageGenerator
      */
     private function qrWholeDots(string $content, float $sizeMm): array
     {
-        $matrix  = Encoder::encode($content, ErrorCorrectionLevel::L(), 'utf-8')->getMatrix()->getWidth();
-        $modules = $matrix + 2 * self::QUIET_ZONE;
-        $dots    = max(1, (int) floor($sizeMm * Code128Fit::DOTS_PER_MM / $modules));
+        $qr      = self::labelQr($content, $sizeMm);
+        $modules = $qr['matrix']->getWidth() + 2 * self::QUIET_ZONE;
 
         $writer = new Writer(
             new ImageRenderer(
-                new RendererStyle($modules * $dots, self::QUIET_ZONE),
+                new RendererStyle($modules * $qr['moduleDots'], self::QUIET_ZONE),
                 new SvgImageBackEnd,
             ),
         );
 
-        $svg = $writer->writeString($content, 'utf-8');
+        $svg = $writer->writeString($content, self::QR_ENCODING, self::qrLevel());
 
-        return ['data:image/svg+xml;base64,'.base64_encode($svg), $modules * $dots / Code128Fit::DOTS_PER_MM];
+        return ['data:image/svg+xml;base64,'.base64_encode($svg), $modules * $qr['moduleDots'] / Code128Fit::DOTS_PER_MM];
+    }
+
+    /**
+     * The QR a label prints, as its module matrix and the whole dots per module: the one
+     * source of both the PDF's image (`qrWholeDots`) and the ZPL's picture, which draws
+     * the same matrix dot by dot because a screenshot resamples an image. The matrix
+     * excludes the quiet zone, which is `QR_QUIET_ZONE` modules of white on every side.
+     *
+     * @return array{matrix: ByteMatrix, moduleDots: int}
+     */
+    public static function labelQr(string $content, float $sizeMm): array
+    {
+        $matrix  = Encoder::encode($content, self::qrLevel(), self::QR_ENCODING)->getMatrix();
+        $modules = $matrix->getWidth() + 2 * self::QUIET_ZONE;
+
+        return ['matrix' => $matrix, 'moduleDots' => max(1, (int) floor($sizeMm * Code128Fit::DOTS_PER_MM / $modules))];
+    }
+
+    /** Error correction of a label's QR, given to both the encoder and the writer so they cannot drift. */
+    private static function qrLevel(): ErrorCorrectionLevel
+    {
+        return ErrorCorrectionLevel::L();
     }
 
     /**

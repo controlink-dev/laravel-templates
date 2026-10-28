@@ -3,58 +3,52 @@
 namespace Controlink\Templates\Output\Zpl;
 
 use Controlink\Templates\Support\PageGeometry;
+use GdImage;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
- * Pictures of a batch of labels at the printer's resolution, one PNG per label, one
- * pixel per dot (CGE-98).
+ * Pictures of labels at the printer's resolution, one image per label, one pixel per
+ * dot (CGE-98).
  *
- * The composed batch (one `.page` per label, stacked with no gap) goes to the engine's
+ * A composed run of labels (one `.page` each, stacked with no gap) goes to the engine's
  * screenshot route with the device scale that makes a CSS millimetre exactly
  * `Dots::PER_MM` pixels, and the print stylesheet in force, so the picture is the PDF's
- * page. The stack is cut into labels here. One call takes at most 30 labels, fewer when
- * they are tall: a Chromium screenshot is capped at 16384 pixels high; the others are
- * hidden in that call and shown in the next.
+ * page; the stack is then cut into labels. One call takes at most `perCall()` labels,
+ * and no stack taller than 8000 pixels: further down, Chromium drew an image up to
+ * 3 dots short (measured: a 80-dot barcode box came back 77 dots high from 8800 px
+ * down a 12000 px stack, and within one dot above 8000 px). The caller composes each
+ * run with only its own labels, so a large batch is never sent whole.
  */
 final class LabelScreenshots
 {
     private const MAX_PER_CALL = 30;
 
-    private const MAX_PIXELS_HIGH = 16384;
+    private const MAX_PIXELS_HIGH = 8000;
 
     /** CSS pixels per millimetre (96 per inch). */
     private const CSS_PX_PER_MM = 96 / 25.4;
 
+    /** How many labels of this size one screenshot takes: 30, fewer when they are tall (20 of 50 mm). */
+    public static function perCall(PageGeometry $label): int
+    {
+        return max(1, min(self::MAX_PER_CALL, intdiv(self::MAX_PIXELS_HIGH, max(1, Dots::fromMm($label->heightMm)))));
+    }
+
     /**
-     * @param  string  $html  the composed batch, `count` sheets of `$label`
-     * @return list<string> PNGs of `widthMm*8 x heightMm*8` pixels, in order
+     * @param  string  $html  a composed run of `count` sheets of `$label`, at most `perCall()`
+     * @return list<GdImage> `widthMm*8 x heightMm*8` pixels each, in order
      *
      * @throws RuntimeException when the engine is not configured, refuses, or returns a
      *                          picture smaller than the labels
      */
     public function take(string $html, PageGeometry $label, int $count): array
     {
-        $height = Dots::fromMm($label->heightMm);
-        $perCall = max(1, min(self::MAX_PER_CALL, intdiv(self::MAX_PIXELS_HIGH, max(1, $height))));
-
-        $pngs = [];
-
-        for ($first = 0; $first < $count; $first += $perCall) {
-            $n    = min($perCall, $count - $first);
-            $pngs = [...$pngs, ...$this->slice($this->shoot($this->only($html, $first, $n), $label, $n), $label, $n)];
+        if ($count > self::perCall($label)) {
+            throw new RuntimeException("One label screenshot takes at most ".self::perCall($label)." labels, not {$count}.");
         }
 
-        return $pngs;
-    }
-
-    /** The batch with only labels `first` to `first + n - 1` (0-based) laid out. */
-    private function only(string $html, int $first, int $n): string
-    {
-        $style = '<style>body>.page{display:none}'
-            .'body>.page:nth-child(n+'.($first + 1).'):nth-child(-n+'.($first + $n).'){display:block}</style>';
-
-        return str_replace('</head>', $style.'</head>', $html);
+        return $this->slice($this->shoot($html, $label, $count), $label, $count);
     }
 
     private function shoot(string $html, PageGeometry $label, int $n): string
@@ -84,7 +78,7 @@ final class LabelScreenshots
         return $response->body();
     }
 
-    /** @return list<string> */
+    /** @return list<GdImage> */
     private function slice(string $png, PageGeometry $label, int $n): array
     {
         $image = @imagecreatefromstring($png);
@@ -103,7 +97,7 @@ final class LabelScreenshots
             ));
         }
 
-        $pngs = [];
+        $labels = [];
 
         for ($i = 0; $i < $n; $i++) {
             $one = imagecrop($image, ['x' => 0, 'y' => Dots::fromMm($i * $label->heightMm), 'width' => $width, 'height' => $height]);
@@ -112,11 +106,9 @@ final class LabelScreenshots
                 throw new RuntimeException('The label screenshot could not be cut into labels.');
             }
 
-            ob_start();
-            imagepng($one, null, 1);
-            $pngs[] = (string) ob_get_clean();
+            $labels[] = $one;
         }
 
-        return $pngs;
+        return $labels;
     }
 }
