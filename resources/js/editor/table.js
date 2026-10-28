@@ -11,7 +11,7 @@ import { defaultSpecFor, expression, specFromColumn, specToColumnArgs } from './
 import { icons } from './icons.js';
 import { previewRows } from './preview-filter.js';
 import { PX_PER_MM } from './anchors.js';
-import { barcodeHint } from './barcode-fit.js';
+import { barcodeHint, slotCanvasTag } from './barcode-fit.js';
 import {
     addFormulaColumn, addLinkedColumn, columnsOverflow, defaultColumns as defaultColumnsOf, isCalculatedColumn,
     isFormulaColumn, isTextColumn, isRemovableColumn, printedKeyOf, relinkColumn, removeColumn, setColumnFormulaMode,
@@ -1340,6 +1340,17 @@ function registerCodeSlot(editor, config) {
                  */
                 if (this.components().length) {
                     this.components().reset();
+                }
+
+                /*
+                 * A barcode slot read back from a seeded or saved layout is an `<img>`,
+                 * which cannot hold the placeholder that carries its hint (CGE-98): it is
+                 * drawn as a box instead. Canvas only — `toHTML()` still writes the `<img>`.
+                 */
+                const canvasTag = slotCanvasTag(this.get('tagName'), this.isBarcode());
+
+                if (canvasTag !== this.get('tagName')) {
+                    this.set('tagName', canvasTag);
                 }
 
                 this.set('content', `<span class="block--code__hint">${escapeText(config.strings['block.code_slot'])}</span>`);

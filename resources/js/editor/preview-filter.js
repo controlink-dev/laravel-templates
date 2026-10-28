@@ -200,6 +200,13 @@ export function removePick(picks, index) {
     return picks.filter((_, position) => position !== index);
 }
 
+/** The Amostra badge for a batch of `count` picks: singular for one. */
+export function batchCountLabel(config, count) {
+    return count === 1
+        ? text(config, 'batch_count_one', '1 article')
+        : fill(text(config, 'batch_count', ':count articles'), { count });
+}
+
 /** A collection row as the Amostra lists it: its first three values, not its record id. */
 export function rowSummary(row) {
     return Object.entries(row ?? {})
@@ -712,7 +719,7 @@ function createTarget({ target, config, state, url, headers, onChange }) {
         let label = text(config, 'example', 'Example');
 
         if (isBatch && model.picks.length > 0) {
-            label = fill(text(config, 'batch_count', ':count articles'), { count: model.picks.length });
+            label = batchCountLabel(config, model.picks.length);
         } else if (isNode && model.chosen) {
             label = model.chosen.label;
         } else if (!isNode && model.applied) {

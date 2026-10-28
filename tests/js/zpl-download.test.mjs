@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { filenameFromDisposition, zplErrorMessage } from '../../resources/js/editor/zpl-download.js';
+import { filenameFromDisposition, missingLabelsNotice, zplErrorMessage } from '../../resources/js/editor/zpl-download.js';
 
 /*
  * CGE-98: the ZPL comes back as an attachment; the file is saved under the name the
@@ -34,3 +34,15 @@ import { filenameFromDisposition, zplErrorMessage } from '../../resources/js/edi
 }
 
 console.log('zpl-download: ok');
+
+/* CGE-98: the host printed the batch short — the status line says how many were left out. */
+{
+    const headers = (value) => ({ get: (name) => (name === 'X-Labels-Missing' ? value : null) });
+    const template = ':n artigo(s) escolhido(s) já não existe(m) e ficaram de fora.';
+
+    assert.equal(missingLabelsNotice(headers('2'), template), '2 artigo(s) escolhido(s) já não existe(m) e ficaram de fora.');
+    assert.equal(missingLabelsNotice(headers(null), template), null);
+    assert.equal(missingLabelsNotice(headers('0'), template), null);
+    assert.equal(missingLabelsNotice(headers('x'), template), null);
+    assert.equal(missingLabelsNotice(headers('1'), undefined), '1 chosen article(s) no longer exist and were left out.');
+}

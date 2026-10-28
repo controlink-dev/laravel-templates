@@ -55,10 +55,25 @@ export function zplErrorMessage(payload, fallback) {
 }
 
 /**
- * POST the Amostra's selection (none: the host uses the fixture) and save the answer as
- * a file. Throws with the message to show when the host refuses it.
+ * What the status line says when the host printed the batch short (`X-Labels-Missing: n`):
+ * some chosen articles no longer exist. Null when none is missing.
  */
-export async function downloadZpl({ url, selection, headers, fallbackName, failedMessage }) {
+export function missingLabelsNotice(headers, template) {
+    const missing = Number.parseInt(headers?.get?.('X-Labels-Missing') ?? '', 10);
+
+    if (!Number.isFinite(missing) || missing <= 0) {
+        return null;
+    }
+
+    return String(template || ':n chosen article(s) no longer exist and were left out.').replace(':n', String(missing));
+}
+
+/**
+ * POST the Amostra's selection (none: the host uses the fixture) and save the answer as
+ * a file. Throws with the message to show when the host refuses it. Answers the file's
+ * name and, when some chosen articles were left out, the notice that says so.
+ */
+export async function downloadZpl({ url, selection, headers, fallbackName, failedMessage, missingMessage }) {
     const response = await fetch(url, {
         method: 'POST',
         headers: selection ? { ...headers, 'Content-Type': 'application/json' } : headers,
@@ -85,5 +100,5 @@ export async function downloadZpl({ url, selection, headers, fallbackName, faile
     // After the click has handed the blob to the download, not before.
     setTimeout(() => URL.revokeObjectURL(href), 0);
 
-    return name;
+    return { name, notice: missingLabelsNotice(response.headers, missingMessage) };
 }

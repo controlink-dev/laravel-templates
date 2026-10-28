@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { barcodeHint, maxChars } from '../../resources/js/editor/barcode-fit.js';
+import { barcodeHint, maxChars, slotCanvasTag } from '../../resources/js/editor/barcode-fit.js';
 
 /*
  * CGE-98: how many characters a Code 128 (subset B) fits in a slot at the narrowest
@@ -24,3 +24,14 @@ import { barcodeHint, maxChars } from '../../resources/js/editor/barcode-fit.js'
 }
 
 console.log('barcode-fit: ok');
+
+/*
+ * A barcode slot read back as an `<img>` (seeded or saved layout) is drawn as a box in the
+ * canvas, so its hint can show; a QR slot keeps its tag.
+ */
+{
+    assert.equal(slotCanvasTag('img', true), 'div');
+    assert.equal(slotCanvasTag('div', true), 'div');
+    assert.equal(slotCanvasTag('img', false), 'img');
+    assert.equal(slotCanvasTag('div', false), 'div');
+}

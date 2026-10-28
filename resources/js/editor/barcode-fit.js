@@ -37,3 +37,14 @@ export function barcodeHint(widthMm, strings) {
 
     return template.replace(':n', String(maxChars(widthMm)));
 }
+
+/**
+ * The tag a code slot is drawn with in the canvas (CGE-98). A slot read back from a saved
+ * or seeded layout is an `<img>` (what `toHTML()` writes for the compositor), and an image
+ * cannot hold the placeholder that carries a barcode's hint — so a barcode slot is drawn as
+ * a box. Only in the canvas: `toHTML()` still writes the `<img>`, so neither the layout's
+ * HTML nor the PDF change. A QR slot keeps its tag, exactly as before.
+ */
+export function slotCanvasTag(tagName, isBarcode) {
+    return isBarcode ? 'div' : tagName;
+}

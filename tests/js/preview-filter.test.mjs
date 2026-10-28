@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { formulaReferences } from '../../resources/js/editor/formula-names.js';
-import { PREVIEW_PICK_LIMIT, addPick, collectTargets, initPreviewState, pdfSelectionOf, plainProjectData, refreshPreview, removePick, rowSummary, selectionOf, truncationNotice } from '../../resources/js/editor/preview-filter.js';
+import { PREVIEW_PICK_LIMIT, addPick, batchCountLabel, collectTargets, initPreviewState, pdfSelectionOf, plainProjectData, refreshPreview, removePick, rowSummary, selectionOf, truncationNotice } from '../../resources/js/editor/preview-filter.js';
 
 /*
  * While GrapesJS loads another format's saved project data it drops the old page before
@@ -212,4 +212,14 @@ console.log('preview-filter: ok');
 
     const full = Array.from({ length: PREVIEW_PICK_LIMIT }, () => a);
     assert.equal(addPick(full, b).length, PREVIEW_PICK_LIMIT);
+}
+
+/* CGE-98: the Amostra badge says «1 artigo», not «1 artigos». */
+{
+    const config = { strings: { 'preview.batch_count': ':count artigos', 'preview.batch_count_one': '1 artigo' } };
+
+    assert.equal(batchCountLabel(config, 1), '1 artigo');
+    assert.equal(batchCountLabel(config, 3), '3 artigos');
+    assert.equal(batchCountLabel({}, 1), '1 article');
+    assert.equal(batchCountLabel({}, 2), '2 articles');
 }

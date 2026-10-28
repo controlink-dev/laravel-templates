@@ -394,6 +394,8 @@ class Editor extends Component
             'downloadZpl'  => __('templates::editor.editor.download_zpl'),
             'zplRendering' => __('templates::editor.editor.zpl_rendering'),
             'zplFailed'    => __('templates::editor.errors.zpl_failed'),
+            // Chosen articles the host no longer has (`X-Labels-Missing`), left out of the batch.
+            'labelsMissing' => __('templates::editor.editor.labels_missing'),
 
             // A code slot bound to a barcode says how long a code still fits (CGE-98).
             'code_slot.barcode_hint' => __('templates::editor.blocks.code_slot_barcode_hint'),
@@ -436,6 +438,7 @@ class Editor extends Component
             'preview.error' => __('templates::editor.preview.error'),
             // The batch node's picks (CGE-98).
             'preview.batch_count' => __('templates::editor.preview.batch_count'),
+            'preview.batch_count_one' => __('templates::editor.preview.batch_count_one'),
             'preview.batch_limit' => __('templates::editor.preview.batch_limit'),
             'preview.add_pick' => __('templates::editor.preview.add_pick'),
             'preview.remove_pick' => __('templates::editor.preview.remove_pick'),

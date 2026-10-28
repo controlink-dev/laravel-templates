@@ -17,7 +17,7 @@ import { applyFormat, replaceLayout } from './format-switch.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, pdfSelectionOf, plainProjectData, refreshPreview, selectionOf, truncationNotice } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
-import { downloadZpl } from './zpl-download.js';
+import { downloadZpl, missingLabelsNotice } from './zpl-download.js';
 import { createFormulaPreview, formulaFunctionsOf, refreshFormulaTraits, selectionHeading } from './formula.js';
 import { createFormulaLibrary } from './formula-library.js';
 import { rollGridCss } from './roll-grid.js';
@@ -561,10 +561,11 @@ async function mountEditor(el) {
         try {
             await saveBeforeRendering();
 
-            const { url, notice } = await renderPreview(config);
+            const { url, notice, missing } = await renderPreview(config);
 
             window.open(url, '_blank');
-            renderStatus('', root);
+            // Chosen articles that no longer exist were left out of the batch (CGE-98).
+            renderStatus(missing ?? '', root);
             root.dispatchEvent(new CustomEvent('templates:preview-ready', { detail: { url }, bubbles: true }));
 
             // The type's page limit left rows of the Amostra's query out (CGE-84).
@@ -601,15 +602,16 @@ async function mountEditor(el) {
         try {
             await saveBeforeRendering();
 
-            await downloadZpl({
+            const { notice } = await downloadZpl({
                 url: config.zplUrl,
                 selection: pdfSelectionOf(config.preview),
                 headers: requestHeaders(config),
                 fallbackName: 'labels.zpl',
                 failedMessage: config.strings.zplFailed,
+                missingMessage: config.strings.labelsMissing,
             });
 
-            renderStatus('', root);
+            renderStatus(notice ?? '', root);
         } catch (error) {
             if (error.cancelled) {
                 renderStatus(config.strings.unsaved, root);
@@ -3287,6 +3289,7 @@ async function renderPreview(config) {
     return {
         url: URL.createObjectURL(await response.blob()),
         notice: truncationNotice(response.headers, config.strings),
+        missing: missingLabelsNotice(response.headers, config.strings.labelsMissing),
     };
 }
 
