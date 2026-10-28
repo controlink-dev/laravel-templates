@@ -10,6 +10,8 @@ import { TRANSPARENT_PIXEL, nodeOptionsOf, fieldsOfNode, nodeOfBinding, formatAr
 import { defaultSpecFor, expression, specFromColumn, specToColumnArgs } from './formats.js';
 import { icons } from './icons.js';
 import { previewRows } from './preview-filter.js';
+import { PX_PER_MM } from './anchors.js';
+import { barcodeHint } from './barcode-fit.js';
 import {
     addFormulaColumn, addLinkedColumn, columnsOverflow, defaultColumns as defaultColumnsOf, isCalculatedColumn,
     isFormulaColumn, isTextColumn, isRemovableColumn, printedKeyOf, relinkColumn, removeColumn, setColumnFormulaMode,
@@ -1235,6 +1237,21 @@ function registerCodeSlot(editor, config) {
 
     const minimum = Number(config.visibilityLimits?.qr_size_min_mm ?? 30);
 
+    /*
+     * A barcode is a strip, not a square (CGE-98): a slot born on a barcode binding starts
+     * 60×15 mm — room for a 16-character code at the narrowest bar — instead of the QR's
+     * square. The 30 mm minimum is the legal QR's (V-17), not a barcode's.
+     */
+    const defaultCodeStyle = codeBinding?.type === 'barcode'
+        ? { width: '60mm', height: '15mm' }
+        : { width: minimum + 'mm', height: minimum + 'mm' };
+
+    // A binding the catalogue types as a barcode, declared or reached through its node.
+    const isBarcodeKey = (key) => key !== '' && (
+        config.bindings.find((binding) => binding.key === key)?.type === 'barcode'
+        || fieldsOfNode(config, nodeOfBinding(key)).some((field) => field.key === key && field.type === 'barcode')
+    );
+
     editor.DomComponents.addType('code-slot', {
         isComponent: (el) => el?.dataset?.tplType === 'code-slot',
         model: {
@@ -1272,7 +1289,7 @@ function registerCodeSlot(editor, config) {
                     },
                 ],
                 stylable: ['left', 'top', 'right', 'bottom', 'width', 'height'],
-                style: { width: minimum + 'mm', height: minimum + 'mm' },
+                style: defaultCodeStyle,
             },
 
             init() {
@@ -1330,6 +1347,11 @@ function registerCodeSlot(editor, config) {
 
             binding() {
                 return this.getAttributes()['data-tpl-binding'] ?? '';
+            },
+
+            /** A dynamic slot on a barcode binding: the one that says how much it fits. */
+            isBarcode() {
+                return this.getAttributes()['data-tpl-code-source'] !== 'fixed' && isBarcodeKey(this.binding());
             },
 
             /**
@@ -1427,6 +1449,58 @@ function registerCodeSlot(editor, config) {
 
                 if (el?.tagName === 'IMG' && !el.getAttribute('src')) {
                     el.setAttribute('src', TRANSPARENT_PIXEL);
+                }
+
+                this.watchBarcodeHint();
+            },
+
+            /*
+             * A barcode slot's placeholder says how many characters fit its width (CGE-98),
+             * refreshed as the slot is resized — by the style panel, a drag or a format
+             * switch alike, which is why it observes the box rather than any one event.
+             *
+             * Written into the canvas only, never into the model's `content`: that is
+             * part of the project data, and a hint measured after the load snapshot would
+             * mark a freshly opened layout as changed.
+             */
+            watchBarcodeHint() {
+                if (!this.hintWatched) {
+                    this.hintWatched = true;
+                    this.listenTo(this.model, 'change:attributes:data-tpl-binding change:attributes:data-tpl-code-source', () => this.paintBarcodeHint());
+                }
+
+                const Observer = this.el?.ownerDocument?.defaultView?.ResizeObserver;
+
+                if (Observer && this.observedEl !== this.el) {
+                    this.hintObserver?.disconnect();
+                    this.hintObserver = new Observer(() => this.paintBarcodeHint());
+                    this.hintObserver.observe(this.el);
+                    this.observedEl = this.el;
+                }
+
+                this.paintBarcodeHint();
+            },
+
+            paintBarcodeHint() {
+                const el = this.el;
+                const hint = el?.querySelector?.('.block--code__hint');
+
+                if (!hint) {
+                    return;
+                }
+
+                // Not laid out yet (a render before the view is attached): the observer
+                // fires once it is, with the real width.
+                if (!el.isConnected) {
+                    return;
+                }
+
+                const text = this.model.isBarcode()
+                    ? barcodeHint(el.offsetWidth / PX_PER_MM, config.strings)
+                    : config.strings['block.code_slot'];
+
+                if (hint.textContent !== text) {
+                    hint.textContent = text;
                 }
             },
         },

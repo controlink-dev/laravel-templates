@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { formulaReferences } from '../../resources/js/editor/formula-names.js';
-import { collectTargets, initPreviewState, pdfSelectionOf, plainProjectData, refreshPreview, rowSummary, selectionOf, truncationNotice } from '../../resources/js/editor/preview-filter.js';
+import { PREVIEW_PICK_LIMIT, addPick, collectTargets, initPreviewState, pdfSelectionOf, plainProjectData, refreshPreview, removePick, rowSummary, selectionOf, truncationNotice } from '../../resources/js/editor/preview-filter.js';
 
 /*
  * While GrapesJS loads another format's saved project data it drops the old page before
@@ -144,4 +144,72 @@ console.log('preview-filter: ok');
  */
 {
     assert.equal(rowSummary({ id: '01abc', code: 'T1', name: 'Porca', cost: '', price: '2,00', unit: 'UN' }), 'T1 · Porca · 2,00');
+}
+
+/*
+ * CGE-98: a label type previews SEVERAL articles. The batch node's ids are a list in pick
+ * order, repeats allowed: the PDF prints one label per pick, while the formula preview
+ * (one record) and the canvas use the first pick only.
+ */
+{
+    const state = initPreviewState({}, {});
+
+    state.ids.article = ['1', '2', '1'];
+
+    assert.deepEqual(pdfSelectionOf(state), { nodes: { article: ['1', '2', '1'] }, queries: {} });
+    assert.deepEqual(selectionOf(state), { nodes: { article: '1' }, collections: {} });
+
+    // A copy, never the live list: a later pick must not change a request already sent.
+    pdfSelectionOf(state).nodes.article.push('9');
+    assert.deepEqual(state.ids.article, ['1', '2', '1']);
+}
+
+{
+    const state = initPreviewState({}, {});
+    const pick = (id, name) => ({ id, label: name, values: { 'article.name': name } });
+
+    state.setPicks('article', [pick(5, 'Porca'), pick(7, 'Parafuso'), pick(5, 'Porca')]);
+
+    assert.deepEqual(state.ids.article, ['5', '7', '5']);
+    // The canvas shows the first pick's values.
+    assert.deepEqual(state.values, { 'article.name': 'Porca' });
+
+    // Removing the first pick: the canvas follows the new first one.
+    state.setPicks('article', [pick(7, 'Parafuso'), pick(5, 'Porca')]);
+    assert.deepEqual(state.values, { 'article.name': 'Parafuso' });
+
+    // No picks left: back to the example, and nothing is sent (the host uses the fixture).
+    state.setPicks('article', []);
+    assert.equal(state.ids.article, undefined);
+    assert.deepEqual(state.values, {});
+    assert.equal(pdfSelectionOf(state), null);
+    assert.equal(selectionOf(state), null);
+
+    // The card being reconciled away clears a batch the same way.
+    state.setPicks('article', [pick(1, 'A')]);
+    state.setNode('article', null);
+    assert.equal(pdfSelectionOf(state), null);
+}
+
+/*
+ * The batch card's list of picks: appended in order, repeats allowed, capped at 200;
+ * removed by position (a repeated article removes only that one).
+ */
+{
+    const a = { id: '1', label: 'A' };
+    const b = { id: '2', label: 'B' };
+
+    assert.equal(PREVIEW_PICK_LIMIT, 200);
+
+    let picks = addPick([], a);
+    picks = addPick(picks, b);
+    picks = addPick(picks, a);
+    assert.deepEqual(picks.map((p) => p.id), ['1', '2', '1']);
+
+    assert.deepEqual(removePick(picks, 2).map((p) => p.id), ['1', '2']);
+    assert.deepEqual(removePick(picks, 0).map((p) => p.id), ['2', '1']);
+    assert.deepEqual(picks.map((p) => p.id), ['1', '2', '1'], 'never mutated');
+
+    const full = Array.from({ length: PREVIEW_PICK_LIMIT }, () => a);
+    assert.equal(addPick(full, b).length, PREVIEW_PICK_LIMIT);
 }

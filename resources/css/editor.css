@@ -1988,6 +1988,48 @@ select.tpl-pf-input {
     color: var(--tpl-slate-600, #475569);
 }
 
+/* CGE-98: the batch node's rows add a label (a plus, not a radio); disabled at the cap. */
+.tpl-pf-item--add::before {
+    content: "+";
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 0.75rem;
+    color: var(--tpl-primary, #4f46e5);
+}
+
+.tpl-pf-item:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* CGE-98: the labels picked so far, in order, each with its own remove. */
+.tpl-pf-picks:not(:empty) {
+    margin-bottom: 0.5rem;
+}
+
+.tpl-pf-pick {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.tpl-pf-pick-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tpl-pf-pick > .tpl-pf-remove {
+    flex: none;
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
 /* Collection rows: a compact read-only list. */
 .tpl-pf-row {
     overflow: hidden;

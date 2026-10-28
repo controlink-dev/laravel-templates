@@ -17,6 +17,7 @@ import { applyFormat, replaceLayout } from './format-switch.js';
 import { registerTableAndSlot } from './table.js';
 import { mountPreviewPanel, pdfSelectionOf, plainProjectData, refreshPreview, selectionOf, truncationNotice } from './preview-filter.js';
 import { createFormatPreview } from './format-preview.js';
+import { downloadZpl } from './zpl-download.js';
 import { createFormulaPreview, formulaFunctionsOf, refreshFormulaTraits, selectionHeading } from './formula.js';
 import { createFormulaLibrary } from './formula-library.js';
 import { rollGridCss } from './roll-grid.js';
@@ -538,24 +539,27 @@ async function mountEditor(el) {
         }
     });
 
+    /*
+     * The preview renders what is stored, not what is on screen, so unsaved work is saved
+     * first. Rendering the browser's copy instead would mean previewing a document that
+     * never passed through the server's sanitisation, and showing the user something the
+     * stored version would not produce. The ZPL download follows the same rule (CGE-98).
+     */
+    const saveBeforeRendering = async () => {
+        if (dirty && config.editable) {
+            await saveVersion(editor, config);
+
+            savedSnapshot = snapshot(editor);
+            dirty = false;
+            announce(false);
+        }
+    };
+
     root.querySelector('[data-tpl-preview]')?.addEventListener('click', async () => {
         renderStatus(config.strings.rendering, root);
 
         try {
-            /*
-             * The preview renders what is stored, not what is on screen, so unsaved
-             * work is saved first. Rendering the browser's copy instead would mean
-             * previewing a document that never passed through the server's
-             * sanitisation, and showing the user something the stored version would
-             * not produce.
-             */
-            if (dirty && config.editable) {
-                await saveVersion(editor, config);
-
-                savedSnapshot = snapshot(editor);
-                dirty = false;
-                announce(false);
-            }
+            await saveBeforeRendering();
 
             const { url, notice } = await renderPreview(config);
 
@@ -575,6 +579,44 @@ async function mountEditor(el) {
             }
 
             notify(root, config, { level: 'error', message: error.message });
+        }
+    });
+
+    /*
+     * "Download ZPL" (CGE-98), on a label type whose host serves it: the labels of the
+     * Amostra's articles (the fixture when none is picked), saved as a file. Added here
+     * rather than in the Blade, like the Amostra tab, so a host that overrides the view
+     * gets it with the bundle; shown only while the version on screen has a ZPL URL.
+     */
+    const zplButton = mountZplButton(root, config);
+
+    zplButton?.addEventListener('click', async () => {
+        renderStatus(config.strings.zplRendering, root);
+        zplButton.disabled = true;
+
+        try {
+            await saveBeforeRendering();
+
+            await downloadZpl({
+                url: config.zplUrl,
+                selection: pdfSelectionOf(config.preview),
+                headers: requestHeaders(config),
+                fallbackName: 'labels.zpl',
+                failedMessage: config.strings.zplFailed,
+            });
+
+            renderStatus('', root);
+        } catch (error) {
+            if (error.cancelled) {
+                renderStatus(config.strings.unsaved, root);
+
+                return;
+            }
+
+            // The status line (or the host's notice), never a dialog of our own.
+            notify(root, config, { level: 'error', message: error.message });
+        } finally {
+            zplButton.disabled = false;
         }
     });
 
@@ -1747,6 +1789,10 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
                 config.loadUrl     = info.urls.load;
                 config.previewUrl  = info.urls.preview;
                 config.activateUrl = info.urls.activate;
+                // A label format's version downloads its labels as ZPL (CGE-98); any other
+                // format has none, and the button hides with it.
+                config.zplUrl      = info.urls.zpl || '';
+                showZplButton(root, config);
                 // A version may carry no geometry of its own — a legacy default-format version
                 // (the first A4) predates the geometry column and stores [] (or null). Fall
                 // back to the FORMAT's own geometry from the registry, never to the format left
@@ -2636,6 +2682,12 @@ function readConfig(el) {
         // Optional: the real records a node/collection can be previewed with (CGE-29).
         // Without it the editor has no sample-data panel and behaves as before.
         previewRecordsUrl: el.dataset.previewRecordsUrl || '',
+        // Optional (CGE-98): the context node a label type prints a batch of (`article`).
+        // The Amostra then picks several records for it, one label each, in order.
+        batchNode: el.dataset.batchNode || '',
+        // Optional (CGE-98): downloads the Amostra's labels as ZPL. Without it there is no
+        // "Download ZPL" button; a format switch replaces it with the new version's.
+        zplUrl: el.dataset.zplUrl || '',
         // Optional: formats sample values for the canvas exactly as the PDF does (CGE-49).
         formatPreviewUrl: el.dataset.formatPreviewUrl || '',
         // Optional: checks and evaluates formula fields for the canvas (CGE-37). Without
@@ -3232,6 +3284,37 @@ async function renderPreview(config) {
         url: URL.createObjectURL(await response.blob()),
         notice: truncationNotice(response.headers, config.strings),
     };
+}
+
+/**
+ * The "Download ZPL" button beside "Preview" (CGE-98): the one in the markup when the host
+ * drew it, else one made like it. Null when there is no preview button to sit beside.
+ */
+function mountZplButton(root, config) {
+    let button = root.querySelector('[data-tpl-zpl]');
+    const preview = root.querySelector('[data-tpl-preview]');
+
+    if (!button && preview) {
+        button = document.createElement('button');
+        button.type = 'button';
+        button.className = preview.className;
+        button.dataset.tplZpl = '1';
+        button.innerHTML = icons.download;
+        button.append(' ' + (config.strings.downloadZpl ?? 'Download ZPL'));
+        preview.after(button);
+    }
+
+    showZplButton(root, config);
+
+    return button;
+}
+
+function showZplButton(root, config) {
+    const button = root.querySelector('[data-tpl-zpl]');
+
+    if (button) {
+        button.hidden = !config.zplUrl;
+    }
 }
 
 /**
