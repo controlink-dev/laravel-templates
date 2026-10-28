@@ -109,7 +109,7 @@ class RollRenderTest extends TestCase
         // And a code slot and an image are centred, as ESC/POS centres them (ESC a 1).
         // And the zones are in flow with no band height.
         $cells = '.page .block{position:static}.page .zone{position:static;height:auto}'
-            .'table.lines th,table.lines td{padding:0;vertical-align:top}'
+            .'.page table.lines th,.page table.lines td{padding:0;vertical-align:top}'
             .'.page [data-tpl-type="code-slot"],.page [data-tpl-type="image"]{display:block;margin-left:auto;margin-right:auto}';
         $css   = app(PageStructure::class)->rollWrapCss($html);
         $this->assertSame($cells.$rule, $css);

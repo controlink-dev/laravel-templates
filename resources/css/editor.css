@@ -2498,7 +2498,10 @@ select.tpl-pf-input {
     cursor: pointer;
 }
 
+/* `.gjs-field input` sets `appearance:none`, which left the checkbox with nothing to draw. */
 .tpl-editor-root .tpl-esc-check input {
+    appearance: auto;
+    -webkit-appearance: checkbox;
     width: 1rem;
     height: 1rem;
     margin: 0;
