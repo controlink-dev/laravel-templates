@@ -13,7 +13,6 @@ use DOMDocument;
 use DOMElement;
 use Controlink\Templates\Support\PageGeometry;
 use DOMXPath;
-use Picqer\Barcode\Types\TypeCode128B;
 use RuntimeException;
 
 /**
@@ -197,10 +196,13 @@ class CodeImageGenerator
         }
     }
 
-    /** A label is a sheet sized in millimetres, which `PageGeometry` marks with no paper format. */
+    /**
+     * A label is what the host flags as one (`PageGeometry::$isLabel`), never merely a sheet
+     * sized in mm: a custom-size fiscal document keeps its QR exactly as before labels.
+     */
     private function isLabel(?PageGeometry $geometry): bool
     {
-        return $geometry !== null && $geometry->medium === 'sheet' && $geometry->paperFormat === null;
+        return $geometry !== null && $geometry->isLabel;
     }
 
     /** The inline style with its width and height replaced by the given ones. */
@@ -298,12 +300,11 @@ class CodeImageGenerator
     /**
      * A Code 128 barcode as an SVG data URI: bars only, no human-readable text.
      *
-     * Subset B is forced rather than letting the library pick: its automatic mode swaps
-     * subsets to save modules, which makes the symbol length depend on the content's
-     * mix of digits and letters, and the ZPL path and the width check must agree on the
-     * length from the character count alone. The bars come from the library; the SVG is
-     * drawn here so every module is exactly `dots / 8` millimetres, which no library
-     * option guarantees. The quiet zone is real white space inside the image.
+     * Subset B, always (`Code128`): a mode that swaps subsets to save modules would make
+     * the symbol length depend on the content's mix of digits and letters, and the ZPL
+     * path and the width check must agree on the length from the character count alone.
+     * The SVG is drawn here so every module is exactly `dots / 8` millimetres. The quiet
+     * zone is real white space inside the image.
      *
      * @throws BarcodeFailure
      */
@@ -318,12 +319,13 @@ class CodeImageGenerator
         $x     = Code128Fit::QUIET_ZONE * $moduleMm;
         $rects = '';
 
-        foreach ((new TypeCode128B)->getBarcode($content)->getBars() as $bar) {
-            if ($bar->isBar()) {
-                $rects .= '<rect x="'.self::mm($x).'" y="0" width="'.self::mm($bar->getWidth() * $moduleMm).'" height="'.$h.'"/>';
+        // Alternating bar and space widths, bar first.
+        foreach (Code128::widths($content) as $element => $modules) {
+            if ($element % 2 === 0) {
+                $rects .= '<rect x="'.self::mm($x).'" y="0" width="'.self::mm($modules * $moduleMm).'" height="'.$h.'"/>';
             }
 
-            $x += $bar->getWidth() * $moduleMm;
+            $x += $modules * $moduleMm;
         }
 
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'.$w.'mm" height="'.$h.'mm" viewBox="0 0 '.$w.' '.$h.'" shape-rendering="crispEdges">'

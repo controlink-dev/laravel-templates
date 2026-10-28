@@ -15,7 +15,7 @@ class ZplEncoderTest extends TestCase
 {
     private function label(): PageGeometry
     {
-        return PageGeometry::fromType(['medium' => 'sheet', 'width_mm' => 100, 'height_mm' => 50]);
+        return PageGeometry::fromType(['medium' => 'sheet', 'width_mm' => 100, 'height_mm' => 50, 'label' => true]);
     }
 
     /** @param  callable(\GdImage): void|null  $draw */

@@ -29,7 +29,7 @@ class CodeImageGeneratorBarcodeTest extends TestCase
 
     private function label(): PageGeometry
     {
-        return PageGeometry::fromType(['medium' => 'sheet', 'width_mm' => 80, 'height_mm' => 30]);
+        return PageGeometry::fromType(['medium' => 'sheet', 'width_mm' => 80, 'height_mm' => 30, 'label' => true]);
     }
 
     public function test_barcode_slot_renders_bars_in_whole_dots(): void
@@ -81,7 +81,7 @@ class CodeImageGeneratorBarcodeTest extends TestCase
 
         (new CodeImageGenerator)->inject(
             $this->slot('width:80mm;height:15mm'),
-            ['code' => 'AÃ‡O-1'],
+            ['code' => 'AÇO-1'],
             ['code' => ['type' => 'barcode']],
         );
     }

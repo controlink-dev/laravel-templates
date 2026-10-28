@@ -102,7 +102,7 @@ final class Documents
      *
      * @param  array{project_data?: array<string, mixed>, html: string, css?: string}  $layout
      * @param  list<array<string, mixed>>  $datasets  one per label, repeats allowed
-     * @param  array<string, mixed>  $geometry  a label: a sheet with `width_mm` and `height_mm`
+     * @param  array<string, mixed>  $geometry  a label: a sheet with `width_mm`, `height_mm` and `label: true`
      * @param  string  $css  overrides the layout's own stylesheet when not empty
      * @param  list<array<string, mixed>>  $fields  needed to bind the code slots (qr, barcode)
      *
@@ -158,7 +158,7 @@ final class Documents
      *
      * @param  array{project_data?: array<string, mixed>, html: string, css?: string}  $layout
      * @param  list<array<string, mixed>>  $datasets  one per label, repeats allowed
-     * @param  array<string, mixed>  $geometry  a label: a sheet with `width_mm` and `height_mm`
+     * @param  array<string, mixed>  $geometry  a label: a sheet with `width_mm`, `height_mm` and `label: true`
      * @param  string  $css  overrides the layout's own stylesheet when not empty
      * @param  list<array<string, mixed>>  $fields  needed to bind the code slots (qr, barcode)
      *
@@ -415,8 +415,8 @@ final class Documents
         $type  = $this->carrier($fields, $geometry);
         $paper = PageGeometry::fromType($type->pdf);
 
-        if ($paper->medium !== 'sheet' || $paper->paperFormat !== null || $paper->widthMm <= 0 || $paper->heightMm <= 0) {
-            throw new InvalidArgumentException('Only a label (a sheet sized in millimetres) prints as a batch of labels.');
+        if (! $paper->isLabel) {
+            throw new InvalidArgumentException('Only a label (a sheet sized in millimetres flagged `label: true`) prints as a batch of labels.');
         }
 
         return $type;

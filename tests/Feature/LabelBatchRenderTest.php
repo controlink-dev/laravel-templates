@@ -2,8 +2,10 @@
 
 namespace Controlink\Templates\Tests\Feature;
 
+use Controlink\Templates\Codes\Code128Fit;
 use Controlink\Templates\Output\Pdf\RenderedPdf;
 use Controlink\Templates\Tests\TestCase;
+use Controlink\Templates\Tests\Unit\Code128Test;
 use Controlink\Templates\Toolkit\Documents;
 use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Process\ExecutableFinder;
@@ -59,6 +61,7 @@ class LabelBatchRenderTest extends TestCase
             'medium'    => 'sheet',
             'width_mm'  => 100,
             'height_mm' => 50,
+            'label'     => true,
             'margins'   => ['top' => 3.0, 'right' => 3.0, 'bottom' => 3.0, 'left' => 3.0],
             'max_pages' => 1,
             'zones'     => ['header_height' => 0.0, 'footer_height' => 0.0],
@@ -120,5 +123,64 @@ class LabelBatchRenderTest extends TestCase
         $this->assertSame(600, mb_strlen(str_repeat('Parafuso ', 66).'abcdef'));
 
         RenderedPdf::open($pdf, fn (RenderedPdf $pdf) => $this->assertSame(1, $pdf->pageCount()));
+    }
+    /**
+     * The barcode the PDF prints decodes back to the article's code: the page is rasterised
+     * at two pixels per printer dot, the bars are read off one row through the middle of the
+     * slot and decoded through the Code 128 table.
+     */
+    public function test_the_printed_barcode_decodes_back_to_its_content(): void
+    {
+        if (! (new ExecutableFinder)->find('pdftoppm')) {
+            $this->markTestSkipped('pdftoppm not installed');
+        }
+
+        $layout          = $this->layout();
+        $layout['html']  = str_replace('</div></div></div>', '</div><img data-tpl-type="code-slot" data-tpl-binding="article.barcode" id="tpl-bc" class="block" alt=""></div></div>', $layout['html']);
+        $layout['css']  .= '#tpl-bc{position:absolute;left:0;top:28mm;width:90mm;height:15mm}';
+        $fields          = [...$this->fields(), ['key' => 'article.barcode', 'label' => 'Barcode', 'type' => 'barcode']];
+
+        foreach (['ART-00003', '5601234567890'] as $content) {
+            $pdf = app(Documents::class)->labels($layout, [
+                ['article.name' => 'A', 'article.code' => '1001', 'article.barcode' => $content],
+            ], $this->geometry(), '', $fields);
+
+            $runs = RenderedPdf::open($pdf, function (RenderedPdf $pdf): array {
+                // Slot at 3 mm margin + 28 mm; one row through its middle, 406 dpi = 2 px a dot.
+                $image = imagecreatefromstring($pdf->rasterOf(1, 406, ['left' => 0.0, 'top' => 38.0, 'width' => 100.0, 'height' => 1.0]));
+                $y     = intdiv(imagesy($image), 2);
+                $runs  = [];
+                $dark  = null;
+
+                for ($x = 0; $x < imagesx($image); $x++) {
+                    $isDark = (imagecolorat($image, $x, $y) & 0xFF) < 128;
+
+                    if ($dark === null) {
+                        if ($isDark) {
+                            [$dark, $runs] = [true, [1]];
+                        }
+
+                        continue;
+                    }
+
+                    if ($isDark === $dark) {
+                        $runs[array_key_last($runs)]++;
+                    } else {
+                        [$dark, $runs[]] = [$isDark, 1];
+                    }
+                }
+
+                // Drop the trailing white (quiet zone and margin).
+                if ($dark === false) {
+                    array_pop($runs);
+                }
+
+                return $runs;
+            });
+
+            // The symbol without its quiet zones spans this many modules.
+            $module = array_sum($runs) / (Code128Fit::modules($content) - 2 * Code128Fit::QUIET_ZONE);
+            $this->assertSame($content, Code128Test::decodeRuns(array_map(fn (int $px): int => (int) round($px / $module), $runs)), $content);
+        }
     }
 }

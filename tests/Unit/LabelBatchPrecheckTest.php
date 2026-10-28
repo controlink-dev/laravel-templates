@@ -20,6 +20,7 @@ class LabelBatchPrecheckTest extends TestCase
         'medium'    => 'sheet',
         'width_mm'  => 100,
         'height_mm' => 50,
+            'label'     => true,
         'margins'   => ['top' => 3.0, 'right' => 3.0, 'bottom' => 3.0, 'left' => 3.0],
         'zones'     => ['header_height' => 0.0, 'footer_height' => 0.0],
     ];
@@ -165,6 +166,41 @@ class LabelBatchPrecheckTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         app(Documents::class)->labels($layout, [['lines' => [['c' => 1]]], ['lines' => $rows]], self::LABEL, '', $fields);
+    }
+
+    /**
+     * C1: a document sheet in a custom mm size is not a label. Its QR keeps the inline size
+     * the user drew and the image it had before labels existed, and the version CSS is not
+     * read — a legal QR must not shrink to whole printer dots.
+     */
+    public function test_a_custom_mm_document_without_the_label_flag_keeps_its_qr_as_before_labels(): void
+    {
+        $layout = ['html' => '<div class="page"><div class="zone zone--body" data-tpl-zone="body">'
+            .'<img data-tpl-type="code-slot" data-tpl-binding="article.qr" id="tpl-qr" class="block" style="top:0;left:5mm;width:31mm;height:31mm">'
+            .'</div></div>', 'css' => '#tpl-qr{width:12mm;height:12mm}'];
+
+        $custom = TemplateType::fromConfig('document', [
+            'output'         => 'pdf',
+            'bindings'       => $this->fields(),
+            'pdf'            => ['medium' => 'sheet', 'width_mm' => 100, 'height_mm' => 150, 'margins' => ['top' => 5.0, 'right' => 5.0, 'bottom' => 5.0, 'left' => 5.0]],
+            'initial_layout' => ['zones' => self::LABEL['zones']],
+        ]);
+
+        $this->assertFalse(\Controlink\Templates\Support\PageGeometry::fromType($custom->pdf)->isLabel);
+
+        $html = app(DocumentComposer::class)->compose($layout['html'], $layout['css'], $custom, ['article.qr' => 'https://example.test/q?x=1']);
+
+        // The inline size is untouched (a label would rewrite it to whole dots) and the image is
+        // exactly the generator's plain QR at the inline 31 mm, as it was at base.
+        $this->assertStringContainsString('style="top:0;left:5mm;width:31mm;height:31mm"', $html);
+        $this->assertStringContainsString(
+            'src="'.(new \Controlink\Templates\Codes\CodeImageGenerator)->generate('qr', 'https://example.test/q?x=1', 31.0).'"',
+            $html,
+        );
+
+        // And it is no label to print in batches.
+        $this->expectException(InvalidArgumentException::class);
+        app(Documents::class)->labels($layout, [['article.qr' => 'x']], array_diff_key(self::LABEL, ['label' => true]), '', $this->fields());
     }
 
     private function type(): TemplateType

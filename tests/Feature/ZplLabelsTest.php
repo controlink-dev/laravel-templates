@@ -50,6 +50,7 @@ class ZplLabelsTest extends TestCase
             'medium'    => 'sheet',
             'width_mm'  => 100,
             'height_mm' => 50,
+            'label'     => true,
             'margins'   => ['top' => 0.0, 'right' => 0.0, 'bottom' => 0.0, 'left' => 0.0],
             'max_pages' => 1,
             'zones'     => ['header_height' => 0.0, 'footer_height' => 0.0],
