@@ -2505,18 +2505,3 @@ select.tpl-pf-input {
     accent-color: var(--tpl-slate-900, #0f172a);
     cursor: pointer;
 }
-
-/* Thermal receipt preview (CGE-97): wider box, scrolls when the receipt is long. */
-.tpl-dialog__box--escpos {
-    max-width: 640px;
-}
-
-.tpl-dialog__title {
-    font-weight: 600;
-}
-
-.tpl-escpos-preview {
-    max-height: 60vh;
-    overflow: auto;
-    margin: 0 0 18px;
-}

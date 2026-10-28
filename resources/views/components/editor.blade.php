@@ -33,13 +33,6 @@
                 {!! $icons['file-pdf'] !!} {{ __('templates::editor.editor.preview') }}
             </button>
 
-            {{-- Roll only: hidden unless the format is a roll and the host gave an endpoint.
-                 Always rendered, because the host may give the URL only for roll versions and
-                 the editor shows the button when a format switch reaches one. --}}
-            <button type="button" class="tpl-btn tpl-btn--secondary" data-tpl-escpos-preview="1" @if((($geometry())['medium'] ?? null) !== 'roll' || empty($urls['escpos_preview'])) hidden @endif>
-                {!! $icons['file-pdf'] !!} {{ __('templates::editor.escpos.preview') }}
-            </button>
-
             @unless($readOnly)
                 <button type="button" class="tpl-btn tpl-btn--secondary" data-tpl-save="1">
                     {!! $icons['floppy-disk'] !!} {{ __('templates::editor.editor.save') }}
@@ -199,7 +192,6 @@
         data-load-url="{{ $urls['load'] ?? '' }}"
         data-save-url="{{ $urls['save'] ?? '' }}"
         data-preview-url="{{ $urls['preview'] ?? '' }}"
-        data-escpos-preview-url="{{ $urls['escpos_preview'] ?? '' }}"
         data-activate-url="{{ $urls['activate'] ?? '' }}"
         data-catalogue-url="{{ $urls['catalogue'] ?? '' }}"
         {{-- In-place format switch: the editor replaces `__FORMAT__` with the chosen

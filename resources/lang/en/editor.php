@@ -343,9 +343,6 @@ return [
     // The receipt's translation for the thermal printer (ESC/POS, CGE-97). `:subject` is
     // the field (or element) concerned; `:columns` the receipt's width in characters.
     'escpos' => [
-        'preview'           => 'Preview thermal receipt',
-        'title'             => 'Thermal receipt preview',
-        'download'          => 'Download',
         'unencodable_field' => 'The field ":subject" has the character ":char", which the thermal printer cannot print. Correct the field\'s value.',
         'unencodable'       => 'The text of ":subject" has the character ":char", which the thermal printer cannot print.',
         'value_too_wide'    => 'The value ":subject" does not fit on a receipt line (:width characters) and cannot be split. Give it more columns or a line of its own.',

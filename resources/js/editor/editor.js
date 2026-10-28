@@ -40,7 +40,6 @@ import {
 } from './panels.js';
 import { mergeProblems } from './problems.js';
 import { confirmDialog } from './dialog.js';
-import { requestEscposPreview, shouldShowEscposButton, showEscposDialog } from './escpos-preview.js';
 import { saveConfirmingWarnings } from './save.js';
 import { placementInZone, round, topInZone, zoneAt, zonesFor } from './zones.js';
 import { anchorShift, clampMove, wheelMove, wheelZoomFactor } from './pan.js';
@@ -576,43 +575,6 @@ async function mountEditor(el) {
             }
 
             notify(root, config, { level: 'error', message: error.message });
-        }
-    });
-
-    root.querySelector('[data-tpl-escpos-preview]')?.addEventListener('click', async () => {
-        renderStatus(config.strings.rendering, root);
-
-        try {
-            // Like the PDF: the preview is built from what is stored, so save first.
-            if (dirty && config.editable) {
-                await saveVersion(editor, config);
-
-                savedSnapshot = snapshot(editor);
-                dirty = false;
-                announce(false);
-            }
-
-            const payload = await requestEscposPreview(
-                config,
-                requestHeaders(config),
-                pdfSelectionOf(config.preview),
-            );
-
-            serverProblems = [];
-            refreshChecks();
-            renderStatus('', root);
-            await showEscposDialog(payload, { root, strings: config.strings });
-        } catch (error) {
-            if (error.cancelled) {
-                renderStatus(config.strings.unsaved, root);
-
-                return;
-            }
-
-            // A refusal (422) names the elements, as on activation.
-            serverProblems = error.problems ?? [];
-            refreshChecks();
-            notify(root, config, { level: 'error', message: error.message, problems: serverProblems });
         }
     });
 
@@ -1515,15 +1477,6 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         applyViews();
     };
 
-    // The thermal preview belongs to a roll: follow the medium on every format change.
-    const syncEscposButton = () => {
-        const button = root.querySelector('[data-tpl-escpos-preview]');
-
-        if (button) {
-            button.hidden = !shouldShowEscposButton(config);
-        }
-    };
-
     const applyPaper = (geometry) => {
         Object.assign(paper, resolvePaper(geometry, config.paperFormat));
         applyPaperVars(root, paper);
@@ -1536,7 +1489,6 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         // sections are hidden there (editor.css); the traits, the row block and the rules
         // follow the medium.
         root.classList.toggle('tpl-roll-mode', rollMode);
-        syncEscposButton();
         applyRollMode(editor, config);
 
         applyCanvasToFrame();
@@ -1795,7 +1747,6 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
                 config.loadUrl     = info.urls.load;
                 config.previewUrl  = info.urls.preview;
                 config.activateUrl = info.urls.activate;
-                config.escposPreviewUrl = info.urls.escpos_preview || '';
                 // A version may carry no geometry of its own — a legacy default-format version
                 // (the first A4) predates the geometry column and stores [] (or null). Fall
                 // back to the FORMAT's own geometry from the registry, never to the format left
@@ -2680,8 +2631,6 @@ function readConfig(el) {
         loadUrl: el.dataset.loadUrl,
         saveUrl: el.dataset.saveUrl,
         previewUrl: el.dataset.previewUrl,
-        // Optional: the thermal-receipt (ESC/POS) preview of a roll (CGE-97).
-        escposPreviewUrl: el.dataset.escposPreviewUrl || '',
         activateUrl: el.dataset.activateUrl,
         catalogueUrl: el.dataset.catalogueUrl,
         // Optional: the real records a node/collection can be previewed with (CGE-29).
