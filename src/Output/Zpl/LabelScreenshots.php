@@ -29,6 +29,13 @@ final class LabelScreenshots
     /** CSS pixels per millimetre (96 per inch). */
     private const CSS_PX_PER_MM = 96 / 25.4;
 
+    /**
+     * Screenshot dots in one CSS pixel (about 2.12): the device scale. Chromium snaps a
+     * replaced element (an `img`) to whole CSS pixels, so a box can come back this much
+     * off its slot, plus a dot of edge blending (see `Documents::placeCodes()`).
+     */
+    public const DOTS_PER_CSS_PX = Dots::PER_MM / self::CSS_PX_PER_MM;
+
     /** How many labels of this size one screenshot takes: 30, fewer when they are tall (20 of 50 mm). */
     public static function perCall(PageGeometry $label): int
     {
@@ -65,7 +72,7 @@ final class LabelScreenshots
             ->post($baseUrl.'/forms/chromium/screenshot/html', [
                 ['name' => 'width', 'contents' => (string) (int) ceil($label->widthMm * self::CSS_PX_PER_MM)],
                 ['name' => 'height', 'contents' => (string) (int) ceil($n * $label->heightMm * self::CSS_PX_PER_MM)],
-                ['name' => 'deviceScaleFactor', 'contents' => (string) (Dots::PER_MM / self::CSS_PX_PER_MM)],
+                ['name' => 'deviceScaleFactor', 'contents' => (string) self::DOTS_PER_CSS_PX],
                 ['name' => 'emulatedMediaType', 'contents' => 'print'],
                 ['name' => 'format', 'contents' => 'png'],
                 ['name' => 'clip', 'contents' => 'true'],

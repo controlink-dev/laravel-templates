@@ -227,14 +227,19 @@ final class Documents
         $barcodes = [];
         $problems = [];
 
+        // Chromium snaps an img to whole CSS pixels (about 2.12 dots at this scale), and
+        // an edge may blend one more dot: measured 117 dots high for a 120 dot slot.
+        $tolerance = (int) ceil(LabelScreenshots::DOTS_PER_CSS_PX) + 1;
+
         foreach ($codes as $marker => $code) {
             $box = $found[$marker] ?? null;
 
             // Solid (no more than an edge row and column short) and the size the slot
-            // was given, to two dots: anything else is not this code's box.
+            // was given, to the screenshot's CSS-pixel snapping: anything else is not
+            // this code's box.
             if ($box === null
-                || abs($box['w'] - $code['w']) > 2
-                || abs($box['h'] - $code['h']) > 2
+                || abs($box['w'] - $code['w']) > $tolerance
+                || abs($box['h'] - $code['h']) > $tolerance
                 || $box['pixels'] < ($box['w'] - 1) * ($box['h'] - 1)) {
                 $problems[] = ['index' => $index, 'content' => $code['content'], 'reason' => 'marker_not_found'];
 
@@ -254,7 +259,7 @@ final class Documents
             $modules = Code128Fit::modules($code['content']);
             $module  = (int) round($box['w'] / $modules);
 
-            if ($module < Code128Fit::MIN_MODULE_DOTS || abs($box['w'] - $modules * $module) > 2) {
+            if ($module < Code128Fit::MIN_MODULE_DOTS || abs($box['w'] - $modules * $module) > $tolerance) {
                 $problems[] = ['index' => $index, 'content' => $code['content'], 'reason' => 'does_not_fit'];
 
                 continue;

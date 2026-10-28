@@ -202,6 +202,21 @@ class ZplLabelsTest extends TestCase
         }
     }
 
+    /** Slots whose box Chromium snaps to whole CSS pixels (measured: 15 mm came back 117 dots, 12 mm 94); which tops fail depends on the fractional CSS pixel. */
+    #[Group('render')]
+    public function test_barcode_slots_of_15_and_12_mm_are_not_refused_by_the_css_pixel_snapping(): void
+    {
+        foreach ([[15, 7.3, 120], [15, 31.7, 120], [12, 31.7, 96], [10, 7.3, 80]] as [$mm, $top, $dots]) {
+            $layout         = $this->layout();
+            $layout['css'] .= "#tpl-bc{left:5mm;top:{$top}mm;width:60mm;height:{$mm}mm}";
+
+            $zpl = app(Documents::class)->zpl($layout, [['article.name' => 'A', 'article.barcode' => 'ART-0000000001']], $this->geometry(), '', $this->fields());
+
+            $this->assertSame(1, preg_match('/\^BY\d+\^BCN,(\d+),N,N,N,N\^FD>:ART-0000000001\^FS/', $zpl, $match), "{$mm} mm slot at {$top} mm");
+            $this->assertEqualsWithDelta($dots, (int) $match[1], 4, "{$mm} mm slot at {$top} mm, bars as tall as the box measured");
+        }
+    }
+
     #[Group('render')]
     public function test_a_barcode_covered_by_another_block_refuses_the_batch(): void
     {
