@@ -20,6 +20,9 @@ use Controlink\Templates\Output\Pdf\LayoutValidator;
 use Controlink\Templates\Output\Pdf\PdfHash;
 use Controlink\Templates\Output\Pdf\PdfRenderer;
 use Controlink\Templates\Output\Pdf\RenderValidator;
+use Controlink\Templates\Output\Zpl\LabelScreenshots;
+use Controlink\Templates\Output\Zpl\MonoImage;
+use Controlink\Templates\Output\Zpl\ZplEncoder;
 use Controlink\Templates\Rendering\FormatSpec;
 use Controlink\Templates\Support\PageGeometry;
 use Controlink\Templates\Types\TemplateType;
@@ -50,6 +53,7 @@ final class Documents
         private readonly PdfRenderer $renderer,
         private readonly LayoutValidator $layoutValidator,
         private readonly RenderValidator $renderValidator,
+        private readonly LabelScreenshots $screenshots,
     ) {}
 
     /**
@@ -124,6 +128,181 @@ final class Documents
         $html = $this->composer->composeMany($layout['html'], $css, $type, array_values($datasets), oneSheetEach: true);
 
         return $this->renderer->render($html, $type)['pdf'];
+    }
+
+    /**
+     * A batch of labels as ZPL for a 203 dpi Zebra, one `^XA…^XZ` block per dataset, in
+     * the order given, joined by newlines (CGE-98).
+     *
+     * Each label is the PDF's page as a picture, plus its barcodes as native Code 128:
+     * the batch is composed exactly as `labels()` composes it, every barcode slot's image
+     * is swapped for a box of its own marker colour (`rgb(255,0,i)`, `i` its order on the
+     * label), and the engine takes one screenshot per label at one pixel per dot. There
+     * each marker gives the barcode's box in dots; it is painted white and a `^BC` goes
+     * over it, with the module the box is wide for and its first bar after the quiet
+     * zone, where the PDF's first bar is. The bars' value is the dataset's, never read
+     * back from a picture. QR codes stay in the picture: on a label their modules are
+     * already whole dots.
+     *
+     * The same all-or-nothing as `labels()`: the pre-check runs before the engine is
+     * called, and a box that comes back too narrow for its value refuses the batch too.
+     *
+     * @param  array{project_data?: array<string, mixed>, html: string, css?: string}  $layout
+     * @param  list<array<string, mixed>>  $datasets  one per label, repeats allowed
+     * @param  array<string, mixed>  $geometry  a label: a sheet with `width_mm` and `height_mm`
+     * @param  string  $css  overrides the layout's own stylesheet when not empty
+     * @param  list<array<string, mixed>>  $fields  needed to bind the code slots (qr, barcode)
+     *
+     * @throws InvalidArgumentException when the geometry is not a label, there is no dataset,
+     *                                  or a dataset's label takes more than one sheet
+     * @throws LabelBatchFailed when any dataset's barcode cannot be printed
+     */
+    public function zpl(array $layout, array $datasets, array $geometry = [], string $css = '', array $fields = []): string
+    {
+        $type = $this->labelCarrier($fields, $geometry);
+
+        if ($datasets === []) {
+            throw new InvalidArgumentException('A batch of labels needs at least one dataset.');
+        }
+
+        $datasets = array_values($datasets);
+        $css      = $css !== '' ? $css : (string) ($layout['css'] ?? '');
+        $failures = $this->barcodeFailures($layout['html'], $css, $datasets, $fields);
+
+        if ($failures !== []) {
+            throw new LabelBatchFailed($failures);
+        }
+
+        $label = PageGeometry::fromType($type->pdf);
+        $html  = $this->composer->composeMany($layout['html'], $css, $type, $datasets, oneSheetEach: true);
+
+        [$html, $markers] = $this->withBarcodeMarkers($html, $type);
+
+        $pngs     = $this->screenshots->take($html, $label, count($datasets));
+        $images   = [];
+        $barcodes = [];
+
+        foreach ($datasets as $index => $dataset) {
+            $images[$index]   = MonoImage::fromPng($pngs[$index]);
+            $barcodes[$index] = [];
+
+            foreach ($markers[$index] ?? [] as $marker => $binding) {
+                $content = (string) ($dataset[$binding] ?? '');
+                $box     = $images[$index]->findMarker([255, 0, $marker]);
+
+                // Cut away by the label's edge entirely: the PDF does not print it either.
+                if ($box === null) {
+                    continue;
+                }
+
+                $images[$index]->paintWhite($box);
+
+                // The box is the bars' image, `modules x module` dots, give or take the
+                // one dot the screenshot rounds off an edge; a box that is not (a slot
+                // cut by the label's edge) cannot hold the code.
+                $modules = Code128Fit::modules($content);
+                $module  = (int) round($box['w'] / $modules);
+
+                if ($module < Code128Fit::MIN_MODULE_DOTS || abs($box['w'] - $modules * $module) > 2) {
+                    $failures[] = ['index' => $index, 'content' => $content, 'reason' => 'does_not_fit'];
+
+                    continue;
+                }
+
+                $barcodes[$index][] = [
+                    'x'          => $box['x'] + Code128Fit::QUIET_ZONE * $module,
+                    'y'          => $box['y'],
+                    'heightDots' => $box['h'],
+                    'moduleDots' => $module,
+                    'content'    => $content,
+                ];
+            }
+        }
+
+        if ($failures !== []) {
+            throw new LabelBatchFailed($failures);
+        }
+
+        $encoder = new ZplEncoder;
+
+        return implode("\n", array_map(
+            fn (int $index): string => $encoder->label($images[$index], $barcodes[$index], $label),
+            array_keys($datasets),
+        ));
+    }
+
+    /**
+     * The composed batch with every barcode slot's image swapped for a solid box of its
+     * marker colour, at the size `CodeImageGenerator` wrote: `rgb(255,0,i)`, `i` the
+     * slot's order on its label. Kept as the same `img`, so nothing about its box moves.
+     *
+     * @return array{string, list<array<int, string>>} the HTML, and per label (one sheet
+     *                                                 each) the binding of each marker
+     */
+    private function withBarcodeMarkers(string $html, TemplateType $type): array
+    {
+        $start = strpos($html, '<body>');
+        $end   = strrpos($html, '</body>');
+
+        if ($start === false || $end === false || ! str_contains($html, 'data-tpl-type="code-slot"')) {
+            return [$html, []];
+        }
+
+        $bindings = $type->bindingsByKey();
+        $document = new \DOMDocument;
+        $previous = libxml_use_internal_errors(true);
+        $document->loadHTML(
+            '<?xml encoding="utf-8" ?><div id="tpl-labels">'.substr($html, $start + 6, $end - $start - 6).'</div>',
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD,
+        );
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        $xpath   = new \DOMXPath($document);
+        $root    = $document->getElementById('tpl-labels');
+        $markers = [];
+
+        foreach ($xpath->query('./*[contains(concat(" ", normalize-space(@class), " "), " page ")]', $root) ?: [] as $page) {
+            $slots = [];
+
+            foreach ($xpath->query('.//*[@data-tpl-type="code-slot"]', $page) ?: [] as $slot) {
+                if (! $slot instanceof \DOMElement) {
+                    continue;
+                }
+
+                $attributes = [];
+                foreach ($slot->attributes as $attribute) {
+                    $attributes[$attribute->name] = $attribute->value;
+                }
+
+                $binding = $slot->getAttribute('data-tpl-binding');
+
+                if (CodePayload::fromAttributes($attributes) !== null || ($bindings[$binding]['type'] ?? null) !== 'barcode') {
+                    continue;
+                }
+
+                $marker = count($slots);
+
+                if ($marker > 255) {
+                    throw new \RuntimeException('A label has more barcodes than marker colours (256).');
+                }
+
+                $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1" preserveAspectRatio="none">'
+                    .'<rect width="1" height="1" fill="rgb(255,0,'.$marker.')"/></svg>';
+
+                $slot->setAttribute('src', 'data:image/svg+xml;base64,'.base64_encode($svg));
+                $slots[$marker] = $binding;
+            }
+
+            $markers[] = $slots;
+        }
+
+        $body = '';
+        foreach ($root?->childNodes ?? [] as $child) {
+            $body .= $document->saveHTML($child);
+        }
+
+        return [substr($html, 0, $start + 6).$body.substr($html, $end), $markers];
     }
 
     /**

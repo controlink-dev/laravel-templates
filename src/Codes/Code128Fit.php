@@ -2,6 +2,8 @@
 
 namespace Controlink\Templates\Codes;
 
+use Controlink\Templates\Output\Zpl\Dots;
+
 /**
  * How a Code 128 barcode fits a slot, in whole printer dots.
  *
@@ -18,8 +20,8 @@ namespace Controlink\Templates\Codes;
  */
 final class Code128Fit
 {
-    /** Printer resolution this arithmetic is for: 203 dpi, 8 dots per millimetre. */
-    public const DOTS_PER_MM = 8;
+    /** Printer resolution this arithmetic is for: 203 dpi, 8 dots per millimetre (`Dots`). */
+    public const DOTS_PER_MM = Dots::PER_MM;
 
     /** Narrowest module a thermal head prints reliably. */
     public const MIN_MODULE_DOTS = 2;
