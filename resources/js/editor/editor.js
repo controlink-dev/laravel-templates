@@ -44,6 +44,7 @@ import { confirmDialog } from './dialog.js';
 import { saveConfirmingWarnings } from './save.js';
 import { placementInZone, round, topInZone, zoneAt, zonesFor } from './zones.js';
 import { anchorShift, clampMove, wheelMove, wheelZoomFactor } from './pan.js';
+import { wireMenus } from './menu.js';
 
 /*
  * Mounting, and the four things that made a workspace pane hostile.
@@ -98,6 +99,8 @@ async function mountEditor(el) {
      */
     const root = el.closest('[data-tpl-root]') ?? el.parentElement ?? el;
     const config = readConfig(el);
+
+    wireMenus(root);
 
     config.root = root;
 
@@ -1609,7 +1612,8 @@ function wireChrome(editor, config, chrome, paper, layoutState) {
         },
     });
 
-    const formatSelect = chrome.toolbar?.querySelector('[data-tpl-format]');
+    // In the action bar's centre, or in the toolbar when there is no bar.
+    const formatSelect = config.root.querySelector('[data-tpl-format]');
 
     if (formatSelect) {
         const formats = config.pageFormats;
@@ -3354,8 +3358,19 @@ function mountDownloadButton(root, config, spec) {
         button.type = 'button';
         button.className = preview.className;
         button.dataset[spec.key] = '1';
-        button.innerHTML = icons.download;
-        button.append(' ' + spec.label(config.strings));
+
+        if (preview.getAttribute('role') === 'menuitem') {
+            // Preview sits in the "⋯" menu on an editable version: the download joins it there.
+            button.setAttribute('role', 'menuitem');
+            button.tabIndex = -1;
+            button.innerHTML = `<span class="tpl-menu__icon">${icons.download}</span>`
+                + '<span class="tpl-menu__text"><span class="tpl-menu__name"></span></span>';
+            button.querySelector('.tpl-menu__name').textContent = spec.label(config.strings);
+        } else {
+            button.innerHTML = icons.download;
+            button.append(' ' + spec.label(config.strings));
+        }
+
         anchor.after(button);
     }
 

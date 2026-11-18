@@ -319,7 +319,9 @@ useful after injecting a pane into the DOM once the bundle already evaluated.
 Theming goes through CSS custom properties, all read with a fallback so an unthemed host
 gets sane defaults — `--tpl-primary`, `--tpl-primary-strong`, `--tpl-on-primary`,
 `--tpl-surface-base/raised/muted/sunken`, `--tpl-edge`/`--tpl-edge-subtle`,
-`--tpl-slate-{400,500,600,700,900}`, plus layout tokens like `--tpl-paper-width`/
+`--tpl-slate-{100,400,500,600,700,800,900}`, `--tpl-info`/`-soft`/`-tint`/`-edge`,
+`--tpl-warning`/`-strong`/`-soft`/`-edge`, `--tpl-unsaved` (see
+[docs/INTEGRATION.md](docs/INTEGRATION.md#the-action-bar-and-its-slots)), plus layout tokens like `--tpl-paper-width`/
 `--tpl-paper-height`. The bundle reads only these `--tpl-*` variables, never the host's
 own.
 

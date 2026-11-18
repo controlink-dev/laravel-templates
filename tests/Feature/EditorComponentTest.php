@@ -12,7 +12,9 @@ use Controlink\Templates\Tests\TestCase;
 use Controlink\Templates\Types\TypeCatalogue;
 use Controlink\Templates\Versions\VersionState;
 use Controlink\Templates\View\Components\Editor;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Gate;
 use InvalidArgumentException;
 use RuntimeException;
 
@@ -146,9 +148,13 @@ class EditorComponentTest extends TestCase
         new Editor($other, $version);
     }
 
-    /** An immutable version opens read-only: no save, no activate, and it says why. */
+    /**
+     * An immutable version opens read-only: the notice sits above the bar, and the only
+     * action left is Preview — no Save, no "⋯" menu, no Activate.
+     */
     public function test_an_immutable_version_renders_without_the_writing_actions(): void
     {
+        $this->allowActivation();
         [$template, $version] = $this->createTemplate();
 
         $version->forceFill(['state' => VersionState::Active]);
@@ -158,7 +164,104 @@ class EditorComponentTest extends TestCase
         $this->assertStringContainsString('data-editable="0"', $html);
         $this->assertStringNotContainsString('data-tpl-save', $html);
         $this->assertStringNotContainsString('data-tpl-activate', $html);
-        $this->assertStringContainsString(__('templates::editor.editor.read_only'), $html);
+        $this->assertStringNotContainsString('data-tpl-menu', $html);
+        $this->assertSame(1, substr_count($html, 'data-tpl-preview'));
+        $this->assertStringContainsString('tpl-btn--outline-info" data-tpl-preview', $html);
+        $this->assertStringContainsString('data-tpl-status', $html);
+
+        $notice = strpos($html, 'class="tpl-editor-notice" role="status"');
+        $this->assertNotFalse($notice);
+        $this->assertLessThan(strpos($html, 'class="tpl-editor-actions"'), $notice);
+        $this->assertStringContainsString(e(__('templates::editor.editor.read_only')), $html);
+    }
+
+    /** An editable version: Save on the bar, Preview in the "⋯" menu; Activate only with the permission. */
+    public function test_an_editable_version_keeps_preview_and_activate_in_the_menu(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $html = $this->render($template, $version);
+
+        $this->assertStringContainsString('tpl-btn--outline-primary" data-tpl-save', $html);
+        $this->assertStringContainsString('aria-haspopup="menu"', $html);
+        $this->assertStringContainsString('aria-expanded="false"', $html);
+        $this->assertStringContainsString(e(__('templates::editor.editor.more_actions')), $html);
+        $this->assertStringContainsString('role="menuitem"', $html);
+        $this->assertStringNotContainsString('data-tpl-activate', $html);
+        $this->assertStringNotContainsString('tpl-editor-notice', $html);
+
+        $menu = substr($html, strpos($html, 'data-tpl-menu>'));
+        $this->assertStringContainsString('data-tpl-preview', $menu);
+
+        $this->allowActivation();
+
+        $html = $this->render($template, $version);
+        $menu = substr($html, strpos($html, 'role="menu"'));
+
+        $this->assertStringContainsString('data-tpl-activate', $menu);
+        $this->assertStringContainsString(e(__('templates::editor.editor.activate_version')), $menu);
+    }
+
+    /** The host's `notice` goes inside the one notice, and its `center` in the bar's centre. */
+    public function test_the_notice_and_center_slots_land_in_their_zones(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $html = Blade::render(
+            '<x-templates::editor :template="$template" :version="$version">'
+            .'<x-slot:heading><span class="tpl-editor-title">Fatura A4</span></x-slot:heading>'
+            .'<x-slot:notice><span id="host-notice">Documento fiscal</span></x-slot:notice>'
+            .'<x-slot:center><nav id="host-center"></nav></x-slot:center>'
+            .'</x-templates::editor>',
+            ['template' => $template, 'version' => $version],
+        );
+
+        $notice = strpos($html, 'tpl-editor-notice"');
+        $bar = strpos($html, 'class="tpl-editor-actions"');
+        $center = strpos($html, 'tpl-editor-zone--center');
+        $end = strpos($html, 'tpl-editor-zone--end');
+
+        $this->assertNotFalse($notice);
+        $this->assertGreaterThan($notice, strpos($html, 'id="host-notice"'));
+        $this->assertLessThan($bar, strpos($html, 'id="host-notice"'));
+        // Editable: the notice has no read-only title of its own.
+        $this->assertStringNotContainsString(e(__('templates::editor.editor.read_only')), $html);
+
+        $this->assertGreaterThan($center, strpos($html, 'id="host-center"'));
+        $this->assertLessThan($end, strpos($html, 'id="host-center"'));
+        $this->assertGreaterThan($bar, strpos($html, 'Fatura A4'));
+        $this->assertLessThan($center, strpos($html, 'Fatura A4'));
+
+        // The host's centre replaces our selector there; ours falls back to the toolbar.
+        $this->assertSame(1, substr_count($html, 'data-tpl-format'));
+        $this->assertGreaterThan(strpos($html, 'class="tpl-toolbar"'), strpos($html, 'data-tpl-format'));
+    }
+
+    /** Without a `center` slot, the package's format selector takes the bar's centre. */
+    public function test_the_format_selector_sits_in_the_center_without_a_center_slot(): void
+    {
+        [$template, $version] = $this->createTemplate();
+
+        $html = $this->render($template, $version);
+
+        $center = strpos($html, 'tpl-editor-zone--center');
+
+        $this->assertSame(1, substr_count($html, 'data-tpl-format'));
+        $this->assertGreaterThan($center, strpos($html, 'data-tpl-format'));
+        $this->assertLessThan(strpos($html, 'tpl-editor-zone--end'), strpos($html, 'data-tpl-format'));
+    }
+
+    /** Every hook the bundle hangs its behaviour off survives the new bar. */
+    public function test_the_bar_keeps_every_hook_the_bundle_reads(): void
+    {
+        $this->allowActivation();
+        [$template, $version] = $this->createTemplate();
+
+        $html = $this->render($template, $version);
+
+        foreach (['data-tpl-root', 'data-tpl-preview', 'data-tpl-save', 'data-tpl-activate', 'data-tpl-status', 'data-templates-dirty'] as $hook) {
+            $this->assertStringContainsString($hook, $html, "Missing {$hook}.");
+        }
     }
 
     /**
@@ -573,6 +676,11 @@ class EditorComponentTest extends TestCase
             '<x-templates::editor :template="$template" :version="$version" />',
             ['template' => $template, 'version' => $version],
         );
+    }
+
+    private function allowActivation(): void
+    {
+        Gate::define('activate', fn (?Authenticatable $user) => true);
     }
 
     /** @return array{0: EditorTemplate, 1: GuardedVersion} */

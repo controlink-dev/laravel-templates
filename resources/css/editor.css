@@ -27,10 +27,22 @@
     --tpl-surface-sunken: #e5e7eb;
     --tpl-edge: #e2e8f0;
     --tpl-edge-subtle: #e6ebf2;
+    --tpl-slate-100: #f1f5f9;
+    --tpl-slate-400: #94a3b8;
     --tpl-slate-500: #64748b;
     --tpl-slate-600: #475569;
     --tpl-slate-700: #334155;
+    --tpl-slate-800: #1e293b;
     --tpl-slate-900: #0f172a;
+    --tpl-info: #1d4ed8;
+    --tpl-info-soft: #f7faff;
+    --tpl-info-tint: #e8f0ff;
+    --tpl-info-edge: #93b4f5;
+    --tpl-warning: #f97316;
+    --tpl-warning-strong: #c2410c;
+    --tpl-warning-soft: #ffedd5;
+    --tpl-warning-edge: #fdba74;
+    --tpl-unsaved: #f59e0b;
 }
 
 /* The editor's own buttons: no host button component (RF-E03), so these are ours. */
@@ -575,31 +587,337 @@
     height: 100%;
 }
 
-.tpl-editor-actions {
+/* One notice above the bar: the locked version's reason and the host's `notice` slot. */
+.tpl-editor-notice {
     display: flex;
     flex-shrink: 0;
     align-items: center;
-    justify-content: flex-end;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--tpl-warning-edge, #fdba74);
+    background: var(--tpl-warning-soft, #ffedd5);
+    color: var(--tpl-warning-strong, #c2410c);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.tpl-editor-notice__icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: var(--tpl-warning, #f97316);
+    color: var(--tpl-on-primary, #fff);
+}
+
+.tpl-editor-notice__icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.tpl-editor-notice__text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    font-weight: 400;
+}
+
+.tpl-editor-notice__title {
+    font-weight: 700;
+}
+
+/* The bar: heading | centre | status and actions. Equal outer columns keep the centre centred. */
+.tpl-editor-actions {
+    display: grid;
+    flex-shrink: 0;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 24px;
+    height: 64px;
+    padding: 0 24px 0 16px;
     border-bottom: 1px solid var(--tpl-edge, #e2e8f0);
-    background: var(--tpl-surface-base, #fff);
+    background: var(--tpl-surface-raised, #fff);
+}
+
+.tpl-editor-zone {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 8px;
+}
+
+.tpl-editor-zone--start {
+    justify-self: start;
+}
+
+.tpl-editor-zone--center {
+    justify-self: center;
+}
+
+.tpl-editor-zone--end {
+    justify-self: end;
+}
+
+.tpl-editor-heading {
+    min-width: 0;
 }
 
 .tpl-editor-status {
-    margin-right: auto;
-    font-size: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--tpl-slate-400, #94a3b8);
+    white-space: nowrap;
+}
+
+/* The amber dot only while there is unsaved work, not before "Saving…" or an error. */
+.tpl-editor-root:has([data-templates-dirty]:not([hidden])) .tpl-editor-status:not(:empty)::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--tpl-unsaved, #f59e0b);
+}
+
+/* For the host's `heading` and `center` slots, so it need not invent its own. */
+.tpl-editor-kicker {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--tpl-slate-400, #94a3b8);
+}
+
+.tpl-editor-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--tpl-slate-900, #0f172a);
+    white-space: nowrap;
+}
+
+.tpl-editor-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 17px;
+    padding: 0 7px;
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 999px;
+    background: var(--tpl-slate-100, #f1f5f9);
+    font-size: 9.5px;
+    font-weight: 500;
+    color: var(--tpl-slate-600, #475569);
+    white-space: nowrap;
+}
+
+.tpl-editor-chip::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--tpl-slate-400, #94a3b8);
+}
+
+.tpl-editor-chip--active {
+    border-color: color-mix(in srgb, var(--tpl-primary, #4f46e5) 30%, var(--tpl-surface-raised, #fff));
+    background: color-mix(in srgb, var(--tpl-primary, #4f46e5) 10%, var(--tpl-surface-raised, #fff));
+    color: var(--tpl-primary-strong, #3730a3);
+}
+
+.tpl-editor-chip--active::before {
+    background: var(--tpl-primary, #4f46e5);
+}
+
+/* `--draft` is the base look, named so a host can say what it means. */
+.tpl-editor-chip--draft {
+    border-color: var(--tpl-edge, #e2e8f0);
+    background: var(--tpl-slate-100, #f1f5f9);
+    color: var(--tpl-slate-600, #475569);
+}
+
+.tpl-segmented {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 10px;
+    background: var(--tpl-slate-100, #f1f5f9);
+}
+
+.tpl-segmented__item {
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--tpl-slate-500, #64748b);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.tpl-segmented__item.is-active,
+.tpl-segmented__item[aria-current]:not([aria-current="false"]) {
+    background: var(--tpl-surface-raised, #fff);
+    font-weight: 600;
+    color: var(--tpl-slate-900, #0f172a);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .12), 0 0 0 1px rgba(15, 23, 42, .04);
+}
+
+.tpl-icon-btn--raised {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 10px;
+    background: var(--tpl-surface-raised, #fff);
+    color: var(--tpl-slate-800, #1e293b);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+    cursor: pointer;
+}
+
+/* Outline actions: dashed, flat, an icon before the label. */
+.tpl-btn--outline-info,
+.tpl-btn--outline-primary {
+    gap: 8px;
+    height: 34px;
+    padding: 0 14px 0 12px;
+    border-style: dashed;
+    border-radius: 9px;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: none;
+}
+
+.tpl-btn--outline-info svg,
+.tpl-btn--outline-primary svg {
+    width: 15px;
+    height: 15px;
+}
+
+.tpl-btn--outline-info {
+    border-color: var(--tpl-info-edge, #93b4f5);
+    background: var(--tpl-info-soft, #f7faff);
+    color: var(--tpl-info, #1d4ed8);
+}
+
+.tpl-btn--outline-primary {
+    border-color: color-mix(in srgb, var(--tpl-primary, #4f46e5) 55%, var(--tpl-surface-raised, #fff));
+    background: color-mix(in srgb, var(--tpl-primary, #4f46e5) 4%, var(--tpl-surface-raised, #fff));
+    color: var(--tpl-primary-strong, #3730a3);
+}
+
+/* The "⋯" menu (menu.js). */
+.tpl-menu {
+    position: relative;
+}
+
+.tpl-menu__toggle {
+    display: inline-flex;
+    align-items: center;
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--tpl-edge, #e2e8f0);
+    border-radius: 9px;
+    background: var(--tpl-surface-raised, #fff);
+    color: var(--tpl-slate-800, #1e293b);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+    cursor: pointer;
+}
+
+.tpl-menu__list {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    z-index: 30;
+    width: 280px;
+    padding: 6px;
+    border: 1px solid var(--tpl-edge-subtle, #e6ebf2);
+    border-radius: 12px;
+    background: var(--tpl-surface-raised, #fff);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .12), 0 2px 6px rgba(15, 23, 42, .06);
+}
+
+.tpl-menu__list[hidden] {
+    display: none;
+}
+
+.tpl-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--tpl-slate-900, #0f172a);
+    text-align: left;
+    cursor: pointer;
+}
+
+.tpl-menu__item[hidden] {
+    display: none;
+}
+
+.tpl-menu__item:hover,
+.tpl-menu__item:focus-visible {
+    background: var(--tpl-surface-muted, #f8fafc);
+    outline: none;
+}
+
+.tpl-menu__icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: var(--tpl-info-tint, #e8f0ff);
+    color: var(--tpl-info, #1d4ed8);
+}
+
+.tpl-menu__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.tpl-menu__name {
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.tpl-menu__hint {
+    font-size: 12px;
     color: var(--tpl-slate-500, #64748b);
 }
 
-.tpl-editor-locked {
-    flex-shrink: 0;
-    margin: 0;
-    border-bottom: 1px solid var(--tpl-edge, #e2e8f0);
-    background: #fffbeb;
-    padding: 0.5rem 0.75rem;
-    font-size: 0.75rem;
-    color: #92400e;
+.tpl-menu__item--primary .tpl-menu__icon {
+    background: color-mix(in srgb, var(--tpl-primary, #4f46e5) 12%, var(--tpl-surface-raised, #fff));
+    color: var(--tpl-primary, #4f46e5);
+}
+
+.tpl-menu__item--primary .tpl-menu__name {
+    color: var(--tpl-primary-strong, #3730a3);
+}
+
+.tpl-menu__separator {
+    height: 1px;
+    margin: 4px 8px;
+    background: var(--tpl-slate-100, #f1f5f9);
 }
 
 /* The canvas takes the remaining height; the inline `height` on the container is the

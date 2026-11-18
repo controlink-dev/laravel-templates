@@ -13,46 +13,107 @@
 --}}
 <div class="tpl-editor-root" data-tpl-root>
 
-    @if($actions || isset($heading))
-        {{--
-            One row, not two.
-
-            The screen used to carry a header of its own above this — title on one line,
-            actions on the next — and on a workspace pane that is a row of height spent
-            twice. Whoever embeds the component passes its heading in, and it sits on the
-            same line as the buttons.
-        --}}
-        <div class="tpl-editor-actions">
-            @isset($heading)
-                <div class="tpl-editor-heading">{{ $heading }}</div>
-            @endisset
-
-            <span data-tpl-status class="tpl-editor-status"></span>
-
-            <button type="button" class="tpl-btn tpl-btn--secondary" data-tpl-preview="1">
-                {!! $icons['file-pdf'] !!} {{ __('templates::editor.editor.preview') }}
-            </button>
-
-            @unless($readOnly)
-                <button type="button" class="tpl-btn tpl-btn--secondary" data-tpl-save="1">
-                    {!! $icons['floppy-disk'] !!} {{ __('templates::editor.editor.save') }}
-                </button>
-
-                {{-- Activation is a permission of its own: drawing a layout and binding
-                     the tenant to it are different decisions. --}}
-                @can('activate', $template)
-                    <button type="button" class="tpl-btn tpl-btn--primary" data-tpl-activate="1">
-                        {!! $icons['circle-check'] !!} {{ __('templates::editor.editor.activate') }}
-                    </button>
-                @endcan
-            @endunless
+    {{--
+        One notice, above the bar: why this version cannot be edited, and whatever the
+        host has to add (a fiscal warning, say) in the `notice` slot. A host used to draw
+        its own banner above ours; two stacked warnings read as two different problems.
+    --}}
+    @if($readOnly || isset($notice))
+        <div class="tpl-editor-notice" role="status">
+            <span class="tpl-editor-notice__icon">{!! $icons['lock'] !!}</span>
+            <div class="tpl-editor-notice__text">
+                @if($readOnly)
+                    <strong class="tpl-editor-notice__title">{{ __('templates::editor.editor.read_only') }}</strong>
+                @endif
+                @isset($notice)
+                    <div>{{ $notice }}</div>
+                @endisset
+            </div>
         </div>
     @endif
 
-    @if($readOnly)
-        <p class="tpl-editor-locked">
-            {!! $icons['lock'] !!} {{ __('templates::editor.editor.read_only') }}
-        </p>
+    @php
+        $bar = $actions || isset($heading) || isset($center);
+        // The package's own format selector goes in the bar's centre unless the host put
+        // its own controls there; without a bar it stays in the toolbar.
+        $selectorInBar = $formatSelector && $bar && ! isset($center);
+    @endphp
+
+    @if($bar)
+        {{--
+            One row, three zones: who (the `heading` slot), which sheet (the `center`
+            slot, or our format selector) and what to do with it (status and actions).
+            The outer columns share the rest equally so the centre stays centred whatever
+            either side holds.
+        --}}
+        <div class="tpl-editor-actions">
+            <div class="tpl-editor-zone tpl-editor-zone--start">
+                @isset($heading)
+                    <div class="tpl-editor-heading">{{ $heading }}</div>
+                @endisset
+            </div>
+
+            <div class="tpl-editor-zone tpl-editor-zone--center">
+                @isset($center)
+                    {{ $center }}
+                @elseif($selectorInBar)
+                    <div class="tpl-tools">
+                        <select class="tpl-tool tpl-tool--format" data-tpl-format
+                                aria-label="{{ __('templates::editor.chrome.page_format') }}"></select>
+                    </div>
+                @endisset
+            </div>
+
+            <div class="tpl-editor-zone tpl-editor-zone--end">
+                <span data-tpl-status class="tpl-editor-status"></span>
+
+                @if($readOnly)
+                    <button type="button" class="tpl-btn tpl-btn--outline-info" data-tpl-preview="1">
+                        {!! $icons['eye'] !!} {{ __('templates::editor.editor.preview') }}
+                    </button>
+                @else
+                    <button type="button" class="tpl-btn tpl-btn--outline-primary" data-tpl-save="1">
+                        {!! $icons['floppy-disk'] !!} {{ __('templates::editor.editor.save') }}
+                    </button>
+
+                    {{-- Wired by `menu.js`, delegated from the root: the hooks inside work
+                         exactly as they did as plain buttons. --}}
+                    <div class="tpl-menu" data-tpl-menu>
+                        <button type="button" class="tpl-menu__toggle" data-tpl-menu-toggle
+                                aria-haspopup="menu" aria-expanded="false"
+                                aria-label="{{ __('templates::editor.editor.more_actions') }}">
+                            {!! $icons['ellipsis'] !!}
+                        </button>
+
+                        <div class="tpl-menu__list" role="menu" hidden>
+                            <button type="button" role="menuitem" tabindex="-1"
+                                    class="tpl-menu__item tpl-menu__item--info" data-tpl-preview="1">
+                                <span class="tpl-menu__icon">{!! $icons['eye'] !!}</span>
+                                <span class="tpl-menu__text">
+                                    <span class="tpl-menu__name">{{ __('templates::editor.editor.preview') }}</span>
+                                    <span class="tpl-menu__hint">{{ __('templates::editor.editor.preview_hint') }}</span>
+                                </span>
+                            </button>
+
+                            {{-- Activation is a permission of its own: drawing a layout and
+                                 binding the tenant to it are different decisions. --}}
+                            @can('activate', $template)
+                                <div class="tpl-menu__separator" role="separator"></div>
+
+                                <button type="button" role="menuitem" tabindex="-1"
+                                        class="tpl-menu__item tpl-menu__item--primary" data-tpl-activate="1">
+                                    <span class="tpl-menu__icon">{!! $icons['circle-check'] !!}</span>
+                                    <span class="tpl-menu__text">
+                                        <span class="tpl-menu__name">{{ __('templates::editor.editor.activate_version') }}</span>
+                                        <span class="tpl-menu__hint">{{ __('templates::editor.editor.activate_hint') }}</span>
+                                    </span>
+                                </button>
+                            @endcan
+                        </div>
+                    </div>
+                @endif
+            </div>
+        </div>
     @endif
 
     {{--
@@ -95,7 +156,7 @@
              `data-geometry`. A host that switches format from its own page chrome (format
              tabs hitting `urls['format_switch']`) passes `:format-selector="false"` so the
              two controls never both show. --}}
-        @if($formatSelector)
+        @if($formatSelector && ! $selectorInBar)
             <div class="tpl-tools">
                 <select class="tpl-tool tpl-tool--format" data-tpl-format
                         aria-label="{{ __('templates::editor.chrome.page_format') }}"></select>
