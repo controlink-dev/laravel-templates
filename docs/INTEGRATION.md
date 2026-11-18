@@ -473,6 +473,65 @@ editor saves the outgoing format to its own version first, then fetches.
 
 ---
 
+#### The action bar and its slots
+
+The bar above the canvas has three zones and the component takes a slot for each of the
+first two; the third is the package's own:
+
+| slot | where | default |
+| --- | --- | --- |
+| `heading` | left | empty |
+| `center` | centre | the page-format `<select>` (when `:format-selector` is on); with a `center` slot it moves back to the toolbar |
+| `notice` | the warning strip **above** the bar | none; the strip shows on its own for a read-only version, titled with `editor.read_only`, and the slot's content goes on the line below |
+
+The right zone is the status line and the actions: a read-only version shows only Preview;
+an editable one shows Save and a "⋯" menu holding Preview and, with
+`@can('activate', $template)`, Activate. The `data-tpl-*` hooks travel with the buttons
+into the menu, so a host's own listeners keep working.
+
+```blade
+<x-templates::editor :template="$template" :version="$version" :urls="$urls" :format-selector="false">
+    <x-slot:notice>{{ __('app.fiscal_warning') }}</x-slot:notice>
+    <x-slot:heading>
+        <div class="tpl-editor-kicker">Fatura</div>
+        <span class="tpl-editor-title">{{ $template->name }}</span>
+        <span class="tpl-editor-chip tpl-editor-chip--active">v3 · Ativa</span>
+    </x-slot:heading>
+    <x-slot:center>
+        <nav class="tpl-segmented">
+            @foreach ($formats as $format)
+                <button class="tpl-segmented__item" data-tpl-format-tab="{{ $format['id'] }}"
+                        @if ($format['id'] === $current) aria-current="page" @endif>{{ $format['label'] }}</button>
+            @endforeach
+        </nav>
+        <button class="tpl-icon-btn--raised" aria-label="…">…</button>
+    </x-slot:center>
+</x-templates::editor>
+```
+
+Classes the stylesheet ships for those slots: `.tpl-editor-kicker`, `.tpl-editor-title`,
+`.tpl-editor-chip` (`--active`, `--draft`), `.tpl-segmented` / `.tpl-segmented__item`
+(current with `.is-active` or `aria-current`) and `.tpl-icon-btn--raised`.
+
+**Colour variables.** Every colour in the bar is read through a `--tpl-*` variable with a
+light-theme fallback; a host binds them to its own (and to its dark theme) on
+`.tpl-editor-root` or wider. Besides `--tpl-primary`, `--tpl-primary-strong`,
+`--tpl-on-primary`, `--tpl-surface-*`, `--tpl-edge`, `--tpl-edge-subtle` and
+`--tpl-slate-*`, the bar reads:
+
+| variable | default | used for |
+| --- | --- | --- |
+| `--tpl-info` | `#1d4ed8` | Preview's text and icon |
+| `--tpl-info-soft` | `#f7faff` | Preview button background |
+| `--tpl-info-tint` | `#e8f0ff` | Preview's icon square in the "⋯" menu |
+| `--tpl-info-edge` | `#93b4f5` | Preview button outline |
+| `--tpl-warning` | `#f97316` | the notice's lock square |
+| `--tpl-warning-strong` | `#c2410c` | the notice's text |
+| `--tpl-warning-soft` | `#ffedd5` | the notice's background |
+| `--tpl-warning-edge` | `#fdba74` | the notice's bottom edge |
+| `--tpl-unsaved` | `#f59e0b` | the dot before "Unsaved changes" |
+| `--tpl-slate-100` / `-400` / `-800` | `#f1f5f9` / `#94a3b8` / `#1e293b` | segmented rail and separators / kicker and status / icon buttons |
+
 ## 4. Authorization
 
 The component renders the activate button only inside `@can('activate', $template)`, and

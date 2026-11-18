@@ -569,6 +569,10 @@ class Editor extends Component
                 .'<path fill-rule="evenodd" clip-rule="evenodd" d="M4.5 6.5V5a3.5 3.5 0 0 1 7 0v1.5H13V15H3V6.5h1.5Zm1.6 0h3.8V5a1.9 1.9 0 0 0-3.8 0v1.5Z"/>'
                 .'</svg>',
 
+            'ellipsis' => '<svg viewBox="0 0 16 16" width="1em" height="1em" fill="currentColor" aria-hidden="true">'
+                .'<circle cx="3" cy="8" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="13" cy="8" r="1.5"/>'
+                .'</svg>',
+
             'minus' => '<svg viewBox="0 0 16 16" width="1em" height="1em" fill="currentColor" aria-hidden="true">'
                 .'<rect x="2.5" y="7.2" width="11" height="1.6"/>'
                 .'</svg>',
