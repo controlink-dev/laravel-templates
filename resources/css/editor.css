@@ -1451,7 +1451,7 @@
     /* Host form styles may paint the text through -webkit-text-fill-color or a light weight. */
     -webkit-text-fill-color: currentColor;
     font-size: 0.71875rem;
-    font-weight: 500;
+    font-weight: 600;
 }
 
 /*
@@ -1492,11 +1492,8 @@
 
 .tpl-editor-root .gjs-field-integer .gjs-field-units,
 .tpl-editor-root .gjs-input-unit {
-    color: var(--tpl-slate-600, #475569);
-}
-
-.tpl-editor-root .gjs-field input::placeholder {
-    color: var(--tpl-slate-400, #94a3b8);
+    color: var(--tpl-slate-700, #334155);
+    font-weight: 500;
 }
 
 /* The stepper arrows of a number field: visible, and not a grey smudge. */
@@ -1637,7 +1634,7 @@
 .tpl-editor-root .gjs-field input:disabled,
 .tpl-editor-root .gjs-field select:disabled {
     background: var(--tpl-surface-sunken, #edf1f6);
-    color: var(--tpl-slate-500, #64748b);
+    color: var(--tpl-slate-600, #475569);
     -webkit-text-fill-color: currentColor;
     cursor: not-allowed;
 }
@@ -1772,8 +1769,9 @@
 
 .tpl-editor-root .gjs-field input::placeholder,
 .tpl-editor-root .gjs-input-holder input::placeholder {
-    color: var(--tpl-slate-600, #475569);
+    color: var(--tpl-slate-700, #334155);
     -webkit-text-fill-color: currentColor;
+    font-weight: 500;
     opacity: 1;
 }
 
