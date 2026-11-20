@@ -1601,6 +1601,8 @@
 /* Layers: the zones are the parents of the tree, which is the document's own shape. */
 .tpl-editor-root .gjs-layer {
     border-bottom: 0;
+    /* GrapesJS sets "lighter" and 1px tracking, which washes the names out. */
+    font-weight: 500;
 }
 
 .tpl-editor-root .gjs-layer-title {
@@ -1764,7 +1766,9 @@
 }
 
 .tpl-editor-root .gjs-layer-title {
-    color: var(--tpl-slate-700, #334155);
+    color: var(--tpl-slate-800, #1e293b);
+    font-weight: inherit;
+    letter-spacing: normal;
 }
 
 .tpl-editor-root .gjs-field input::placeholder,
