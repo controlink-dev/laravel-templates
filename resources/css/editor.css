@@ -1448,7 +1448,10 @@
 .tpl-editor-root .gjs-field textarea {
     height: 1.75rem;
     color: var(--tpl-slate-900, #0f172a);
+    /* Host form styles may paint the text through -webkit-text-fill-color or a light weight. */
+    -webkit-text-fill-color: currentColor;
     font-size: 0.71875rem;
+    font-weight: 500;
 }
 
 /*
@@ -1635,6 +1638,7 @@
 .tpl-editor-root .gjs-field select:disabled {
     background: var(--tpl-surface-sunken, #edf1f6);
     color: var(--tpl-slate-500, #64748b);
+    -webkit-text-fill-color: currentColor;
     cursor: not-allowed;
 }
 
@@ -1768,7 +1772,9 @@
 
 .tpl-editor-root .gjs-field input::placeholder,
 .tpl-editor-root .gjs-input-holder input::placeholder {
-    color: var(--tpl-slate-500, #64748b);
+    color: var(--tpl-slate-600, #475569);
+    -webkit-text-fill-color: currentColor;
+    opacity: 1;
 }
 
 /* The heading shares the action row: it takes the space, the buttons keep the end. */
